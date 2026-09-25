@@ -64,7 +64,7 @@ export function build(kit, rig, def) {
       kit.add(C, G.cap(0.05, len, 6), frosting, { p: [sd * 0.66, 0.46 - len / 2, z], outline: false });
     }
   }
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 18; i++) {
     const x = (rand() - 0.5) * 0.9;
     const z = -0.95 + rand() * 1.95;
     const onHood = z > 0.1 && Math.abs(x) < 0.38;
@@ -73,8 +73,8 @@ export function build(kit, rig, def) {
     kit.add(C, G.cap(0.018, 0.05, 4), toon(SPRINKLES[i % SPRINKLES.length]), { p: [x, y, z], r: [Math.PI / 2, rand() * TAU, 0], outline: false });
   }
   // a big frosted donut standing up as a spoiler
-  kit.add(C, G.tor(0.2, 0.09, 8, 16), toon(0xe7a867), { p: [0, 1.02, -1.02] });
-  kit.add(C, G.tor(0.2, 0.075, 8, 16), toon(c.kart), { p: [0, 1.02, -1.055], s: [1, 1, 0.8], outline: false });
+  kit.add(C, G.tor(0.2, 0.09, 6, 14), toon(0xe7a867), { p: [0, 1.02, -1.02] });
+  kit.add(C, G.tor(0.2, 0.075, 6, 14), toon(c.kart), { p: [0, 1.02, -1.055], s: [1, 1, 0.8], outline: false });
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * TAU;
     kit.add(C, G.cap(0.018, 0.05, 4), toon(SPRINKLES[i % 6]), { p: [Math.cos(a) * 0.2, 1.02 + Math.sin(a) * 0.2, -1.12], r: [0, 0, a + 0.7], outline: false });
@@ -105,13 +105,13 @@ export function build(kit, rig, def) {
     const w = part(D, [sd * 0.14, 1.1, -0.24]);
     // mirrored by a half-turn (not a negative scale) so both wings keep their faces outward
     kit.add(w, wingGeo(), pink, { s: 1.15, r: [0, sd > 0 ? 0.5 : Math.PI - 0.5, 0] });
-    limb(kit, w, [0, 0, 0], [sd * 0.46, 0.46, -0.24], 0.03, scales);
+    limb(kit, w, [0, 0, 0], [sd * 0.46, 0.46, -0.24], 0.03, scales, { rs: 5 });
     wings.push([w, sd]);
   }
   // curly tail with a heart tip, wagging over the side
   const tail = part(D, [-0.2, 0.74, -0.26]);
-  limb(kit, tail, [0, 0, 0], [-0.3, -0.02, -0.25], 0.1, scales);
-  limb(kit, tail, [-0.3, -0.02, -0.25], [-0.46, 0.2, -0.36], 0.07, scales);
+  limb(kit, tail, [0, 0, 0], [-0.3, -0.02, -0.25], 0.1, scales, { rs: 6 });
+  limb(kit, tail, [-0.3, -0.02, -0.25], [-0.46, 0.2, -0.36], 0.07, scales, { rs: 6 });
   kit.add(tail, G.heart(0.2, 0.06), pink, { p: [-0.48, 0.34, -0.38], r: [0, -0.6, 0] });
 
   // ── head ──
@@ -136,7 +136,8 @@ export function build(kit, rig, def) {
 
   // the SNEEZE: a sprinkle burst + a little white puff, in front of her nose
   const burst = part(D, [0, 1.44, 0.55]);
-  for (let i = 0; i < 16; i++) {
+  burst.name = 'puff-sneeze';
+  for (let i = 0; i < 12; i++) {
     const a = rand() * TAU;
     const rr = 0.05 + rand() * 0.22;
     kit.add(burst, G.cap(0.022, 0.06, 4), toon(SPRINKLES[i % 6]), {
@@ -161,7 +162,8 @@ export function build(kit, rig, def) {
     tail.rotation.y = Math.sin(t * 3.4) * 0.3;
 
     // sneeze timeline: windup (ah... ahh...) -> CHOO -> sprinkles fly
-    if (st.boosting && !wasBoosting && sneezeT > WINDUP + 0.3) sneezeT = WINDUP - 0.12; // boost = instant sneeze
+    const bursting = sneezeT >= WINDUP && sneezeT < WINDUP + BURST;
+    if (st.boosting && !wasBoosting && !bursting) sneezeT = WINDUP - 0.12; // boost = instant sneeze
     wasBoosting = st.boosting;
     sneezeT += dt;
     if (sneezeT > SNEEZE_EVERY) sneezeT = 0;

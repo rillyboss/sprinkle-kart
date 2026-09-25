@@ -140,6 +140,7 @@ export function build(kit, rig, def) {
   kit.add(H, G.sph(0.04, 8, 6), toon(0xff8fb0), { f: surf(R, 0, -0.2, 1.0), s: [1.3, 0.9, 0.6], outline: false });
   // droopy eyelids (half-closed while driving, open wide on boosts)
   const lids = part(H, [0, 0, 0]);
+  lids.name = 'lulu-lids';
   const lidMat = toon(FACE);
   const dark = toon(EYE_DARK);
   for (const side of [-1, 1]) {
@@ -150,6 +151,7 @@ export function build(kit, rig, def) {
   // sleeping eyes: soft closed curves (shown while she dozes)
   const sleepy = part(H, [0, 0, 0]);
   sleepy.visible = false;
+  sleepy.name = 'lulu-sleepy-eyes';
   for (const side of [-1, 1]) {
     kit.add(sleepy, G.tor(0.12 * R, 0.03 * R, 5, 10, Math.PI), dark, { f: surf(R, eyeU * side, eyeV, 0.97), p: [0, 0.03 * R, 0], r: [0, 0, Math.PI], outline: false });
   }
@@ -173,10 +175,12 @@ export function build(kit, rig, def) {
     kit.add(zzz, extrude(zShape(0.07 * s, 0.08 * s, 0.028 * s), 0.025, 0.01), zMat, { p: [i * 0.13, i * 0.17, 0], r: [0, -0.3, 0.15 * i] });
   }
   zzz.visible = false;
+  zzz.name = 'lulu-zzz';
   const bubble = part(H, [0.03, -0.2, R + 0.02]);
   kit.add(bubble, G.sph(0.13, 12, 8), toon(0xdff6ff, { transparent: true, opacity: 0.55, emissive: 0x9fdcff, emissiveIntensity: 0.35 }), { p: [0.04, -0.02, 0.1], outline: true, ow: 0.012 });
   kit.add(bubble, G.sph(0.03, 6, 5), glow(WHITE), { p: [0.02, 0.04, 0.2], outline: false });
   bubble.visible = false;
+  bubble.name = 'lulu-nose-bubble';
 
   let still = 0;
   let doze = 0;

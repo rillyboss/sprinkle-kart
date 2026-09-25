@@ -66,11 +66,12 @@ export function build(kit, rig, def) {
 
   // ── the clamshell hover-kart ──
   const hull = part(C, [0, HOVER, 0]);
+  hull.name = 'marina-hull';
   kit.add(hull, G.bowl(1, 20, 7), pearl, { p: [0, 0.5, 0], s: [0.72, 0.4, 1.08] });
   // scalloped rim + ridges down the shell
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * TAU;
-    kit.add(hull, G.sph(0.075, 8, 6), ridge, { p: [Math.sin(a) * 0.72, 0.5, Math.cos(a) * 1.08], s: [1, 0.7, 1], outline: false });
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * TAU;
+    kit.add(hull, G.sph(0.085, 7, 5), ridge, { p: [Math.sin(a) * 0.72, 0.5, Math.cos(a) * 1.08], s: [1, 0.7, 1], outline: false });
   }
   // pearly inside of the shell
   kit.add(hull, G.cyl(1, 1, 0.04, 22), toon(0xfff0f6), { p: [0, 0.49, 0], s: [0.69, 1, 1.05], outline: false });
@@ -94,6 +95,7 @@ export function build(kit, rig, def) {
   rig.steeringWheel = swSpin;
   // the open top shell standing up behind her as a spoiler (it "breathes")
   const lid = part(C, [0, 0.62 + HOVER, -0.95]);
+  lid.name = 'marina-lid';
   kit.add(lid, extrude(fanShape(0.62), 0.05, 0.02), pearl, { p: [0, 0.3, 0], r: [0, 0, 0] });
   for (let i = 1; i < 7; i++) {
     const a = Math.PI - (i / 7) * Math.PI;
@@ -113,21 +115,22 @@ export function build(kit, rig, def) {
   const bubbleMat = toon(0xdff6ff, { transparent: true, opacity: 0.55, emissive: 0x9fdcff, emissiveIntensity: 0.35 });
   const makeBubbles = (p, n, spread, size) => {
     const g = part(C, p);
+    g.name = 'marina-bubbles';
     for (let i = 0; i < n; i++) {
       const r = size * (0.6 + rand() * 0.6);
-      const q = [(rand() - 0.5) * spread, rand() * spread * 0.8, -rand() * spread * 1.5];
-      kit.add(g, G.sph(r, 10, 7), bubbleMat, { p: q, outline: false });
+      const q = [(rand() - 0.5) * spread, rand() * spread * 0.8, -rand() * spread * 0.6];
+      kit.add(g, G.sph(r, 8, 5), bubbleMat, { p: q, outline: false });
       kit.add(g, G.sph(r * 0.3, 5, 4), glow(WHITE), { p: [q[0] - r * 0.35, q[1] + r * 0.4, q[2] + r * 0.5], outline: false });
     }
     return { g, p };
   };
   const streams = [
-    makeBubbles([-0.3, 0.3 + HOVER, -1.25], 5, 0.3, 0.07),
-    makeBubbles([0.3, 0.3 + HOVER, -1.25], 5, 0.3, 0.07),
-    makeBubbles([-0.3, 0.3 + HOVER, -1.25], 4, 0.3, 0.06),
-    makeBubbles([0.3, 0.3 + HOVER, -1.25], 4, 0.3, 0.06),
+    makeBubbles([-0.3, 0.32 + HOVER, -1.12], 4, 0.3, 0.075),
+    makeBubbles([0.3, 0.32 + HOVER, -1.12], 4, 0.3, 0.075),
+    makeBubbles([-0.3, 0.32 + HOVER, -1.12], 4, 0.3, 0.06),
+    makeBubbles([0.3, 0.32 + HOVER, -1.12], 4, 0.3, 0.06),
   ];
-  const cushion = makeBubbles([0, 0.12, 0.1], 7, 0.9, 0.08);
+  const cushion = makeBubbles([0, 0.12, 0.35], 6, 0.9, 0.08);
 
   // ── the mermaid ──
   const D = rig.driver;
@@ -149,7 +152,7 @@ export function build(kit, rig, def) {
   addArms(kit, rig, 0xffe0cc, 0xffe0cc, { r: 0.07, handR: 0.085 });
   // her tail curls forward and pops out over the side of the clam
   const tailPts = [[0, 0.72, 0.05], [0.18, 0.6, 0.4], [0.42, 0.66, 0.66], [0.62, 0.84, 0.8]];
-  for (let i = 0; i < 3; i++) limb(kit, D, tailPts[i], tailPts[i + 1], 0.2 - i * 0.045, tailMat);
+  for (let i = 0; i < 3; i++) limb(kit, D, tailPts[i], tailPts[i + 1], 0.2 - i * 0.045, tailMat, { rs: 7 });
   for (const [x, y, z] of [[0.1, 0.72, 0.28], [0.3, 0.64, 0.54], [0.5, 0.74, 0.72]]) {
     kit.add(D, G.sph(0.05, 8, 6), toon(0x9ff0e6), { p: [x, y + 0.1, z], s: [1, 0.6, 1], outline: false });
   }
@@ -177,13 +180,13 @@ export function build(kit, rig, def) {
   const locks = [];
   for (const [i, sd] of [[0, -1], [1, 1]]) {
     const lock = part(H, [sd * 0.24, -0.12, -0.22]);
-    limb(kit, lock, [0, 0, 0], [sd * 0.08, -0.3, -0.08], 0.14, hair);
-    limb(kit, lock, [sd * 0.08, -0.3, -0.08], [sd * -0.02, -0.56, -0.16], 0.12, hair);
+    limb(kit, lock, [0, 0, 0], [sd * 0.08, -0.3, -0.08], 0.14, hair, { rs: 6 });
+    limb(kit, lock, [sd * 0.08, -0.3, -0.08], [sd * -0.02, -0.56, -0.16], 0.12, hair, { rs: 6 });
     kit.add(lock, G.sph(0.11, 10, 8), hair, { p: [sd * 0.06, -0.66, -0.12] });
     locks.push([lock, i]);
   }
   const backLock = part(H, [0, -0.1, -0.34]);
-  limb(kit, backLock, [0, 0, 0], [0, -0.35, -0.1], 0.18, hair);
+  limb(kit, backLock, [0, 0, 0], [0, -0.35, -0.1], 0.18, hair, { rs: 6 });
   kit.add(backLock, G.sph(0.14, 10, 8), hair, { p: [0, -0.5, -0.12] });
   locks.push([backLock, 2]);
 
@@ -197,7 +200,7 @@ export function build(kit, rig, def) {
     for (let i = 0; i < streams.length; i++) {
       const { g, p } = streams[i];
       const k = (t * rate + i * 0.5) % 1;
-      g.position.set(p[0] + Math.sin(t * 3 + i) * 0.05, p[1] + k * 0.45, p[2] - k * (0.5 + st.speedF * 0.6));
+      g.position.set(p[0] + Math.sin(t * 3 + i) * 0.05, p[1] + k * 0.45, p[2] - k * (0.15 + st.speedF * 0.9));
       g.scale.setScalar((st.boosting ? 1.5 : 1) * (0.4 + Math.sin(k * Math.PI) * 0.8));
     }
     const kc = (t * 0.8) % 1;

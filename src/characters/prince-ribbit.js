@@ -121,6 +121,8 @@ export function build(kit, rig, def) {
   // the too-big crown (wobbles and slips!)
   const crown = part(H, [0, 0.5, -0.02]);
   const crownIn = part(crown, [0, 0, 0]);
+  crown.name = 'ribbit-crown';
+  crownIn.name = 'ribbit-crown-slip';
   kit.add(crownIn, G.cyl(0.4, 0.36, 0.2, 16), gold, { p: [0, 0.08, 0] });
   kit.add(crownIn, G.tor(0.37, 0.035, 6, 20), gold, { p: [0, -0.02, 0], r: [Math.PI / 2, 0, 0] });
   kit.add(crownIn, G.bowl(0.34, 14, 5), toon(VELVET), { p: [0, 0.18, 0], r: [Math.PI, 0, 0], s: [1, 0.5, 1] });

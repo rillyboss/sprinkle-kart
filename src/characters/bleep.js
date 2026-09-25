@@ -143,6 +143,7 @@ export function build(kit, rig, def) {
   // side lever (right) that clicks with the toast; dial (left)
   kit.add(H, G.rbox(0.03, 0.34, 0.07, 0.015), toon(0x3a2f4a), { p: [-hw / 2 - 0.005, 0, 0.05], outline: false });
   const lever = part(H, [-hw / 2 - 0.03, 0, 0.05]);
+  lever.name = 'bleep-lever';
   kit.add(lever, G.box(0.06, 0.04, 0.05), toon(DARK_CHROME), { outline: false });
   kit.add(lever, G.sph(0.06, 10, 8), toon(CHERRY), { p: [-0.05, 0, 0] });
   kit.add(H, G.cyl(0.09, 0.09, 0.04, 14), toon(WHITE), { p: [hw / 2 + 0.02, 0.02, 0.05], r: [0, 0, Math.PI / 2] });
@@ -163,6 +164,7 @@ export function build(kit, rig, def) {
   const crust = toon(CRUST);
   for (const [i, z] of [[0, 0.11], [1, -0.11]]) {
     const slice = part(H, [0, 0, z]);
+    slice.name = `bleep-toast-${i}`;
     const inner = part(slice, [0, 0.24, 0]);
     kit.add(inner, G.rbox(0.44, 0.34, 0.07, 0.03), crust);
     kit.add(inner, G.rbox(0.38, 0.28, 0.08, 0.03), toastMat, { outline: false });

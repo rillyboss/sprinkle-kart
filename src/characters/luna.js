@@ -48,7 +48,7 @@ function swirlPop(kit, target, F, r, base, stripe, both = false) {
       const rad = 0.08 * r + (i / n) * r * 0.8;
       pts.push([Math.cos(a) * rad * face, Math.sin(a) * rad, face * 0.038]);
     }
-    kit.add(target, G.tube(pts, r * 0.085, 40, 4), toon(stripe), { f: F, outline: false });
+    kit.add(target, G.tube(pts, r * 0.085, 28, 4), toon(stripe), { f: F, outline: false });
   }
 }
 
@@ -122,6 +122,7 @@ export function build(kit, rig, def) {
   }
   kit.add(horn, G.tube(helix, 0.02, 48, 4), toon(PINK), { outline: false });
   const hornStar = part(horn, [0, hornH + 0.04, 0]);
+  hornStar.name = 'luna-horn-star';
   kit.add(hornStar, G.star(0.07, 0.03), glow(0xfff6c9), { outline: false });
 
   // rainbow forelock swooping across the forehead (beside the horn)
@@ -132,7 +133,7 @@ export function build(kit, rig, def) {
     [0.24, 0.72, 4, 0.11],
     [0.44, 0.56, 5, 0.1],
   ];
-  for (const [u, v, ci, r] of bangs) kit.add(H, G.sph(r, 10, 8), toon(RAINBOW[ci]), { f: surf(R, u, v, 1.0), s: [1.3, 0.9, 0.55] });
+  for (const [u, v, ci, r] of bangs) kit.add(H, G.sph(r, 9, 6), toon(RAINBOW[ci]), { f: surf(R, u, v, 1.0), s: [1.3, 0.9, 0.55] });
 
   // rainbow mane down the back of the head in three rippling sections
   const maneParts = [];
@@ -146,12 +147,14 @@ export function build(kit, rig, def) {
     const pivot = part(H, [0, Math.cos(a0) * R, -Math.sin(a0) * R]);
     for (const [a, x, ci, r] of locks.slice(s * 2, s * 2 + 2)) {
       const p = [x, Math.cos(a) * R * 1.02 - pivot.position.y, -Math.sin(a) * R * 1.02 - pivot.position.z];
-      kit.add(pivot, G.sph(r, 12, 8), toon(RAINBOW[ci]), { p, r: [-a, 0, 0], s: [1.5, 0.75, 1.15] });
+      kit.add(pivot, G.sph(r, 10, 6), toon(RAINBOW[ci]), { p, r: [-a, 0, 0], s: [1.5, 0.75, 1.15] });
     }
+    pivot.name = `luna-mane-${s}`;
     maneParts.push(pivot);
   }
   // a sparkle glint that sweeps along the mane (the shimmer)
   const glint = part(H, [0, 0, 0]);
+  glint.name = 'luna-glint';
   kit.add(glint, G.star(0.06, 0.025), glow(WHITE), { outline: false });
   kit.add(glint, G.sph(0.035, 6, 5), glow(0xfff6c9), { p: [0.07, -0.05, 0.02], outline: false });
 
