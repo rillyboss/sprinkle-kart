@@ -35,7 +35,7 @@ Xbox, PlayStation and Switch Pro controllers all work.
 
 1. **Title:** press **A** (or **Enter**). Whoever presses first is **P1**.
 2. **Who's playing?:** every other player presses **A** on their controller (or their keyboard's confirm key) to join.
-   Press **Y** to switch on **Magic Steering ✨** (Easy Drive) for that player. **B** leaves. When everyone's in, P1 presses **A**.
+   Press **Y** to switch on **Kid-Assist 🧸** for that player. **B** leaves. When everyone's in, P1 presses **A**.
 3. **Pick your racer:** each player moves their own coloured cursor and presses **A**. Friends can pick the same racer!
 4. **Choose a track:** P1 picks the track, the speed (Cozy 🐢 / Zippy 🐇 / Zoomy 🚀) and how many laps.
 5. **Race!** Press the gas when the countdown says **GO**. Tip: press the gas just before GO for a sparkly
@@ -70,19 +70,24 @@ On PlayStation pads, **A** is ✕, **B** is ○, **X** is □ and **Y** is △.
 | Menu: choose | **Enter** or **Space** | **/**, **Right Shift** or **Numpad Enter** |
 | Menu: back | **Esc** | **Backspace** |
 | Menu: start | **P** | **\\** |
-| Menu: Magic Steering | **Tab** | **'** or **Right Ctrl** |
+| Menu: Kid-Assist | **Tab** | **'** or **Right Ctrl** |
 
 You can also click the menus with the mouse.
 
-### Magic Steering ✨ (Easy Drive)
+### Kid-Assist 🧸
 
-This is for little racers. The kart drives forward by itself, the steering helps keep it on the
-road, and bumping into a fence doesn't slow it down. Turn it on for each player with **Y**
-(or **Tab**) on the *Who's playing?* screen.
+This is for little racers. With Kid-Assist on, the kart **always presses the gas** (even before
+**GO**, so it gets a sparkly Rocket Start), **helps steer** along the best line round every bend
+and **steers away from the fences**. Pushing the stick left or right picks a lane (to grab an item
+box, say); let go and the helper drifts gently back to the best line. Bumping a fence doesn't slow
+it down. Pressing **brake** firmly still brakes (and reverses), and drifting still works for kids
+who want to try it. Turn it on for each player with **Y** (or **Tab**) on the *Who's playing?* screen.
 
 ### Drifting and turbos
 
-Hold drift while you turn. The sparkles change colour **blue → pink → rainbow**.
+Hold drift while you turn: the kart does a little hop and eases into a slide (no sudden jerk).
+While drifting, push **into** the turn to tighten it or **away** to widen it. The sparkles change
+colour **blue → pink → rainbow** (blue comes in about half a second!).
 Let go for a **Mini-Turbo**, a **Super Turbo** or a **Rainbow Turbo**!
 
 ### Items (from the rainbow **?** boxes)
