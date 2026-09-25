@@ -9,5 +9,7 @@
  *   export default [cupcakeCarnival, ...];
  */
 
+import cupcakeCarnival from './cupcake-carnival.js';
+
 /** @type {import('./types.js').TrackModule[]} */
-export default [];
+export default [cupcakeCarnival];
