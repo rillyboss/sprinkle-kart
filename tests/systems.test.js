@@ -118,15 +118,20 @@ describe('race reactions (moved out of main.js — behaviour unchanged)', () => 
     expect(f.log).toEqual([]);
   });
 
-  it('bonks: the bonked human hears it, the bonker gets a "Boop!"', () => {
+  // Power-up clarity: bonk attribution moved from hud.flash to the item callout
+  // widget (tests/items.callouts.test.js); every event has its own sound (tests/items.cues.test.js).
+  it('bonks: the bonked human hears the bonk, the bonker hears a happy "ding"', () => {
     const { f, fire } = setup(2);
     const a = human(0);
     const b = human(1);
-    fire('bonked', { kart: a, by: b, cause: 'rocket' });
-    expect(f.log.filter((c) => c[0] === 'flash')).toEqual([['flash', 0, 'Bonk! 💫'], ['flash', 1, 'Boop! 🎯']]);
+    fire('bonked', { kart: a, by: b, cause: 'cupcake-rocket' });
+    const sfx = f.log.filter((c) => c[0] === 'sfx');
+    expect(sfx.map((c) => c[1])).toEqual(['item-bonk-rocket', 'item-bonk-score']);
+    expect(f.log.filter((c) => c[0] === 'rumble').map((c) => c[1])).toEqual(['gp0', 'gp1']);
+    expect(f.log.filter((c) => c[0] === 'flash')).toEqual([]);
     f.log.length = 0;
     fire('bonked', { kart: a, by: a, cause: 'star' });
-    expect(f.log.filter((c) => c[0] === 'flash')).toEqual([['flash', 0, 'Twirly-whirly! 🌈']]);
+    expect(f.log.filter((c) => c[0] === 'sfx').map((c) => c[1])).toEqual(['item-bonk-star']);
   });
 
   it('item sounds', () => {
@@ -136,7 +141,9 @@ describe('race reactions (moved out of main.js — behaviour unchanged)', () => 
     fire('item-use', { kart: human(0), item: 'cupcake-rocket' });
     fire('item-use', { kart: human(0), item: 'sprinkle-boost' });
     fire('shield-pop', { kart: human(0) });
-    expect(f.log.map((c) => c[1])).toEqual(['item-roulette', 'item-get', 'rocco', 'rocket', 'bubble']);
+    expect(f.log.filter((c) => c[0] !== 'rumble').map((c) => c[1])).toEqual([
+      'item-box-pop', 'item-roulette', 'item-get', 'rocco', 'rocket', 'item-use-sprinkle', 'item-shield-block',
+    ]);
   });
 
   it('3-4 players pan sounds by screen column', () => {

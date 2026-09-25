@@ -21,19 +21,29 @@ import './ui.css';
 import { PLAYER_COLORS } from '../config.js';
 import { ensureFont, el, escapeHtml, portraitHtml } from './dom.js';
 import {
-  ordinal, medalFor, ITEM_ICONS, rouletteFrame, countdownLabel, lapInfo,
+  ordinal, medalFor, ITEM_ICONS, countdownLabel, lapInfo,
   normalizeRects, hudSides, minimapRect, fitMinimap, cssColor,
 } from './hudLogic.js';
 import { createWidgetHost } from './hudWidgets.js';
+import './widgets/items.css';
+import { itemSlotView } from './widgets/itemHudLogic.js';
+import { ITEM_CATALOG } from '../race/itemCatalog.js';
 
-function itemHtml(id) {
+/**
+ * Item slot glyph. One big readable icon per item; Triple Sprinkle shows its
+ * charges as pips under the slot (pass `pips` = { total, left }).
+ */
+function itemHtml(id, pips = null) {
   const it = ITEM_ICONS[id];
   if (!it) return '';
   if (it.gumdrop) return '<span class="sk-gumdrop"><i></i></span>';
-  const main = it.count
-    ? `<span class="sk-item-multi">${`<span>${it.emoji}</span>`.repeat(it.count)}</span>`
-    : `<span class="sk-item-e">${it.emoji}</span>`;
-  return `${main}${it.extra ? `<span class="sk-item-x">${it.extra}</span>` : ''}`;
+  const main = `<span class="sk-item-e">${ITEM_CATALOG[id]?.emoji ?? it.emoji}</span>`;
+  const extra = it.extra ? `<span class="sk-item-x">${it.extra}</span>` : '';
+  const dots = pips
+    ? `<span class="ski-slot-pips">${Array.from({ length: pips.total }, (_, i) => `<i class="${i < pips.left ? 'on' : ''}"></i>`).join('')}</span>`
+      + `<span class="ski-count">×${pips.left}</span>`
+    : '';
+  return `${main}${extra}${dots}`;
 }
 
 export class Hud {
@@ -111,7 +121,7 @@ export class Hud {
     const node = el('div.sk-vp', { '--pc': color },
       (refs.cluster = el('div.sk-cluster', {},
         el('div.sk-pchip', {}, `P${pi + 1}`),
-        (refs.item = el('div.sk-item', {}, (refs.itemInner = el('div.sk-item-inner')))),
+        (refs.item = el('div.sk-item.ski-slot', {}, (refs.itemInner = el('div.sk-item-inner')))),
         (refs.lap = el('div.sk-lap')))),
       (refs.place = el('div.sk-place', {},
         (refs.placePortrait = el('div.sk-place-portrait')),
@@ -180,17 +190,17 @@ export class Hud {
       if (li.final && !first && !kart.finished) this._retrigger(refs.banner, 'show');
     }
 
-    // Item slot with roulette
+    // Item slot with roulette: spins fast, slows down and lands on the real item.
+    const view = itemSlotView(kart);
+    const rolling = view.state === 'rolling';
     let itemSig;
     let itemMarkup;
-    const rolling = (kart.itemRoulette ?? 0) > 0;
     if (rolling) {
-      const id = rouletteFrame(t);
-      itemSig = `r:${id}`;
-      itemMarkup = itemHtml(id);
-    } else if (kart.item) {
-      itemSig = `i:${kart.item}`;
-      itemMarkup = itemHtml(kart.item);
+      itemSig = `r:${view.tick}:${view.item}`;
+      itemMarkup = itemHtml(view.item);
+    } else if (view.item) {
+      itemSig = `i:${view.item}:${view.pips?.left ?? ''}`;
+      itemMarkup = itemHtml(view.item, view.pips);
     } else {
       itemSig = 'none';
       itemMarkup = '<span class="sk-item-empty">?</span>';
@@ -199,9 +209,11 @@ export class Hud {
       const wasRolling = cache.item?.startsWith('r:');
       cache.item = itemSig;
       refs.itemInner.innerHTML = itemMarkup;
+      refs.item.style.setProperty('--ic', view.color);
       refs.item.classList.toggle('sk-rolling', rolling);
-      refs.item.classList.toggle('sk-has', !rolling && !!kart.item);
-      if (wasRolling && !rolling && kart.item) this._retrigger(refs.item, 'sk-got');
+      refs.item.classList.toggle('sk-has', !rolling && !!view.item);
+      if (rolling) this._retrigger(refs.itemInner, 'ski-tick');
+      if (wasRolling && !rolling && view.item) this._retrigger(refs.item, 'sk-got');
     }
 
     // Countdown
