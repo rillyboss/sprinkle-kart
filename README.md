@@ -145,9 +145,11 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 - `npm run build` makes a production build in `dist/`.
 - `npm run smoke` (`node scripts/smoke.mjs`) is the end-to-end test. It starts Vite on port 5190 and uses Playwright
   with the system Chrome to race every track with 1, 3 and 4 players. It also runs the menu flow with the keyboard,
-  the menu flow with a simulated controller, and a race that reaches the results and unlock screens.
+  the menu flow with a simulated controller, the menus at full v2 size, and a race that reaches the results and unlock screens.
   Screenshots are saved in `smoke-out/`.
-- See `ARCHITECTURE.md` for how the modules fit together.
+- See `ARCHITECTURE.md` for how the modules fit together (the v2 contract: content lineup, one file
+  per racer in `src/characters/`, one module per track in `src/tracks/`, the event bus and auto-installed
+  systems in `src/systems/`, menu screens in `src/ui/screens/`) and `CONTRIBUTING.md` for the git workflow.
 
 ### Debug URL parameters
 
@@ -161,5 +163,6 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 | `&cpus=0..7` | Number of CPU racers in a quick race |
 | `&simspeed=1..8` | Run the simulation N times per frame (for automated tests) |
 | `?unlockreset=1` | Reset saved unlocks and trophies |
+| `?democontent=1` | Menus show locked placeholders for the whole v2 lineup (21 racers, 20 tracks) |
 
-`window.__game` exposes `state`, `race`, `fps`, `setup` and `lastResults` for tests.
+`window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests.
