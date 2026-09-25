@@ -10,6 +10,10 @@
  *    Drum tokens combine hits: k kick, s snare, h hat, o open hat, c clap,
  *    t shaker, m tom, '.' nothing (e.g. 'kh').
  *  - An optional `intro` section plays once, then the main section loops.
+ *
+ * More songs: drop a file in src/audio/songs/<id>.js that default-exports one
+ * song object (same notation, `id` = file name, usually the track id). It is
+ * picked up automatically — no edit to this file needed. Built-in ids win.
  */
 
 export const SONGS = {
@@ -268,5 +272,12 @@ export const SONGS = {
     },
   },
 };
+
+// Songs added as their own modules (src/audio/songs/*.js), e.g. one per new track.
+const EXTRA_SONGS = import.meta.glob('./songs/*.js', { eager: true, import: 'default' });
+for (const file of Object.keys(EXTRA_SONGS).sort()) {
+  const song = EXTRA_SONGS[file];
+  if (song && typeof song.id === 'string' && !(song.id in SONGS)) SONGS[song.id] = song;
+}
 
 export const SONG_IDS = Object.keys(SONGS);

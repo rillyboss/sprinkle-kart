@@ -22,7 +22,7 @@ describe('buildTrack (headless)', () => {
       });
 
       it('computes item box slots and boost pads from the def', () => {
-        expect(built.itemBoxSlots.length).toBe(def.itemBoxRows.length * 5);
+        expect(built.itemBoxSlots.length).toBe(def.itemBoxRows.length * (def.width >= 18 ? 5 : 4));
         for (const slot of built.itemBoxSlots) {
           expect(slot.position).toBeInstanceOf(THREE.Vector3);
           const expected = path.positionAt(slot.s, slot.lateral);

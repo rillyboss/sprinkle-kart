@@ -16,10 +16,11 @@
  *   ?simspeed=1..8     run N simulation steps per frame (fast automated tests)
  */
 import * as THREE from 'three';
-import { RACERS_PER_RACE, MAX_PLAYERS, UNLOCK_CHARACTER_ID, SPEED_CLASSES, DEFAULT_LAPS } from './config.js';
-import * as progress from './save/progress.js';
+import { RACERS_PER_RACE, MAX_PLAYERS, SPEED_CLASSES, DEFAULT_LAPS } from './config.js';
+import * as progress from './progress/progress.js';
+import { isAvailable } from './progress/access.js';
 import { CHARACTERS, getCharacter, getSelectableCharacters } from './data/characters.js';
-import { TRACKS, getTrack } from './data/tracks.js';
+import { TRACKS, getTrack, findTrack } from './data/tracks.js';
 import { TrackPath } from './track/TrackPath.js';
 import { buildTrack } from './render/trackBuilder.js';
 import { buildKartModel } from './render/characterModels.js';
@@ -32,7 +33,12 @@ import { Hud } from './ui/Hud.js';
 import { SplitScreen, pixelRatioFor } from './render/SplitScreen.js';
 import { CameraRig, SpectatorCam } from './render/CameraRig.js';
 import { hideOccluders, restoreKarts } from './render/occlusion.js';
-import { buildParticipants, pickCpuCharacters, parseDebugParams, quickSetup, nextTrackId, driftBoostText } from './game/setup.js';
+import { buildParticipants, pickCpuCharacters, parseDebugParams, quickSetup, nextTrackId } from './game/setup.js';
+import { bus } from './game/events.js';
+import { createSessionHelpers } from './game/session.js';
+import { createRaceStats } from './game/raceStats.js';
+import { raceStartInfo, buildRaceSummary } from './game/summary.js';
+import { installSystems } from './systems/index.js';
 
 const params = parseDebugParams(typeof location !== 'undefined' ? location.search : '');
 if (params.unlockReset) progress.resetProgress();
@@ -69,6 +75,7 @@ const game = {
   menus: null,
   hud: null,
   errors: [],
+  bus,
 };
 window.__game = game;
 
@@ -122,6 +129,7 @@ function frame(now) {
       renderer.setScissorTest(false);
       renderer.clear();
     }
+    bus.emit('frame', dt, game);
   } catch (err) {
     game.errors.push(String(err?.stack || err));
     if (!loggedLoopError) {
@@ -169,6 +177,8 @@ async function boot() {
   hud = new Hud(uiRoot, { characters: CHARACTERS });
   game.menus = menus;
   game.hud = hud;
+  // Event-bus subscribers (sounds, HUD callouts, rumble, progress, ...): src/systems/*.js
+  installSystems(bus, { audio, input, hud, menus, progress, params, game });
 
   clearInterval(ticker);
   if (fill) fill.style.width = '100%';
@@ -204,12 +214,13 @@ async function flow() {
     if (!setup) {
       game.state = 'menu';
       audio.playMusic('menu');
+      bus.emit('menu-enter', { skipTitle, previous });
       setup = await menus.run({ skipTitle, previous });
     }
     previous = setup;
     let outcome = await playRace(setup);
     while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart') {
-      if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, TRACKS) };
+      if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, TRACKS.filter((t) => isAvailable(t))) };
       previous = setup;
       outcome = await playRace(setup);
     }
@@ -267,17 +278,21 @@ function startRace(setup, done) {
 
   const laps = params.fastFinish ? 1 : (setup.laps || trackDef.laps || DEFAULT_LAPS);
 
-  const karts = new Map(); // playerIndex → deviceId
-  for (const p of humans) karts.set(p.playerIndex, p.deviceId);
-
   let completeAt = null;
   let resultsShown = false;
   let paused = false;
   let finished = false;
-  let tempoUp = false;
   let unsubDevice = null;
 
-  const onEvent = (e) => handleRaceEvent(e);
+  const stats = createRaceStats();
+  const helpers = createSessionHelpers({ humans, audio, input, hud, getCharacter });
+  let session = null; // assigned below, before the first race.update()
+  // Every Race event: count it, then forward it to the bus as 'race:<type>'.
+  const onEvent = (e) => {
+    stats.onEvent(e);
+    if (e.type === 'race-complete') completeAt = race.clock;
+    bus.emit(`race:${e.type}`, e, session);
+  };
   const race = new Race({
     scene, trackDef, path, builtTrack: built, participants,
     speedClass: SPEED_CLASSES[setup.speedClass] ? setup.speedClass : 'zippy',
@@ -303,8 +318,14 @@ function startRace(setup, done) {
   hud.reset?.();
   hud.show();
 
-  const session = {
-    race, humans, scene, built, path, rigs, spectator,
+  session = {
+    ...helpers,
+    race, humans, scene, built, path, rigs, spectator, setup, trackDef, laps, stats,
+    mode: setup.mode ?? 'free',
+    audio, input, hud, params,
+    outcome: null,
+    get paused() { return paused; },
+    get resultsShown() { return resultsShown; },
     layout() {
       hud.layout(split.hudRects(playerIndices));
       rigs.forEach((r, i) => r.setAspect(split.aspect(i)));
@@ -317,6 +338,7 @@ function startRace(setup, done) {
   audio.setMusicTempo?.(1);
   audio.playMusic(theme.music || 'castle');
   game.state = 'race';
+  bus.emit('race-start', raceStartInfo({ setup, trackDef, humans, cpuIds: cpuChars, laps }), session);
 
   // Precompile shaders so the countdown does not stutter.
   try {
@@ -332,114 +354,15 @@ function startRace(setup, done) {
     if (who) openPause(`P${who.playerIndex + 1}'s controller took a nap 💤 Plug it back in!`);
   }) || null;
 
-  function humanDevice(kart) {
-    return kart && !kart.isCPU ? karts.get(kart.playerIndex) : null;
-  }
-
-  function isHuman(kart) {
-    return !!kart && !kart.isCPU && kart.playerIndex !== null && kart.playerIndex !== undefined;
-  }
-
-  function panFor(kart) {
-    if (humans.length < 2 || !isHuman(kart)) return 0;
-    const slot = playerIndices.indexOf(kart.playerIndex);
-    if (humans.length === 2) return 0;
-    return slot % 2 === 0 ? -0.35 : 0.35;
-  }
-
-  function sfx(name, opts = {}) {
-    try { audio.sfx(name, opts); } catch { /* ignore */ }
-  }
-
-  function voice(kart, kind) {
-    try {
-      const def = kart.charDef || getCharacter(kart.characterId);
-      if (def) audio.voice(def, kind, { pan: panFor(kart) });
-    } catch { /* ignore */ }
-  }
-
-  function rumble(kart, strength, ms) {
-    const dev = humanDevice(kart);
-    if (dev) { try { input.rumble(dev, strength, ms); } catch { /* ignore */ } }
-  }
-
-  function flash(kart, text) {
-    if (isHuman(kart)) { try { hud.flash(kart.playerIndex, text); } catch { /* ignore */ } }
-  }
-
-  function handleRaceEvent(e) {
-    const k = e.kart;
-    const human = isHuman(k);
-    const pan = panFor(k);
-    switch (e.type) {
-      case 'countdown': sfx('countdown', { n: e.n }); break;
-      case 'go': sfx('go'); break;
-      case 'item-box': if (human && e.rolling) sfx('item-roulette', { pan }); break;
-      case 'item-get':
-        if (human) {
-          sfx('item-get', { pan });
-          if (e.item === 'rainbow-star') voice(k, 'yay');
-        }
-        break;
-      case 'item-use': {
-        if (!human) break;
-        const s = { gumdrop: 'gumdrop', 'cupcake-rocket': 'rocket', 'rainbow-star': 'star', 'bubble-shield': 'bubble' }[e.item];
-        if (s) sfx(s, { pan });
-        break;
-      }
-      case 'boost':
-        if (human) { sfx('boost', { pan }); rumble(k, 0.35, 160); }
-        if (human && e.source === 'start') flash(k, 'Rocket Start! 🚀');
-        break;
-      case 'drift-level': if (human && e.level > 0) sfx('drift-spark', { level: e.level, pan, volume: 0.7 }); break;
-      case 'drift-boost':
-        if (human) { sfx('drift-boost', { level: e.level, pan }); flash(k, driftBoostText(e.level)); rumble(k, 0.25 + e.level * 0.1, 140); }
-        break;
-      case 'bonked':
-        if (human) {
-          sfx('bonk', { pan });
-          voice(k, 'oops');
-          flash(k, e.cause === 'star' ? 'Twirly-whirly! 🌈' : 'Bonk! 💫');
-          rumble(k, 0.75, 320);
-        }
-        if (isHuman(e.by) && e.by !== k) flash(e.by, 'Boop! 🎯');
-        break;
-      case 'shield-pop': if (human) sfx('bubble', { pan, volume: 0.8 }); break;
-      case 'bump':
-        if (human || isHuman(e.other)) {
-          sfx('bump', { volume: 0.4 + 0.6 * (e.strength || 0.3), pan });
-          rumble(k, 0.2 + 0.5 * (e.strength || 0), 90);
-          if (isHuman(e.other)) rumble(e.other, 0.2 + 0.5 * (e.strength || 0), 90);
-        }
-        break;
-      case 'lap':
-        if (human && e.lap < race.lapsTotal) { sfx('lap', { pan }); flash(k, `Lap ${e.lap}! 🍭`); }
-        break;
-      case 'final-lap':
-        if (human) {
-          sfx('final-lap', { pan });
-          if (!tempoUp) { tempoUp = true; audio.setMusicTempo?.(1.12); }
-        }
-        break;
-      case 'finish':
-        if (human) {
-          if (e.place === 1) { sfx('win', { pan }); voice(k, 'win'); rumble(k, 0.6, 500); } else { sfx('finish', { pan }); voice(k, 'yay'); rumble(k, 0.4, 250); }
-        }
-        break;
-      case 'race-complete':
-        completeAt = race.clock;
-        break;
-      default: break;
-    }
-  }
-
   function openPause(label) {
     if (paused || resultsShown) return;
     paused = true;
     game.state = 'paused';
-    sfx('confirm');
+    helpers.sfx('confirm');
+    bus.emit('race-pause', { label }, session);
     menus.showPause(label).then((choice) => {
       paused = false;
+      bus.emit('race-resume', { choice }, session);
       game.state = resultsShown ? 'results' : 'race';
       input.clearMenuEvents?.();
       if (choice === 'restart') end('restart');
@@ -464,27 +387,36 @@ function startRace(setup, done) {
     resultsShown = true;
     game.state = 'results';
     const standings = race.getStandings();
-    const humanWinner = standings.find((k) => isHuman(k) && k.finishPlace === 1 && !k.finishEstimated) || null;
-    let newlyUnlocked = null;
-    if (humanWinner) {
-      progress.recordWin(trackDef.id);
-      if (progress.unlock(UNLOCK_CHARACTER_ID)) newlyUnlocked = getCharacter(UNLOCK_CHARACTER_ID);
-    }
+    const humanWinner = standings.find((k) => helpers.isHuman(k) && k.finishPlace === 1 && !k.finishEstimated) || null;
+    const summary = buildRaceSummary({ setup, trackDef, humans, standings, stats, laps, raceTime: race.time });
+    // Subscribers (src/systems/progressUnlocks.js, ...) record progress and push into summary.unlocks.
+    bus.emit('race-end', summary, session);
+    const unlocks = summary.unlocks
+      .map((u) => ({ ...u, def: u.kind === 'track' ? findTrack(u.id) : getCharacter(u.id) }))
+      .filter((u) => u.def);
+    const newlyUnlocked = unlocks.find((u) => u.kind === 'character')?.def ?? null;
     game.lastResults = {
       trackId: trackDef.id,
+      mode: summary.mode,
       humanWinner: humanWinner ? { characterId: humanWinner.characterId, playerIndex: humanWinner.playerIndex } : null,
       newlyUnlocked: newlyUnlocked ? newlyUnlocked.id : null,
+      unlocks: summary.unlocks.map((u) => ({ kind: u.kind, id: u.id })),
       standings: standings.map((k) => ({ characterId: k.characterId, playerIndex: k.playerIndex, place: k.finishPlace ?? k.place })),
+      summary,
     };
     audio.setMusicTempo?.(1);
     audio.playMusic('victory');
     hud.hide();
-    menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked }).then((choice) => end(choice));
+    menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked, unlocks, summary }).then((choice) => {
+      bus.emit('results-choice', { choice }, session);
+      end(choice);
+    });
   }
 
   function end(outcome) {
     if (finished) return;
     finished = true;
+    session.outcome = outcome;
     done(outcome);
   }
 
@@ -525,10 +457,13 @@ function startRace(setup, done) {
     if (split.spectator) spectator.update(paused ? 0 : dt, race);
 
     if (!resultsShown) hud.update(race, path, { playerIndices, portraits: game.portraits });
+    // Per-frame systems (engine sounds, custom overlays, timers ...) read the session here.
+    bus.emit('race-frame', dt, session);
     split.render(scene, rigs.map((r) => r.camera), spectator.camera, viewHooks);
   }
 
   function dispose() {
+    bus.emit('race-exit', { outcome: session.outcome }, session);
     try { unsubDevice?.(); } catch { /* ignore */ }
     try { race.dispose(); } catch (err) { console.warn(err); }
     try { built.dispose(); } catch (err) { console.warn(err); }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TRACKS, getTrack, runLayout } from '../src/data/tracks.js';
 import { TrackPath } from '../src/track/TrackPath.js';
+import { SONG_IDS } from '../src/audio/songs.js';
 import { computeItemBoxSlots, computeBoostPads, createPathIndex, FENCE_OFFSET } from '../src/render/trackBuilder.js';
 
 const paths = new Map(TRACKS.map((t) => [t.id, new TrackPath(t.controlPoints, t.width)]));
@@ -23,9 +24,9 @@ function minRadius(path) {
 }
 
 describe('track definitions', () => {
-  it('has the four themed tracks with unique ids', () => {
-    expect(TRACKS.map((t) => t.id)).toEqual(['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes']);
-    expect(new Set(TRACKS.map((t) => t.id)).size).toBe(4);
+  it('starts with the four Sprinkle Cup tracks, all ids unique', () => {
+    expect(TRACKS.slice(0, 4).map((t) => t.id)).toEqual(['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes']);
+    expect(new Set(TRACKS.map((t) => t.id)).size).toBe(TRACKS.length);
   });
 
   it('getTrack finds by id and falls back to the first track', () => {
@@ -43,7 +44,9 @@ describe('track definitions', () => {
       'curbA', 'curbB', 'offRoad', 'sunColor', 'ambientColor']) {
       expect(typeof t.theme[key], key).toBe('number');
     }
-    expect(['castle', 'meadow', 'galaxy', 'sundae']).toContain(t.theme.music);
+    expect(SONG_IDS).toContain(t.theme.music);
+    expect(t.theme.music).not.toBe('menu');
+    expect(t.theme.music).not.toBe('victory');
     expect(t.theme.fogFar).toBeGreaterThan(t.theme.fogNear);
     expect(Array.isArray(t.itemBoxRows)).toBe(true);
     expect(t.itemBoxRows.length).toBeGreaterThanOrEqual(3);
