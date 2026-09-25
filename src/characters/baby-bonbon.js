@@ -15,7 +15,7 @@ export const def = {
   tagline: 'Goo-goo, ga-ZOOM!',
   personality:
     'A giggly baby wrapped up like a sweet bonbon who races in a turbo stroller, never lets go of her pacifier and laughs at absolutely everything.',
-  colors: { primary: 0xff9ed2, secondary: 0xb68cff, accent: 0xfff27a, kart: 0xbfe9ff },
+  colors: { primary: 0xff7fb4, secondary: 0xb68cff, accent: 0xfff27a, kart: 0xbfe9ff },
   stats: { speed: 3, accel: 5, handling: 3, weight: 1 },
   voice: { pitch: 2.0, style: 'giggle' },
   locked: true,
@@ -30,7 +30,7 @@ export const def = {
   },
 };
 
-const PINK = 0xff9ed2;
+const PINK = 0xff7fb4;
 const LILAC = 0xb68cff;
 const CREAM = 0xfff6ea;
 
