@@ -26,7 +26,7 @@ import { chromium } from 'playwright';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'smoke-out');
-const PORT = 5190;
+const PORT = Number(process.env.SMOKE_PORT || 5190);
 const BASE = `http://localhost:${PORT}/`;
 /** The original Sprinkle Cup: always smoke-tested in 1p and 4p. */
 const ORIGINAL_TRACK_IDS = ['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes'];
