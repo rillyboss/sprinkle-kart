@@ -15,6 +15,13 @@
  *   ?cpus=0..7         CPU racer count in a quick race (default: fill to 8)
  *   ?simspeed=1..8     run N simulation steps per frame (fast automated tests)
  *   ?democontent=1     menus show locked placeholders for the whole v2 lineup
+ *   ?mode=gp&cup=<id>  skip menus, start a Grand Prix of that cup (with ?players, ?speed, ...)
+ *   ?mode=tt&quick=<trackId>  skip menus, start a Time Trial (P1 only, vs your saved ghost)
+ *
+ * Modes (setup.mode): 'free' (single races), 'grand-prix' (runGrandPrix: 4
+ * races, 'gp-race-end' / 'gp-end', standings + trophy ceremony) and
+ * 'time-trial' (runTimeTrial: solo, no CPUs, no item boxes, 3 sprinkle boosts,
+ * ghost of your best run).
  */
 import * as THREE from 'three';
 import { RACERS_PER_RACE, MAX_PLAYERS, SPEED_CLASSES, DEFAULT_LAPS } from './config.js';
@@ -34,7 +41,13 @@ import { Hud } from './ui/Hud.js';
 import { SplitScreen, pixelRatioFor } from './render/SplitScreen.js';
 import { CameraRig, SpectatorCam } from './render/CameraRig.js';
 import { hideOccluders, restoreKarts } from './render/occlusion.js';
-import { buildParticipants, pickCpuCharacters, parseDebugParams, quickSetup, nextTrackId } from './game/setup.js';
+import { buildParticipants, pickCpuCharacters, parseDebugParams, quickSetup, nextTrackId, wantsQuickStart, menuPrevious } from './game/setup.js';
+import { CUPS, getCup, cupTracks } from './data/cups.js';
+import { rulesForMode, modeId } from './modes/rules.js';
+import { finalizeSetup } from './modes/flow.js';
+import { createGrandPrix, gpRaceSetup, gpRecordRace, gpNextRace, gpIsLastRace } from './modes/grandPrix.js';
+import { createGhostRecorder, encodeGhost, decodeGhost, ghostGap, ghostStore } from './modes/ghost.js';
+import { createGhostKart } from './modes/ghostKart.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -78,6 +91,9 @@ const game = {
   hud: null,
   errors: [],
   bus,
+  gp: null,          // the running Grand Prix (src/modes/grandPrix.js state) or null
+  lastGp: null,      // GrandPrixResult of the last finished cup race
+  timeTrial: null,   // { ghost, ghostTime, ghostSaved, samples } for the running Time Trial
 };
 window.__game = game;
 
@@ -210,8 +226,8 @@ async function flow() {
   let skipTitle = false;
   let setup = null;
 
-  if (params.quick) {
-    setup = quickSetup(params, input, CHARACTERS, TRACKS);
+  if (wantsQuickStart(params)) {
+    setup = quickSetup(params, input, CHARACTERS, TRACKS, { cups: CUPS });
   }
 
   for (;;) {
@@ -219,33 +235,110 @@ async function flow() {
       game.state = 'menu';
       audio.playMusic('menu');
       bus.emit('menu-enter', { skipTitle, previous });
-      setup = await menus.run({ skipTitle, previous });
+      setup = finalizeSetup(await menus.run({ skipTitle, previous }), menus.draft);
     }
-    previous = setup;
-    let outcome = await playRace(setup);
-    while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart') {
-      if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, TRACKS.filter((t) => isAvailable(t))) };
-      previous = setup;
-      outcome = await playRace(setup);
-    }
+    const mode = modeId(setup.mode);
+    if (mode === 'grand-prix') previous = await runGrandPrix(setup);
+    else if (mode === 'time-trial') previous = await runTimeTrial(setup);
+    else previous = await runFreeRaces(setup);
     // 'menu' / 'quit' → back to the join screen with everyone still there.
+    previous = menuPrevious(previous);
     setup = null;
     skipTitle = true;
   }
+}
+
+const availableTracks = () => TRACKS.filter((t) => isAvailable(t));
+
+/** Free Race: race, then again / next track until the players pick the menu. */
+async function runFreeRaces(setup) {
+  let outcome = await playRace(setup);
+  while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart') {
+    if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, availableTracks()) };
+    outcome = await playRace(setup);
+  }
+  return setup;
+}
+
+/** Time Trial: P1 alone against the ghost of their best run on this track. */
+async function runTimeTrial(setup) {
+  setup = { ...setup, mode: 'time-trial', players: setup.players.slice(0, 1) };
+  let outcome = await playRace(setup);
+  while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart') {
+    if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, availableTracks()) };
+    outcome = await playRace(setup);
+  }
+  game.timeTrial = null;
+  return setup;
+}
+
+/**
+ * Grand Prix: the 4 races of a cup with the same CPU racers, points after
+ * every race ('gp-race-end'), the standings screen in between, and after the
+ * last race 'gp-end' + the trophy ceremony.
+ */
+async function runGrandPrix(setup) {
+  const cup = getCup(setup.cupId) ?? CUPS[0];
+  const trackIds = cupTracks(cup.id).map((t) => t.id);
+  if (!trackIds.length) return runFreeRaces({ ...setup, mode: 'free' });
+  const base = { ...setup, mode: 'grand-prix', cupId: cup.id };
+  const newCup = () => createGrandPrix({ cupId: cup.id, trackIds, cpuIds: pickCpus(base.players) });
+  let gp = newCup();
+  game.gp = gp;
+  for (;;) {
+    const raceSetup = gpRaceSetup(gp, base, { laps: params.laps ?? null });
+    const outcome = await playRace(raceSetup, {
+      resultOptions: [['gp-continue', gpIsLastRace(gp) ? 'Trophy time!' : 'Cup standings', '🏆']],
+      onRaceEnd(summary, session) {
+        gp = gpRecordRace(gp, summary);
+        game.gp = gp;
+        game.lastGp = gp.result;
+        bus.emit('gp-race-end', gp.result, session);
+        if (gp.result.finished) bus.emit('gp-end', gp.result, session);
+      },
+    });
+    if (outcome === 'restart') continue; // pause → start over: the same race again
+    if (outcome !== 'gp-continue') break; // left the cup from the pause menu
+    game.state = 'standings';
+    const final = gp.phase === 'done';
+    audio.playMusic(final ? 'victory' : 'menu');
+    const nextId = final ? null : gp.trackIds[gp.raceIndex + 1];
+    const unlocks = (gp.result.unlocks || [])
+      .map((u) => ({ ...u, def: u.kind === 'track' ? findTrack(u.id) : getCharacter(u.id) }))
+      .filter((u) => u.def);
+    const choice = await menus.open('gp-standings', {
+      gp: gp.result, cup, final, nextTrack: nextId ? getTrack(nextId) : null, unlocks,
+    });
+    if (choice === 'next' && !final) { gp = gpNextRace(gp); game.gp = gp; continue; }
+    if (choice === 'again' && final) { gp = newCup(); game.gp = gp; continue; }
+    break;
+  }
+  game.gp = null;
+  return base;
+}
+
+/** CPU racers for a race: fill the grid with unlocked racers the humans did not pick. */
+function pickCpus(humans) {
+  const selectable = getSelectableCharacters((id) => progress.isUnlocked(id));
+  const quickCpus = wantsQuickStart(params) && params.cpus !== null;
+  const count = quickCpus
+    ? Math.max(0, Math.min(RACERS_PER_RACE - humans.length, params.cpus))
+    : RACERS_PER_RACE - humans.length;
+  return pickCpuCharacters(humans.map((p) => p.characterId), selectable, count, Math.random);
 }
 
 /**
  * Build a race, run it to the results screen and resolve with what the
  * players picked next: 'again' | 'next-track' | 'menu' | 'restart' | 'quit'.
  */
-function playRace(setup) {
+function playRace(setup, opts = {}) {
   return new Promise((resolve) => {
     const session = startRace(setup, (outcome) => {
       session.dispose();
       if (activeSession === session) activeSession = null;
       game.race = null;
       resolve(outcome);
-    });
+    }, opts);
     activeSession = session;
     game.race = session.race;
     game.session = session;
@@ -258,8 +351,15 @@ function playRace(setup) {
 /* One race session                                                    */
 /* ------------------------------------------------------------------ */
 
-function startRace(setup, done) {
+/**
+ * @param {object} setup RaceSetup (+ mode, cupId, cpuIds for a Grand Prix)
+ * @param {(outcome:string)=>void} done
+ * @param {{ resultOptions?: Array, onRaceEnd?: (summary, session)=>void }} [opts]
+ */
+function startRace(setup, done, opts = {}) {
   const trackDef = getTrack(setup.trackId);
+  const mode = modeId(setup.mode);
+  const rules = rulesForMode(mode);
   const theme = trackDef.theme || {};
   const humans = [...setup.players].sort((a, b) => a.playerIndex - b.playerIndex).slice(0, MAX_PLAYERS);
 
@@ -273,14 +373,12 @@ function startRace(setup, done) {
   const built = buildTrack(trackDef, path);
   scene.add(built.group);
 
-  const selectable = getSelectableCharacters((id) => progress.isUnlocked(id));
-  const cpuCount = params.quick && params.cpus !== null
-    ? Math.max(0, Math.min(RACERS_PER_RACE - humans.length, params.cpus))
-    : RACERS_PER_RACE - humans.length;
-  const cpuChars = pickCpuCharacters(humans.map((p) => p.characterId), selectable, cpuCount, Math.random);
+  // Grand Prix races keep the cup's CPU racers (setup.cpuIds); a Time Trial has none.
+  const cpuChars = !rules.cpus ? [] : Array.isArray(setup.cpuIds) ? [...setup.cpuIds] : pickCpus(humans);
   const participants = buildParticipants(humans, cpuChars);
 
   const laps = params.fastFinish ? 1 : (setup.laps || trackDef.laps || DEFAULT_LAPS);
+  const trial = mode === 'time-trial' ? createTrialSession(scene, setup, trackDef, humans[0], laps) : null;
 
   let completeAt = null;
   let resultsShown = false;
@@ -300,7 +398,7 @@ function startRace(setup, done) {
   const race = new Race({
     scene, trackDef, path, builtTrack: built, participants,
     speedClass: SPEED_CLASSES[setup.speedClass] ? setup.speedClass : 'zippy',
-    buildKartModel, onEvent, laps,
+    buildKartModel, onEvent, laps, rules,
   });
 
   const rigs = humans.map(() => new CameraRig());
@@ -325,7 +423,7 @@ function startRace(setup, done) {
   session = {
     ...helpers,
     race, humans, scene, built, path, rigs, spectator, setup, trackDef, laps, stats,
-    mode: setup.mode ?? 'free',
+    mode,
     audio, input, hud, params,
     outcome: null,
     get paused() { return paused; },
@@ -395,6 +493,8 @@ function startRace(setup, done) {
     const summary = buildRaceSummary({ setup, trackDef, humans, standings, stats, laps, raceTime: race.time });
     // Subscribers (src/systems/progressUnlocks.js, ...) record progress and push into summary.unlocks.
     bus.emit('race-end', summary, session);
+    trial?.finish(race, summary);
+    try { opts.onRaceEnd?.(summary, session); } catch (err) { console.error('[modes] race end hook failed', err); }
     const unlocks = summary.unlocks
       .map((u) => ({ ...u, def: u.kind === 'track' ? findTrack(u.id) : getCharacter(u.id) }))
       .filter((u) => u.def);
@@ -411,7 +511,10 @@ function startRace(setup, done) {
     audio.setMusicTempo?.(1);
     audio.playMusic('victory');
     hud.hide();
-    menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked, unlocks, summary }).then((choice) => {
+    const shown = trial
+      ? menus.open('time-trial-results', { summary, trackDef, unlocks, ghostSaved: trial.saved, hadGhost: trial.hadGhost })
+      : menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked, unlocks, summary, ...(opts.resultOptions ? { options: opts.resultOptions } : {}) });
+    shown.then((choice) => {
       bus.emit('results-choice', { choice }, session);
       end(choice);
     });
@@ -447,6 +550,7 @@ function startRace(setup, done) {
         }
       }
       built.update(dt * steps, race.clock);
+      trial?.update(race, dt * steps);
     }
 
     if (completeAt !== null && !resultsShown && race.clock - completeAt >= (params.simSpeed > 1 ? 1.2 : 2.6)) {
@@ -469,6 +573,7 @@ function startRace(setup, done) {
   function dispose() {
     bus.emit('race-exit', { outcome: session.outcome }, session);
     try { unsubDevice?.(); } catch { /* ignore */ }
+    try { trial?.dispose(); } catch (err) { console.warn(err); }
     try { race.dispose(); } catch (err) { console.warn(err); }
     try { built.dispose(); } catch (err) { console.warn(err); }
     scene.clear();
@@ -478,6 +583,54 @@ function startRace(setup, done) {
     split.setPlayerCount(1);
   }
 
+  return session;
+}
+
+/**
+ * Time Trial extras for one race: records P1 at ~20 Hz, replays the saved
+ * ghost of the best run (same track + laps) and keeps race.modeInfo.ghostGap
+ * up to date for the timer widget. On finish, a faster run replaces the ghost.
+ */
+function createTrialSession(scene, setup, trackDef, player, laps) {
+  const recorder = createGhostRecorder();
+  const packed = ghostStore.load(trackDef.id, laps);
+  const decoded = packed ? decodeGhost(packed) : null;
+  let ghostKart = null;
+  if (decoded) {
+    try {
+      const charDef = getCharacter(decoded.meta.characterId) ?? getCharacter(player?.characterId);
+      ghostKart = createGhostKart({ scene, decoded, charDef, buildKartModel });
+    } catch (err) { console.warn('[time-trial] ghost could not be built', err); }
+  }
+  let appeared = false;
+  const info = { ghost: !!decoded, ghostTime: decoded?.meta?.time ?? null, ghostSaved: false, samples: 0 };
+  game.timeTrial = info;
+  const session = {
+    hadGhost: !!decoded,
+    saved: false,
+    update(race, dt) {
+      const kart = race.getPlayerKart(player.playerIndex);
+      if (!kart || race.state === 'countdown') return;
+      if (!kart.finished) recorder.record(race.time, kart);
+      info.samples = recorder.samples.length;
+      if (!decoded) return;
+      if (!appeared && race.time > 0.2) { appeared = true; try { audio.sfx('timing-ghost'); } catch { /* ignore */ } }
+      ghostKart?.update(race.time, dt, kart.position, race.clock);
+      race.modeInfo.ghostGap = kart.finished ? null : ghostGap(decoded, race.time, kart.distance);
+    },
+    finish(race, summary) {
+      const kart = race.getPlayerKart(player.playerIndex);
+      const h = summary.humans[0];
+      if (!kart || !h?.finished || h.estimated || !Number.isFinite(h.finishTime)) return;
+      recorder.finish(h.finishTime, kart);
+      const ghost = encodeGhost(recorder.samples, {
+        trackId: trackDef.id, laps, characterId: kart.characterId, speedClass: setup.speedClass, time: h.finishTime,
+      });
+      session.saved = ghostStore.offer(ghost);
+      info.ghostSaved = session.saved;
+    },
+    dispose() { ghostKart?.dispose(); },
+  };
   return session;
 }
 

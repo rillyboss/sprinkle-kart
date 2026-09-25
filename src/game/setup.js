@@ -41,7 +41,26 @@ export function parseDebugParams(search = '') {
     simSpeed: intParam(q, 'simspeed', 1, 8, 1),
     laps: q.has('laps') ? intParam(q, 'laps', 1, 9, null) : null,
     demoContent: flag(q, 'democontent'),
+    mode: modeParam(q.get('mode')),
+    cup: q.has('cup') ? String(q.get('cup') || '').trim() || null : null,
   };
+}
+
+const MODE_ALIASES = {
+  free: 'free', race: 'free',
+  gp: 'grand-prix', 'grand-prix': 'grand-prix', grandprix: 'grand-prix', cup: 'grand-prix',
+  tt: 'time-trial', 'time-trial': 'time-trial', timetrial: 'time-trial', trial: 'time-trial',
+};
+
+/** ?mode=gp|tt|free (and long names) -> 'grand-prix' | 'time-trial' | 'free' | null. */
+export function modeParam(v) {
+  if (v == null) return null;
+  return MODE_ALIASES[String(v).trim().toLowerCase()] ?? null;
+}
+
+/** True when the URL asks to skip the menus (?quick=..., or ?mode=gp&cup=...). */
+export function wantsQuickStart(params) {
+  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup);
 }
 
 /** Fisher–Yates shuffle (returns a new array). */
@@ -109,10 +128,19 @@ export function quickDeviceIds(players) {
  * @param {ReturnType<typeof parseDebugParams>} params
  * @param {{ addVirtualDevice?: Function }|null} input
  */
-export function quickSetup(params, input, characters, tracks) {
-  const track = tracks.find((t) => t.id === params.quick) || tracks[0];
+export function quickSetup(params, input, characters, tracks, { cups = [] } = {}) {
+  const mode = params.mode ?? 'free';
+  let cup = null;
+  if (mode === 'grand-prix') {
+    const complete = cups.filter((c) => c.trackIds.every((id) => tracks.some((t) => t.id === id)));
+    cup = complete.find((c) => c.id === params.cup) || complete[0] || null;
+  }
+  const trackId = cup ? cup.trackIds[0] : params.quick;
+  const track = tracks.find((t) => t.id === trackId) || tracks[0];
   const selectable = characters.filter((c) => !c.locked);
-  const players = quickDeviceIds(params.players).map((deviceId, i) => {
+  // A Time Trial is always a solo run.
+  const count = mode === 'time-trial' ? 1 : params.players;
+  const players = quickDeviceIds(count).map((deviceId, i) => {
     if (deviceId.startsWith('v')) {
       try { input?.addVirtualDevice?.(deviceId, `Robo Driver ${i + 1}`); } catch { /* ignore */ }
     }
@@ -123,10 +151,25 @@ export function quickSetup(params, input, characters, tracks) {
       easyDrive: false,
     };
   });
-  return {
+  const setup = {
     players,
     trackId: track.id,
     speedClass: params.speed,
     laps: params.laps ?? track.laps ?? DEFAULT_LAPS,
   };
+  if (mode !== 'free') setup.mode = mode;
+  if (cup) {
+    setup.cupId = cup.id;
+    setup.laps = params.laps ?? null; // each cup race uses its track's own laps
+  }
+  return setup;
+}
+
+/**
+ * What the menus remember after a run: a Time Trial races P1 only, but the
+ * whole family stays joined (setup.partyPlayers).
+ */
+export function menuPrevious(setup) {
+  if (!setup) return null;
+  return Array.isArray(setup.partyPlayers) && setup.partyPlayers.length ? { ...setup, players: setup.partyPlayers } : setup;
 }
