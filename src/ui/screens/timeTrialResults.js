@@ -3,6 +3,7 @@
  * friendly delta), the lap splits and whether the ghost got an upgrade.
  * Opened by main.js with menus.open('time-trial-results', params):
  *   { summary: RaceSummary (summary.records from src/systems/timingRecords.js), trackDef,
+ *     bestBefore: number|null (the time to beat: your ghost / record for these laps),
  *     ghostSaved: boolean, hadGhost: boolean, unlocks: [{kind, def}] }
  * Resolves 'again' | 'next-track' | 'menu'. OWNER: modes + timing workstream.
  */
@@ -19,14 +20,14 @@ export const TT_OPTIONS = [
 ];
 
 /** Pure view model for the screen (unit tested). */
-export function trialResultModel({ summary, ghostSaved = false, hadGhost = false } = {}) {
+export function trialResultModel({ summary, ghostSaved = false, hadGhost = false, bestBefore } = {}) {
   const h = summary?.humans?.[0] ?? null;
   const finished = !!h?.finished && !h?.estimated;
   const time = finished ? h.finishTime : null;
   const rec = summary?.records ?? null;
-  const before = rec?.previous?.bestRace ?? null;
+  const before = bestBefore !== undefined ? bestBefore : (rec?.previous?.bestRace ?? null);
   const verdict = trialVerdict(time, before);
-  const best = rec?.record?.bestRace ?? null;
+  const best = [before, time].filter((t) => Number.isFinite(t) && t > 0).reduce((a, b) => (a === null || b < a ? b : a), null);
   const lapRecord = !!rec?.newBestLap;
   return {
     characterId: h?.characterId ?? null,
@@ -57,7 +58,7 @@ export default {
       '--i': s.lap,
       html: `<span>Lap ${s.lap}</span><b>${s.text}</b>${s.best && m.splits.length > 1 ? '<i>⭐</i>' : ''}`,
     }));
-    let state = createPhasedState(options.map((o) => o[0]), { introTime: 1.4 });
+    let state = createPhasedState(options.map((o) => o[0]), { introTime: 1 });
     const opts = optionButtons(options, (i) => handle({ deviceId: 'mouse', action: 'select', index: i }));
     const optHost = el('div.sk-gp-opts', {}, opts.node);
 

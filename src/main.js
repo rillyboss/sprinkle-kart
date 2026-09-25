@@ -48,6 +48,7 @@ import { finalizeSetup } from './modes/flow.js';
 import { createGrandPrix, gpRaceSetup, gpRecordRace, gpNextRace, gpIsLastRace } from './modes/grandPrix.js';
 import { createGhostRecorder, encodeGhost, decodeGhost, ghostGap, ghostStore } from './modes/ghost.js';
 import { createGhostKart } from './modes/ghostKart.js';
+import { raceRecordEligible } from './modes/timing.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -512,7 +513,7 @@ function startRace(setup, done, opts = {}) {
     audio.playMusic('victory');
     hud.hide();
     const shown = trial
-      ? menus.open('time-trial-results', { summary, trackDef, unlocks, ghostSaved: trial.saved, hadGhost: trial.hadGhost })
+      ? menus.open('time-trial-results', { summary, trackDef, unlocks, ghostSaved: trial.saved, hadGhost: trial.hadGhost, bestBefore: trial.bestBefore(summary) })
       : menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked, unlocks, summary, ...(opts.resultOptions ? { options: opts.resultOptions } : {}) });
     shown.then((choice) => {
       bus.emit('results-choice', { choice }, session);
@@ -628,6 +629,13 @@ function createTrialSession(scene, setup, trackDef, player, laps) {
       });
       session.saved = ghostStore.offer(ghost);
       info.ghostSaved = session.saved;
+    },
+    /** The time this run had to beat: the ghost (same laps) or the saved record for a normal-length race. */
+    bestBefore(summary) {
+      const rec = summary.records;
+      const eligibleRecord = rec && raceRecordEligible(laps, trackDef) ? rec.previous?.bestRace : null;
+      const times = [decoded?.meta?.time, eligibleRecord].filter((t) => Number.isFinite(t) && t > 0);
+      return times.length ? Math.min(...times) : null;
     },
     dispose() { ghostKart?.dispose(); },
   };

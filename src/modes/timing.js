@@ -154,9 +154,9 @@ export function trialVerdict(time, before) {
 /** Kid-friendly line for a verdict. */
 export function trialVerdictText(v) {
   switch (v?.kind) {
-    case 'record': return `New record! 🏆 ${formatDelta(v.delta)} faster!`;
+    case 'record': return `New record! 🏆 ${formatDelta(-v.delta).slice(1)}s faster!`;
     case 'first': return 'Your very first time here! 🌟';
-    case 'close': return `Sooo close! Only ${formatDelta(v.delta)} 💖`;
+    case 'close': return `Sooo close! Only ${formatDelta(v.delta).slice(1)}s behind 💖`;
     case 'slower': return `${formatDelta(v.delta)} — you can do it! 💪`;
     default: return 'Keep zooming, superstar! 🍭';
   }

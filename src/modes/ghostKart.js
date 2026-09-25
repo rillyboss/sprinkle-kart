@@ -9,15 +9,15 @@
 import * as THREE from 'three';
 import { ghostPoseAt } from './ghost.js';
 
-const GHOST_TINT = new THREE.Color(0xe6dcff);
-export const GHOST_OPACITY = 0.46;
+const GHOST_TINT = new THREE.Color(0xd8c8ff);
+export const GHOST_OPACITY = 0.52;
 const SPARKLES = 10;
 
 /** Opacity of the ghost for a distance (m) to the player's kart: fades out up close. */
 export function ghostFade(dist, base = GHOST_OPACITY) {
   if (!Number.isFinite(dist)) return base;
-  const k = Math.max(0, Math.min(1, (dist - 2.5) / 6));
-  return base * (0.2 + 0.8 * k * k * (3 - 2 * k));
+  const k = Math.max(0, Math.min(1, (dist - 1.5) / 3.5));
+  return base * (0.3 + 0.7 * k * k * (3 - 2 * k));
 }
 
 /**
@@ -35,11 +35,11 @@ export function createGhostKart({ scene, decoded, charDef, buildKartModel }) {
   const clones = [];
   const ghostMat = (m) => {
     const c = m.clone();
-    if (c.color) c.color.lerp(GHOST_TINT, 0.45);
-    if (c.emissive) { c.emissive.copy(GHOST_TINT); c.emissiveIntensity = 0.25; }
+    if (c.color) c.color.lerp(GHOST_TINT, 0.55);
+    if (c.emissive) { c.emissive.copy(GHOST_TINT); c.emissiveIntensity = 0.4; }
     c.transparent = true;
     c.opacity = GHOST_OPACITY;
-    c.depthWrite = false;
+    c.depthWrite = true; // hides the inner parts: a clean see-through silhouette
     clones.push(c);
     return c;
   };
@@ -52,7 +52,7 @@ export function createGhostKart({ scene, decoded, charDef, buildKartModel }) {
   });
 
   // Twinkly trail: small glowing stars drifting behind the ghost.
-  const sparkGeo = new THREE.OctahedronGeometry(0.16, 0);
+  const sparkGeo = new THREE.OctahedronGeometry(0.22, 0);
   const colors = [0xffffff, 0xffd1f0, 0xd6c8ff];
   const sparkMats = [];
   const sparkles = [];

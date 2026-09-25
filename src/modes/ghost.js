@@ -35,32 +35,63 @@ const HEADING_STEPS = 4096;
  */
 export function createGhostRecorder({ hz = GHOST_HZ, maxSeconds = GHOST_MAX_SECONDS } = {}) {
   const step = 1 / hz;
+  const cap = Math.ceil(maxSeconds * hz) + 1;
   const samples = [];
-  let next = 0;
+  let prev = null; // last raw pose { t, x, y, z, heading, distance }
+  const poseOf = (t, kart) => ({
+    t,
+    x: kart.position.x,
+    y: kart.position.y,
+    z: kart.position.z,
+    heading: kart.heading ?? 0,
+    distance: kart.distance ?? kart.progress ?? 0,
+  });
+  /** Fill every 1/hz grid slot up to time t, interpolating between the last pose and `cur`. */
+  const fill = (cur) => {
+    let added = 0;
+    while (samples.length < cap) {
+      const g = samples.length * step;
+      if (g > cur.t + 1e-9) break;
+      if (!prev || cur.t - prev.t < 1e-9 || g <= prev.t) {
+        samples.push({ ...(g <= (prev?.t ?? -1) ? prev : cur), t: g });
+      } else {
+        const f = Math.max(0, Math.min(1, (g - prev.t) / (cur.t - prev.t)));
+        samples.push({
+          t: g,
+          x: lerp(prev.x, cur.x, f),
+          y: lerp(prev.y, cur.y, f),
+          z: lerp(prev.z, cur.z, f),
+          heading: lerpAngle(prev.heading, cur.heading, f),
+          distance: lerp(prev.distance, cur.distance, f),
+        });
+      }
+      added++;
+    }
+    prev = cur;
+    return added;
+  };
   return {
     hz,
     samples,
-    /** Record if the next sample time is due. Returns true when a sample was taken. */
+    /**
+     * Offer the kart's pose at race time t (call every frame after GO). Frames
+     * longer than 1/hz (slow devices, ?simspeed) are filled in by
+     * interpolation, so sample i is always the pose at i/hz seconds.
+     * Returns how many samples were added.
+     */
     record(t, kart) {
-      if (!kart?.position || !Number.isFinite(t) || t < next - 1e-9) return false;
-      if (samples.length >= Math.ceil(maxSeconds * hz) + 1) return false;
-      // Keep samples on the 1/hz grid even when frames are uneven.
-      const idx = samples.length;
-      samples.push({
-        t: idx * step,
-        x: kart.position.x,
-        y: kart.position.y,
-        z: kart.position.z,
-        heading: kart.heading ?? 0,
-        distance: kart.distance ?? kart.progress ?? 0,
-      });
-      next = (idx + 1) * step;
-      return true;
+      if (!kart?.position || !Number.isFinite(t) || t < 0) return 0;
+      if (prev && t < prev.t) return 0;
+      return fill(poseOf(t, kart));
     },
-    /** Force a final sample at the finish so the ghost ends exactly on the line. */
+    /** Final pose at the finish time so the ghost ends right on the line. */
     finish(t, kart) {
-      if (!kart?.position) return;
-      while (next <= t + 1e-9 && samples.length < Math.ceil(maxSeconds * hz) + 1) this.record(next, kart);
+      if (!kart?.position || !Number.isFinite(t)) return;
+      if (prev && t < prev.t) return;
+      fill(poseOf(t, kart));
+      const g = samples.length * step;
+      // one extra slot past the line so the replay reaches the finish time
+      if (samples.length < cap && g - t < step) samples.push({ ...poseOf(t, kart), t: g });
     },
     get duration() { return samples.length ? samples[samples.length - 1].t : 0; },
   };

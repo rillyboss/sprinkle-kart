@@ -296,7 +296,7 @@
   animation: sk-slide-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
   animation-delay: calc(var(--i) * 0.06s);
 }
-.sk-rec-art { display: grid; place-items: center; width: 2.4em; height: 2.4em; border-radius: 0.8em; font-size: 1.1em; background: linear-gradient(160deg, var(--c1), var(--c2)); }
+.sk-rec-art { display: grid; place-items: center; width: 2.4em; height: 2.4em; border-radius: 0.8em; font-size: 1.5em; background: linear-gradient(160deg, var(--c1), var(--c2)); }
 .sk-rec-track { font-weight: 700; line-height: 1.1; display: flex; flex-direction: column; min-width: 0; }
 .sk-rec-track small { font-weight: 600; font-size: 0.7em; color: var(--sk-ink-soft); }
 .sk-rec-cell { display: flex; align-items: center; gap: 0.4em; min-width: 0; white-space: nowrap; }
@@ -307,3 +307,18 @@
 .sk-rec-who { font-size: 0.75em; font-weight: 600; color: var(--sk-ink-soft); overflow: hidden; text-overflow: ellipsis; }
 .sk-rec-locked { opacity: 0.75; background: rgba(247, 240, 250, 0.9); }
 .sk-rec-locked .sk-rec-art { filter: saturate(0.3); }
+
+/* menu-entry chips under the mode cards (Records ...) */
+.sk-menus .sk-mode-entry {
+  font-size: 1.05em;
+  padding: 0.3em 1.1em;
+  border-radius: 2em;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0.18em 0 rgba(160, 70, 150, 0.25);
+  transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.sk-menus .sk-mode-entry.sk-focus, .sk-menus .sk-mode-entry:hover {
+  background: #fff;
+  box-shadow: 0 0 0 0.2em #ff5fb4, 0 0.18em 0 rgba(160, 70, 150, 0.25);
+  transform: scale(1.08);
+}
