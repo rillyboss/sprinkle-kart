@@ -245,6 +245,30 @@ function shimmer(core, t, o) {
   tone(core.ctx, core.wet || core.out, { t, freq: 1760 * o.pitch, dur: 0.3, vol: 0.05, attack: 0.002, shape: 'perc', pan: o.pan });
 }
 
+/**
+ * Extra SFX packs: every src/audio/sfx/*.js default-exports
+ *   { recipes: { 'engine-rev'(core, t, o) {...}, ... }, throttle?: { 'engine-rev': 0.1 } }
+ * and is merged in automatically (built-in names always win), so workstreams
+ * add sounds without editing this file. Recipe signature as above.
+ */
+export function mergeSfxPacks(packs, target = SFX, throttle = SFX_THROTTLE) {
+  const added = [];
+  for (const pack of packs) {
+    if (!pack || typeof pack !== 'object') continue;
+    for (const [name, fn] of Object.entries(pack.recipes || {})) {
+      if (typeof fn !== 'function' || name in target) continue;
+      target[name] = fn;
+      added.push(name);
+      const gap = pack.throttle?.[name];
+      if (Number.isFinite(gap) && !(name in throttle)) throttle[name] = gap;
+    }
+  }
+  return added;
+}
+
+const SFX_PACKS = import.meta.glob('./sfx/*.js', { eager: true, import: 'default' });
+mergeSfxPacks(Object.keys(SFX_PACKS).sort().map((k) => SFX_PACKS[k]));
+
 export const SFX_NAMES = Object.keys(SFX);
 
 /** Helper to keep pitch variations musical: random-ish semitone offsets. */

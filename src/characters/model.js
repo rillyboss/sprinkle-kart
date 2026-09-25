@@ -275,7 +275,9 @@ export function buildKartModel(charDef) {
     fx.dizzy.visible = st.spinning;
     if (st.spinning) fx.dizzy.rotation.y = -st.spinA * 1.3 + t * 3;
 
-    for (let i = 0; i < rig.anims.length; i++) rig.anims[i](t, dt, st);
+    // character wiggles: (t, dt, st = smoothed anim state, s = raw model state from the Race:
+    // speed, steer, drifting, driftLevel, spinning, boosting, shielded, star, driftDir, hop, offRoad, time)
+    for (let i = 0; i < rig.anims.length; i++) rig.anims[i](t, dt, st, s);
   }
 
   let disposed = false;

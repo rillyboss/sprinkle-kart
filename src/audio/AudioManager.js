@@ -197,6 +197,17 @@ export class AudioManager {
     } catch { /* ignore */ }
   }
 
+  /**
+   * Low-level access for custom sounds that outlive a one-shot (an engine hum,
+   * a star-power loop): { ctx, noise, out: SFX bus input, wet: SFX reverb send },
+   * or null before the first unlock (and in node tests). Connect your own nodes
+   * to `out` (they follow the SFX volume) and stop/disconnect them yourself.
+   */
+  sfxCore() {
+    if (!this._ready()) return null;
+    return { ctx: this.ctx, noise: this._noise, out: this._sfxBus, wet: this._sfxReverbSend };
+  }
+
   /** @param {{music?: number, sfx?: number}} v 0..1 each */
   setVolume({ music, sfx } = {}) {
     if (music != null) this._volumes.music = clamp01(music);

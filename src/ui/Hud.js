@@ -13,6 +13,9 @@
  * rects are treated as fractions of the root size instead.
  *
  * The HUD never takes pointer events (pointer-events: none).
+ *
+ * Extension point: `hud.addWidget({ id, create(vpNode, playerIndex) })` adds a
+ * per-player widget from any module (see ./hudWidgets.js) — no edit to this file.
  */
 import './ui.css';
 import { PLAYER_COLORS } from '../config.js';
@@ -21,6 +24,7 @@ import {
   ordinal, medalFor, ITEM_ICONS, rouletteFrame, countdownLabel, lapInfo,
   normalizeRects, hudSides, minimapRect, fitMinimap, cssColor,
 } from './hudLogic.js';
+import { createWidgetHost } from './hudWidgets.js';
 
 function itemHtml(id) {
   const it = ITEM_ICONS[id];
@@ -45,6 +49,12 @@ export class Hud {
     this.vps = new Map();
     this._mm = { rect: null, key: null, bg: null, fit: null, path: null };
     this._t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.widgets = createWidgetHost();
+  }
+
+  /** Add a per-player HUD widget (see ./hudWidgets.js). Returns remove(). */
+  addWidget(def) {
+    return this.widgets.add(def);
   }
 
   _now() {
@@ -61,7 +71,7 @@ export class Hud {
     const list = normalizeRects(rects, W, H);
     const keep = new Set(list.map((r) => r.playerIndex));
     for (const [pi, vp] of this.vps) {
-      if (!keep.has(pi)) { vp.node.remove(); this.vps.delete(pi); }
+      if (!keep.has(pi)) { this.widgets.detach(pi); vp.node.remove(); this.vps.delete(pi); }
     }
     for (const r of list) {
       let vp = this.vps.get(r.playerIndex);
@@ -69,6 +79,7 @@ export class Hud {
         vp = this._makeViewport(r.playerIndex);
         this.vps.set(r.playerIndex, vp);
         this.vpLayer.appendChild(vp.node);
+        this.widgets.attach(r.playerIndex, vp.node);
       }
       const sides = hudSides(r, W);
       const fs = Math.max(12, Math.min(44, Math.sqrt(r.w * r.h) / 30));
@@ -123,7 +134,10 @@ export class Hud {
       const vp = this.vps.get(pi);
       if (!vp) continue;
       const kart = race.getPlayerKart?.(pi) ?? race.karts?.find((k) => k.playerIndex === pi);
-      if (kart) this._updateViewport(vp, kart, cd, t, portraits, race);
+      if (kart) {
+        this._updateViewport(vp, kart, cd, t, portraits, race);
+        this.widgets.update(pi, kart, race, t);
+      }
     }
     if (path) this._drawMinimap(race, path);
   }
@@ -334,6 +348,7 @@ export class Hud {
       vp.refs.count.classList.remove('show');
       vp.refs.wrong.classList.remove('show');
     }
+    this.widgets.reset();
     this._mm.path = null;
   }
 
