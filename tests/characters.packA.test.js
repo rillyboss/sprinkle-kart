@@ -493,20 +493,31 @@ describe('pack A personality animations', () => {
 
   it('Captain Crumbs peeks through his spyglass now and then, and all the way on boosts', () => {
     const m = buildKartModel(getCharacter('captain-crumbs'));
-    const arm = part(m, 'captain-crumbs:spyglass-arm');
+    const spy = part(m, 'captain-crumbs:spyglass');
     const sail = part(m, 'captain-crumbs:sail');
+    part(m, 'captain-crumbs:spyglass-arm');
+    const atEye = () => {
+      const head = m.head.getWorldPosition(new THREE.Vector3());
+      const p = spy.getWorldPosition(new THREE.Vector3());
+      return Math.abs(p.y - head.y) < 0.2 && p.z > head.z + 0.35;
+    };
+    const forward = () => new THREE.Vector3(0, 0, 1).transformDirection(spy.matrixWorld);
     // idle peeks come round every few seconds
     let peeked = false;
     let rested = false;
     for (let i = 0; i < 60 * 7; i++) {
       m.update(1 / 60, { speed: 10, time: i / 60 });
-      if (arm.rotation.x < -1.0) peeked = true;
-      if (arm.rotation.x > -0.1) rested = true;
+      m.group.updateMatrixWorld(true);
+      if (atEye()) peeked = true;
+      else rested = true;
     }
     expect(peeked).toBe(true);
     expect(rested).toBe(true);
     run(m, 60, { speed: 30, boosting: true }, 0.5);
-    expect(arm.rotation.x).toBeLessThan(-1.2);
+    m.group.updateMatrixWorld(true);
+    expect(atEye()).toBe(true);
+    expect(forward().z).toBeGreaterThan(0.95); // looking straight down the road
+    expect(spy.getWorldScale(new THREE.Vector3()).x).toBeCloseTo(1.04, 1); // the spyglass never balloons
     // the sail billows more at speed
     run(m, 60, { speed: 0 }, 0.5);
     const calm = sail.scale.z;
@@ -533,7 +544,14 @@ describe('pack A personality animations', () => {
     run(m, 60, { speed: 20 });
     const rest = arms.map((a) => a.rotation.x);
     run(m, 60, { speed: 32, boosting: true });
-    arms.forEach((a, i) => expect(a.rotation.x).toBeLessThan(rest[i] - 1.5)); // "Wheee!"
+    arms.forEach((a, i) => expect(a.rotation.x).toBeLessThan(rest[i] - 1.1)); // "Wheee!"
+    // hands up high and out to the sides, clear of her big head
+    const hy = worldY(m.head);
+    for (const a of arms) {
+      const hand = a.localToWorld(new THREE.Vector3(0, 0, 0.56));
+      expect(hand.y).toBeGreaterThan(hy - 0.15);
+      expect(hand.distanceTo(m.head.getWorldPosition(new THREE.Vector3()))).toBeGreaterThan(0.4);
+    }
     run(m, 90, { speed: 20 });
     arms.forEach((a, i) => expect(a.rotation.x).toBeCloseTo(rest[i], 1));
     m.dispose();

@@ -57,7 +57,8 @@ export function build(kit, rig, def) {
     for (const [y, z] of [[0.5, 0.18], [0.44, -0.06], [0.52, -0.2]]) kit.add(C, G.sph(0.075, 8, 6), berry, { p: [sd * 0.78, y, z] });
   }
   // a little friendly ghost-pal spoiler (Boo's plushie buddy, waving hello)
-  const flag = part(C, [0, 1.12, -1.02]);
+  const flag = part(C, [0, 0.98, -1.06]);
+  flag.scale.setScalar(0.72); // small, so Boo herself stays the star of the chase view
   const sheet = toon(WHITE);
   kit.add(flag, G.sph(0.3, 14, 10), sheet, { p: [0, 0.06, 0], s: [1.25, 1, 0.55] });
   kit.add(flag, G.cyl(0.37, 0.4, 0.22, 14, 1), sheet, { p: [0, -0.1, 0], s: [1, 1, 0.55] });
@@ -68,7 +69,7 @@ export function build(kit, rig, def) {
     kit.add(flag, G.sph(0.07, 8, 6), sheet, { p: [sd * 0.42, -0.02, 0], s: [1, 0.7, 0.6] });
   }
   kit.add(flag, G.tor(0.035, 0.01, 4, 8, Math.PI), toon(BERRY_DARK), { p: [0, 0.01, -0.165], r: [0, Math.PI, Math.PI], outline: false });
-  for (const sd of [-1, 1]) kit.add(C, G.cyl(0.03, 0.03, 0.5, 6), crust, { p: [sd * 0.3, 0.75, -0.98] });
+  for (const sd of [-1, 1]) kit.add(C, G.cyl(0.03, 0.03, 0.34, 6), crust, { p: [sd * 0.22, 0.72, -1.0] });
 
   // ── Boo: the body IS the berry (the head), with a wispy ghost tail ──
   const D = rig.driver;
@@ -153,7 +154,7 @@ export function build(kit, rig, def) {
     solid.scale.set(1 - k * 0.06, 1 + k * 0.08, 1 - k * 0.04);
     ghosty.scale.copy(solid.scale);
     flag.rotation.z = Math.sin(t * 5) * 0.08 * (0.3 + st.speedF);
-    flag.position.y = 1.12 + Math.sin(t * 2.4 + 1) * 0.03;
+    flag.position.y = 0.98 + Math.sin(t * 2.4 + 1) * 0.03;
   });
 }
 

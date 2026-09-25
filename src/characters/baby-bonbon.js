@@ -55,6 +55,11 @@ export function build(kit, rig, def) {
   kit.add(C, G.rbox(1.0, 0.24, 1.7, 0.1), tub, { p: [0, 0.36, 0] });
   kit.add(C, G.bowl(1, 18, 6), tub, { p: [0, 0.78, 0.0], s: [0.62, 0.42, 0.98] });
   kit.add(C, G.tor(1, 0.055, 6, 24), toon(WHITE), { p: [0, 0.78, 0], r: [Math.PI / 2, 0, 0], s: [0.62, 0.98, 1] });
+  // a snuggly blanket filling the tub, with little heart prints
+  kit.add(C, G.cyl(1, 1, 0.05, 22), toon(0xffd6ec), { p: [0, 0.75, 0], s: [0.6, 1, 0.95], outline: false });
+  for (const [x, z] of [[0.3, 0.45], [-0.32, 0.3], [0.05, 0.72], [-0.2, 0.62]]) {
+    kit.add(C, G.heart(0.09, 0.02), toon(0xff7fb4), { p: [x, 0.78, z], r: [-Math.PI / 2, 0, 0.3], outline: false });
+  }
   // polka dots on the tub
   const dot = toon(WHITE);
   for (const sd of [-1, 1]) {
@@ -100,6 +105,7 @@ export function build(kit, rig, def) {
   for (const sd of [-1, 1]) {
     const arm = part(D, [sd * 0.28, 1.04, 0.04]);
     arm.name = 'baby-bonbon:arm';
+    arm.rotation.order = 'ZXY'; // lift first, then splay out: a roller-coaster "wheee!"
     limb(kit, arm, [0, 0, 0], [-sd * 0.12, -0.1, 0.54], 0.08, onesie);
     kit.add(arm, G.sph(0.095, 10, 8), skin, { p: [-sd * 0.12, -0.1, 0.56] });
     arms.push([arm, sd]);
@@ -149,8 +155,8 @@ export function build(kit, rig, def) {
     whee += (want - whee) * Math.min(1, dt * 9 + 0.01);
     const flap = st.happy ? Math.sin(t * 14) * 0.4 : 0;
     for (const [arm, sd] of arms) {
-      arm.rotation.x = -whee * 2.1 + flap;
-      arm.rotation.z = sd * whee * 0.5;
+      arm.rotation.x = -whee * 1.75 + flap;
+      arm.rotation.z = -sd * whee * 0.85;
     }
     // giggle bounce + wiggly head shake when she's twirling or tickled
     const giggle = st.spinning || st.happy ? 1 : 0.25;

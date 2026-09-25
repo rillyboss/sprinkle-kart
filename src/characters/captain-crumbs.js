@@ -67,7 +67,7 @@ export function build(kit, rig, def) {
   const sail = part(C, [0, 1.43, -0.98]);
   sail.name = 'captain-crumbs:sail';
   const sailGeo = new THREE.CylinderGeometry(1, 1, 0.8, 14, 1, true, -0.5, 1.0);
-  kit.add(sail, sailGeo, toon(0xfff6e4, { side: THREE.DoubleSide }), { p: [0, 0, -0.82], s: [0.86, 1, 0.9], outline: false });
+  kit.add(sail, sailGeo, toon(0xfff6e4, { side: THREE.DoubleSide }), { p: [0, 0, -0.82], s: [0.7, 1, 0.9], outline: false });
   // a smiling cookie painted on the sail
   for (const sd of [-1, 1]) {
     const z = sd > 0 ? 0.085 : -0.015;
@@ -99,18 +99,28 @@ export function build(kit, rig, def) {
   const cookieM = toon(COOKIE);
   limb(kit, D, [0.32, 1.08, 0.02], [0.14, 0.93, 0.6], 0.085, coat);
   kit.add(D, G.sph(0.1, 10, 8), cookieM, { p: [0.14, 0.93, 0.6] });
-  // spyglass arm (driver's left = +X): rests on the wheel, pops up to peek ahead
-  const spyArm = part(D, [-0.32, 1.08, 0.02]);
+  // spyglass arm (driver's right = -X, the portrait side): rests on the wheel,
+  // pops up to his eye to peek at the road ahead
+  const SHOULDER = new THREE.Vector3(-0.32, 1.08, 0.02);
+  const HAND = new THREE.Vector3(0.18, -0.15, 0.58); // relative to the shoulder
+  const spyArm = part(D, SHOULDER.toArray());
   spyArm.name = 'captain-crumbs:spyglass-arm';
-  limb(kit, spyArm, [0, 0, 0], [0.18, -0.15, 0.58], 0.085, coat);
-  kit.add(spyArm, G.sph(0.1, 10, 8), cookieM, { p: [0.18, -0.15, 0.58] });
-  const spy = part(spyArm, [0.18, -0.15, 0.58]);
+  limb(kit, spyArm, [0, 0, 0], HAND.toArray(), 0.085, coat);
+  kit.add(spyArm, G.sph(0.1, 10, 8), cookieM, { p: HAND.toArray() });
+  const spy = part(spyArm, HAND.toArray());
+  spy.name = 'captain-crumbs:spyglass';
   const brass = toon(GOLD);
-  kit.add(spy, G.cyl(0.05, 0.05, 0.22, 10), brass, { p: [0, 0, 0.02], r: [Math.PI / 2, 0, 0] });
-  kit.add(spy, G.cyl(0.065, 0.065, 0.2, 10), toon(WOOD_DARK), { p: [0, 0, -0.16], r: [Math.PI / 2, 0, 0] });
-  kit.add(spy, G.cyl(0.07, 0.07, 0.03, 10), brass, { p: [0, 0, 0.13], r: [Math.PI / 2, 0, 0], outline: false });
-  kit.add(spy, G.cyl(0.05, 0.05, 0.01, 10), glow(0xbfe9ff), { p: [0, 0, 0.145], r: [Math.PI / 2, 0, 0], outline: false });
-  spy.rotation.set(0, 0, 0);
+  kit.add(spy, G.cyl(0.065, 0.065, 0.2, 10), toon(WOOD_DARK), { p: [0, 0, -0.07], r: [Math.PI / 2, 0, 0] });
+  kit.add(spy, G.cyl(0.05, 0.05, 0.22, 10), brass, { p: [0, 0, 0.13], r: [Math.PI / 2, 0, 0] });
+  kit.add(spy, G.cyl(0.07, 0.07, 0.03, 10), brass, { p: [0, 0, 0.25], r: [Math.PI / 2, 0, 0], outline: false });
+  kit.add(spy, G.cyl(0.05, 0.05, 0.01, 10), glow(0xbfe9ff), { p: [0, 0, 0.265], r: [Math.PI / 2, 0, 0], outline: false });
+  kit.add(spy, G.cyl(0.06, 0.06, 0.03, 10), brass, { p: [0, 0, -0.18], r: [Math.PI / 2, 0, 0], outline: false });
+  // peek pose: the hand holds the spyglass right in front of his right eye
+  const PEEK_HAND = new THREE.Vector3(-0.15, 1.52, 0.66).sub(SHOULDER);
+  const PEEK_Q = new THREE.Quaternion().setFromUnitVectors(HAND.clone().normalize(), PEEK_HAND.clone().normalize());
+  const PEEK_S = PEEK_HAND.length() / HAND.length(); // a stretchy cartoon arm
+  const PEEK_Q_INV = PEEK_Q.clone().invert();
+  const ID_Q = new THREE.Quaternion();
 
   // ── head: a big round cookie ──
   const R = 0.45;
@@ -167,10 +177,10 @@ export function build(kit, rig, def) {
     const idlePeek = cyc > 0.72 && cyc < 0.95 ? 1 : 0;
     const want = st.boosting ? 1 : st.spinning ? 0 : idlePeek;
     peek += (want - peek) * Math.min(1, dt * 7 + 0.01);
-    spyArm.rotation.x = -peek * 1.45;
-    spyArm.rotation.z = peek * 0.35;
-    spyArm.rotation.y = peek * 0.4;
-    spy.rotation.x = peek * 1.1;
+    spyArm.quaternion.slerpQuaternions(ID_Q, PEEK_Q, peek);
+    spyArm.scale.setScalar(1 + (PEEK_S - 1) * peek);
+    spy.quaternion.slerpQuaternions(ID_Q, PEEK_Q_INV, peek); // the spyglass keeps looking straight ahead
+    spy.scale.setScalar(1 / spyArm.scale.x);
     // sail billows with speed, pennant flutters
     sail.scale.set(1, 1, 0.75 + 0.35 * st.speedF + Math.sin(t * 7) * 0.03 * st.speedF);
     sail.rotation.y = st.steer * 0.15;
