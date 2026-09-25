@@ -235,16 +235,34 @@ const FAKE_PAD_SCRIPT = () => {
 };
 
 /**
+ * Press a pad button for EXACTLY one game frame, synchronised in the page with the game's own
+ * 'frame' event (emitted after that frame's input poll): pressed for frame N, released before
+ * frame N+1 polls, resolved after N+1. Releasing from node instead races the game loop: two
+ * polls of a held d-pad more than 350 ms apart (slow CI frames) auto-repeat and skip an entry.
+ */
+async function padTapInPage(page, button, timeout = T(20000)) {
+  await page.evaluate(([b, ms]) => new Promise((resolve, reject) => {
+    const bus = window.__game?.bus;
+    if (!bus) { reject(new Error('window.__game.bus missing')); return; }
+    let n = 0;
+    const timer = setTimeout(() => { off(); window.__pad.set(b, false); reject(new Error(`pad tap: no game frames for ${ms} ms`)); }, ms);
+    const off = bus.on('frame', () => {
+      n++;
+      if (n === 1) window.__pad.set(b, false);
+      else { off(); clearTimeout(timer); resolve(); }
+    });
+    window.__pad.set(b, true);
+  }), [button, timeout]);
+}
+
+/**
  * Tap a pad button for exactly one sampled frame (never long enough to auto-repeat,
  * never so short that a slow frame misses it). Same retry rules as pressKey.
  */
 async function tapPad(t, button, { until = null, arg = null, what = `button ${button}`, inRace = false, tries = 3, timeout = T(8000) } = {}) {
   for (let attempt = 1; ; attempt++) {
     if (!inRace) await waitMenusReady(t.page);
-    await t.page.evaluate((b) => window.__pad.set(b, true), button);
-    await waitFrames(t.page, 1);
-    await t.page.evaluate((b) => window.__pad.set(b, false), button);
-    await waitFrames(t.page, 1);
+    await padTapInPage(t.page, button);
     if (!until) return;
     try {
       await waitGame(t.page, until, arg, timeout, what);
