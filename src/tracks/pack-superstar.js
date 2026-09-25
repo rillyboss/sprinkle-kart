@@ -6,10 +6,12 @@
  * Add one module per track (src/tracks/<id>.js, default-exporting
  * { def, buildScenery, prepare?, buildRoadDetails? }) and list it here, e.g.
  *   import cupcakeCarnival from './cupcake-carnival.js';
+import auroraPalace from './aurora-palace.js';
  *   export default [cupcakeCarnival, ...];
  */
 
 import cupcakeCarnival from './cupcake-carnival.js';
+import auroraPalace from './aurora-palace.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [cupcakeCarnival];
+export default [cupcakeCarnival, auroraPalace];
