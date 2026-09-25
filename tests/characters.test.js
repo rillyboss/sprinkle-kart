@@ -1,12 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { CHARACTERS, getCharacter, getSelectableCharacters, toCss } from '../src/data/characters.js';
 import { UNLOCK_CHARACTER_ID } from '../src/config.js';
+import { CHARACTER_PACKS } from '../src/characters/index.js';
+
+// v2: packs A and B add unlockable racers; these tests stay valid as they land.
+const ORIGINAL = CHARACTER_PACKS.find((p) => p.id === 'original').entries.map((e) => e.def);
+const FREE = CHARACTERS.filter((c) => !c.locked);
+const LOCKED = CHARACTERS.filter((c) => c.locked);
 
 const VOICE_STYLES = ['giggle', 'hoho', 'yay', 'boing', 'hum'];
 
 describe('character roster', () => {
-  it('has 8 racers plus one unlockable', () => {
-    expect(CHARACTERS).toHaveLength(9);
+  it('has 8 original racers plus one unlockable (plus any v2 packs)', () => {
+    expect(ORIGINAL).toHaveLength(9);
+    expect(FREE).toHaveLength(8);
+    expect(CHARACTERS.length).toBeGreaterThanOrEqual(9);
   });
 
   it('has unique kebab-case ids and unique names', () => {
@@ -17,18 +25,20 @@ describe('character roster', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('contains the whole planned cast', () => {
-    const ids = CHARACTERS.map((c) => c.id);
+  it('contains the whole planned original cast', () => {
+    const ids = ORIGINAL.map((c) => c.id);
     expect(ids).toEqual(['rocco', 'lenny', 'stella', 'peachy', 'gumbo', 'muffin', 'dino', 'bizzy', 'cotton-candy-girl']);
+    expect(CHARACTERS.slice(0, 9).map((c) => c.id)).toEqual(ids);
   });
 
-  it('has exactly one locked character: Cotton Candy Girl', () => {
-    const locked = CHARACTERS.filter((c) => c.locked);
+  it('has exactly one locked original character: Cotton Candy Girl', () => {
+    const locked = ORIGINAL.filter((c) => c.locked);
     expect(locked).toHaveLength(1);
     expect(locked[0].id).toBe(UNLOCK_CHARACTER_ID);
     expect(locked[0].name).toBe('Cotton Candy Girl');
     expect(locked[0].unlockHint).toMatch(/win/i);
     for (const c of CHARACTERS) expect(typeof c.locked).toBe('boolean');
+    for (const c of CHARACTERS) expect(c.locked, c.id).toBe(c.unlock !== null);
   });
 
   it('keeps stats as whole numbers from 1 to 5', () => {
@@ -102,7 +112,7 @@ describe('getCharacter', () => {
 describe('getSelectableCharacters', () => {
   it('hides locked characters by default', () => {
     const list = getSelectableCharacters();
-    expect(list).toHaveLength(8);
+    expect(list).toHaveLength(FREE.length);
     expect(list.some((c) => c.locked)).toBe(false);
   });
 
@@ -113,30 +123,31 @@ describe('getSelectableCharacters', () => {
 
   it('shows unlocked characters, in roster order', () => {
     const list = getSelectableCharacters((id) => id === UNLOCK_CHARACTER_ID);
-    expect(list).toHaveLength(9);
-    expect(list[list.length - 1].id).toBe(UNLOCK_CHARACTER_ID);
-    expect(list.map((c) => c.id)).toEqual(CHARACTERS.map((c) => c.id));
+    expect(list).toHaveLength(FREE.length + 1);
+    expect(list[8].id).toBe(UNLOCK_CHARACTER_ID);
+    expect(list.map((c) => c.id)).toEqual(CHARACTERS.filter((c) => !c.locked || c.id === UNLOCK_CHARACTER_ID).map((c) => c.id));
+    expect(getSelectableCharacters(() => true).map((c) => c.id)).toEqual(CHARACTERS.map((c) => c.id));
   });
 
   it('only asks about locked characters', () => {
     const asked = [];
     getSelectableCharacters((id) => (asked.push(id), true));
-    expect(asked).toEqual([UNLOCK_CHARACTER_ID]);
+    expect(asked).toEqual(LOCKED.map((c) => c.id));
   });
 
   it('treats a throwing unlock check as locked', () => {
     const list = getSelectableCharacters(() => {
       throw new Error('storage blocked');
     });
-    expect(list).toHaveLength(8);
+    expect(list).toHaveLength(FREE.length);
   });
 
   it('works with the real progress module', async () => {
     const { isUnlocked, unlock, resetProgress } = await import('../src/save/progress.js');
     resetProgress();
-    expect(getSelectableCharacters(isUnlocked)).toHaveLength(8);
+    expect(getSelectableCharacters(isUnlocked)).toHaveLength(FREE.length);
     unlock(UNLOCK_CHARACTER_ID);
-    expect(getSelectableCharacters(isUnlocked)).toHaveLength(9);
+    expect(getSelectableCharacters(isUnlocked)).toHaveLength(FREE.length + 1);
     resetProgress();
   });
 });

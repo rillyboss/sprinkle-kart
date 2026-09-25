@@ -7,6 +7,7 @@ import { CpuBrain, computeRacingLine, applyEasyDrive, aiDriveInput, cpuDriftChan
 import { ItemSystem, rollItem } from './Items.js';
 import { ItemBoxes } from './ItemBoxes.js';
 import { KartFx } from './KartFx.js';
+import { normalizeGameplay } from './gameplay.js';
 
 export { aiDriveInput };
 
@@ -114,7 +115,9 @@ export class Race {
     this.fx = this.karts.map(() => new KartFx(scene));
 
     this._standings = [...this.karts];
-    this._env = { path, boostPads: this.boostPads, emit: this._emitFn };
+    /** Track gameplay modifiers (see ./gameplay.js), also handed to stepKart via env.gameplay. */
+    this.gameplay = normalizeGameplay(trackDef.gameplay);
+    this._env = { path, boostPads: this.boostPads, emit: this._emitFn, gameplay: this.gameplay };
     this._syncVisuals(0);
   }
 

@@ -6,15 +6,20 @@
  *
  * Starts its own Vite dev server on :5190, drives system Chrome (headless,
  * SwiftShader WebGL) with Playwright and checks:
- *   1. every track, 1 and 4 players (plus a 3-player spectator run), autodrive:
+ *   1. every REGISTERED track (read from the live registry, so new tracks are
+ *      covered automatically): 1 player always; 4 players for the original Sprinkle
+ *      Cup, for any track named in the filters (e.g. `node scripts/smoke.mjs bubblegum-bay`)
+ *      or for all tracks with SMOKE_FULL=1; plus a 3-player spectator run. Autodrive:
  *      no console/page errors, every kart moves forward, fps is reported;
- *   2. the full menu flow with keyboard presses (title → join → racer → track → race);
+ *   2. the full menu flow with keyboard presses (title → join → racer → track → race),
+ *      and the menus at full v2 size (?democontent=1: 21 racers, 20 tracks);
  *   3. a 1-lap autodrive race that reaches the results screen and shows the
  *      Cotton Candy Girl unlock celebration (after resetting progress).
- * Screenshots land in smoke-out/. Exits non-zero on any failure.
+ * Screenshots land in smoke-out/ (stale *-FAIL.png files are cleared at the start).
+ * Exits non-zero on any failure.
  */
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { chromium } from 'playwright';
@@ -23,11 +28,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'smoke-out');
 const PORT = 5190;
 const BASE = `http://localhost:${PORT}/`;
-const TRACK_IDS = ['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes'];
+/** The original Sprinkle Cup: always smoke-tested in 1p and 4p. */
+const ORIGINAL_TRACK_IDS = ['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes'];
+const FULL = !!process.env.SMOKE_FULL;
 const RACE_WAIT_MS = Number(process.env.SMOKE_WAIT_MS || 12000);
 const only = process.argv.slice(2); // optional filters: e.g. "menu", "results", a track id
 
 mkdirSync(OUT, { recursive: true });
+for (const f of readdirSync(OUT)) if (f.endsWith('-FAIL.png')) rmSync(path.join(OUT, f), { force: true });
 
 const failures = [];
 const log = (...a) => console.log('[smoke]', ...a);
@@ -67,6 +75,23 @@ async function waitForServer(ms = 40000) {
 process.on('SIGINT', () => { stopServer(); process.exit(130); });
 
 /* ---------------- helpers ---------------- */
+
+/** Track ids from the live registry (src/tracks/index.js via the dev server). */
+async function registeredTrackIds(browser) {
+  const ctx = await browser.newContext();
+  try {
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}?smoke-registry=1`);
+    const ids = await page.evaluate(async () => (await import('/src/tracks/index.js')).TRACKS.map((t) => t.id));
+    if (!Array.isArray(ids) || !ids.length) throw new Error('no tracks registered');
+    return ids;
+  } catch (err) {
+    fail('track-registry', err.message);
+    return ORIGINAL_TRACK_IDS;
+  } finally {
+    await ctx.close().catch(() => {});
+  }
+}
 
 async function newPage(browser, name, viewport = { width: 1280, height: 720 }) {
   const ctx = await browser.newContext({ viewport });
@@ -183,6 +208,62 @@ async function menuFlowTest(browser) {
     await press('Escape', 900);
     const resumed = await gameInfo(t.page);
     if (resumed.state !== 'race') fail(name, `Esc did not resume (state ${resumed.state})`);
+    checkErrors(t);
+    if (failures.length === n0) log(`${name}: ok`);
+  } catch (err) {
+    fail(name, err.message);
+    await shot('FAIL').catch(() => {});
+  } finally {
+    await t.ctx.close();
+  }
+}
+
+/**
+ * The menus at full v2 size (?democontent=1 pads them with locked placeholders
+ * for all 21 racers and 20 tracks): the grid scrolls, tracks page by cup, and
+ * locked tracks / racers can't be picked.
+ */
+async function menuScaleTest(browser) {
+  const name = 'menu-scale';
+  const n0 = failures.length;
+  const t = await newPage(browser, name);
+  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `scale-${n}.png`) });
+  const press = async (key, pause = 450) => { await t.page.keyboard.press(key); await t.page.waitForTimeout(pause); };
+  try {
+    await t.page.goto(`${BASE}?unlockreset=1&democontent=1`);
+    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, 60000, 'title screen');
+    await t.page.waitForTimeout(1200);
+    await press('Enter', 1000);                // kb1 joins as P1
+    await press('Slash', 800);                 // kb2 joins as P2
+    await press('Enter', 1000);                // → character select
+    const tiles = await t.page.evaluate(() => document.querySelectorAll('.sk-tile').length);
+    if (tiles !== 21) fail(name, `expected 21 racer tiles, got ${tiles}`);
+    const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
+    if (locked !== 13) fail(name, `expected 13 locked racer tiles, got ${locked}`);
+    await shot('1-characters');
+    await press('KeyS');                       // P1 down two rows (grid scrolls)
+    await press('KeyS');
+    await shot('2-characters-scrolled');
+    await press('Enter', 500);                 // a locked racer: nope-wiggle, not ready
+    if (await t.page.evaluate(() => !!document.querySelector('.sk-panel-ready'))) fail(name, 'a locked racer was picked');
+    await press('KeyW');
+    await press('KeyW');
+    await press('Enter', 500);                 // P1 picks Rocco
+    await press('Slash', 2400);                // P2 picks too → track select
+    const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-card').length);
+    if (cards !== 20) fail(name, `expected 20 track cards, got ${cards}`);
+    const tabs = await t.page.evaluate(() => document.querySelectorAll('.sk-cup-tab').length);
+    if (tabs !== 5) fail(name, `expected 5 cup tabs, got ${tabs}`);
+    await shot('3-tracks');
+    for (let i = 0; i < 4; i++) await press('KeyD', 300); // → first Bubble Cup track (locked)
+    await shot('4-tracks-bubble-cup');
+    await press('Enter', 900);
+    if ((await gameInfo(t.page)).state !== 'menu') fail(name, 'a locked track started a race');
+    await press('KeyA', 300);                  // back to Sundae Slopes
+    await press('Enter', 500);
+    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'race to start from the big menus');
+    const setup = await t.page.evaluate(() => window.__game.setup);
+    if (setup.trackId !== 'sundae-slopes') fail(name, `expected sundae-slopes, got ${setup.trackId}`);
     checkErrors(t);
     if (failures.length === n0) log(`${name}: ok`);
   } catch (err) {
@@ -322,11 +403,16 @@ try {
     headless: true,
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
-  for (const id of TRACK_IDS) {
-    for (const n of [1, 4]) if (wanted(`${id}-${n}p`)) await raceTest(browser, id, n);
+  const trackIds = await registeredTrackIds(browser);
+  log(`tracks: ${trackIds.join(', ')}`);
+  for (const id of trackIds) {
+    if (wanted(`${id}-1p`)) await raceTest(browser, id, 1);
+    const named = only.some((f) => f === id || f === `${id}-4p`);
+    if ((ORIGINAL_TRACK_IDS.includes(id) || FULL || named) && wanted(`${id}-4p`)) await raceTest(browser, id, 4);
   }
   if (wanted('cotton-candy-castle-3p')) await raceTest(browser, 'cotton-candy-castle', 3);
   if (wanted('menu')) await menuFlowTest(browser);
+  if (wanted('scale')) await menuScaleTest(browser);
   if (wanted('gamepad')) await gamepadFlowTest(browser);
   if (wanted('results')) await resultsTest(browser);
 } catch (err) {
