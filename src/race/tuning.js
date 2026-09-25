@@ -24,17 +24,26 @@ export const TUNING = {
   offRoadMultEasy: 0.72,
   accelCurve: 0.55, // acceleration fades by this fraction approaching max speed
 
-  // Drift + mini-turbo
+  // Drift + mini-turbo (family feedback: "too harsh initially" -> everything eases in)
   driftMinSpeed: 11,
-  hopDuration: 0.26,
-  hopHeight: 0.45,
-  driftStartWindow: 0.18, // after landing a hop you may still start the drift
-  driftGrip: 2.3,
-  driftGripTransfer: 0.8,
-  driftTurnBase: 0.27, // yaw multiplier when steering against the drift (wide arc)
-  driftTurnRange: 0.98, // extra yaw when steering into the drift (tight arc)
-  driftLevels: [0.7, 1.55, 2.5], // charge needed for blue, pink, rainbow
-  miniTurbo: [0, 0.55, 0.95, 1.4], // boost seconds per level
+  hopDuration: 0.3, // a soft little bunny hop
+  hopHeight: 0.32,
+  driftStartWindow: 0.32, // after landing a hop you may still start the drift (forgiving)
+  driftSteerStart: 0.3, // |steer| needed to pick a drift direction
+  driftEaseIn: 0.38, // seconds for grip + drift yaw to blend from normal to full slide
+  driftEaseOut: 0.24, // seconds to regain full grip after letting go
+  driftGrip: 4.5, // sideways grip while sliding (steady slide angle ~30 deg, never a spin-out)
+  driftGripTransfer: 0.93, // speed kept while sliding (no sudden slow-down)
+  driftTurnBase: 0.36, // yaw multiplier when steering against the drift (wide, forgiving arc)
+  driftTurnRange: 0.9, // extra yaw when steering into the drift (tight arc)
+  driftCharge: [0.8, 0.55], // charge per second = a + b * into (0 = steering out, 1 = in)
+  driftLevels: [0.5, 1.35, 2.35], // charge needed for blue, pink, rainbow (blue comes quickly!)
+  miniTurbo: [0, 0.6, 0.95, 1.4], // boost seconds per level
+
+  // Kid-Assist (easyDrive karts)
+  kidAssistBrake: 0.5, // brake must be pressed at least this hard to override the auto-gas
+  kidAssistTurn: 1.12, // a little extra steering authority so full gas still makes the bends
+  kidAssistStartAt: 0.9, // auto-press the gas this many seconds before GO (free Rocket Start)
 
   // Boosts
   boostMult: 1.32,

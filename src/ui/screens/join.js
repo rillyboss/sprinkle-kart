@@ -11,7 +11,7 @@ import { pc, hintsBar, backButton, shake, JOIN_UNPLUG_DROP } from './_shared.js'
  * Label of the per-player driving helper toggle. OWNER: driving-feel
  * workstream may rename it to Kid-Assist here (the only place it is shown).
  */
-export const ASSIST_LABEL = { name: 'Magic Steering', emoji: '✨' };
+export const ASSIST_LABEL = { name: 'Kid-Assist', emoji: '🧸' };
 
 /** @type {import('./index.js').ScreenDef} */
 export default {
