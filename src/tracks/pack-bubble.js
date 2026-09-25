@@ -6,6 +6,7 @@
  */
 import bubblegumBay from './bubblegum-bay.js';
 import mermaidLagoon from './mermaid-lagoon.js';
+import teddyToyland from './teddy-toyland.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [bubblegumBay, mermaidLagoon];
+export default [bubblegumBay, mermaidLagoon, teddyToyland];
