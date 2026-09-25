@@ -2,3 +2,5 @@ node_modules
 dist
 smoke-out
 dev/**/*.png
+*.log
+.claude/
