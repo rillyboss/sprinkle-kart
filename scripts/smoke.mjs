@@ -31,8 +31,8 @@
  * Stale *-FAIL.* files are cleared at the start. Exits non-zero on any failure.
  *
  * Adding a smoke case for a new screen: write an `async function myTest(t)` like
- * `menuFlowTest` (use the helpers: waitGame, pressKey, tapPad, driveFor) and append
- * it to FLOW_TESTS (+ FLOW_SCENARIOS in smoke-plan.mjs).
+ * `menuFlowTest` (use the helpers: waitGame, waitMenusReady, pressKey, tapPad, driveFor,
+ * t.check, t.shot — never fixed sleeps) and append one line to FLOW_TESTS.
  */
 import { spawn, execSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -453,6 +453,10 @@ async function resultsTest(t) {
   checkErrors(t);
 }
 
+/**
+ * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
+ * To add one, append your function above and one line here — nothing else to edit.
+ */
 const FLOW_TESTS = {
   'menu-flow': menuFlowTest,
   'menu-scale': menuScaleTest,
@@ -515,7 +519,7 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true, args });
   const trackIds = await registeredTrackIds(browser);
   log(`tracks: ${trackIds.join(', ')}`);
-  const plan = planScenarios({ trackIds, filters: only, profile: PROFILE });
+  const plan = planScenarios({ trackIds, filters: only, profile: PROFILE, flows: Object.keys(FLOW_TESTS) });
   log(`scenarios (${plan.length}): ${plan.map((s) => s.name).join(', ')}`);
   if (!plan.length) fail('smoke', `no scenario matches the filters ${JSON.stringify(only)}`);
   for (const sc of plan) await runScenario(browser, sc);

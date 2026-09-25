@@ -188,7 +188,7 @@ Shared, owned by the architect/orchestrator (change only with a heads-up in the 
 `src/tracks/{core,sceneryKit,geometry,pathTools,layout,constants,index,types}.js`, `src/data/cups.js`,
 `src/game/{events,session,raceStats}.js`, `src/systems/index.js`, `src/ui/{Menus,screenFlow,menuState,dom,hudWidgets}.js`,
 `src/ui/screens/{index,_shared,title,join,characterSelect,trackSelect,pause,results}.js`, `src/ui/ui.css`,
-`scripts/smoke.mjs` (append new test functions only; tracks come from the registry, never add ids),
+`scripts/smoke.mjs` (append new test functions only + one `FLOW_TESTS` line; tracks come from the registry, never add ids; QA & CI owns the rest),
 `tests/visual.golden.test.js` + `tests/golden/*` + `tests/helpers/fingerprint.js`, `tests/contract.seams.test.js`, `tests/kartEffects.test.js`,
 `README.md` (each workstream edits only its own section).
 
@@ -641,3 +641,6 @@ Girl); the progression workstream replaces it with a rule engine that evaluates 
   change is intended, and say so in the PR.
 - Smoke screenshots land in `smoke-out/`; LOOK at the ones for your area before opening a PR.
 - Headless-safe code: nothing touches `document`/WebGL at import time; guard DOM use (`typeof document`).
+- Shared test helpers live in `tests/helpers/` (race harness, headless session, fake bus / audio / input, three.js
+  inspectors — see CONTRIBUTING.md). `tests/qa.registry.*` + `tests/qa.fuzz.test.js` cover every registered track,
+  racer and system automatically; `npm run test:coverage` (CI) enforces coverage thresholds on the logic modules.

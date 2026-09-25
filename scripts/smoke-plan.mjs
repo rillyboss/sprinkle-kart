@@ -12,7 +12,7 @@ export const ORIGINAL_TRACK_IDS = Object.freeze(['cotton-candy-castle', 'gumdrop
 /** In CI (no GPU, SwiftShader on 4 vCPUs) only these tracks also run in 4p. */
 export const CI_4P_TRACK_IDS = Object.freeze(['cotton-candy-castle', 'starlight-galaxy']);
 
-/** Non-race scenarios, in run order. Their names double as filters. */
+/** The built-in non-race scenarios, in run order (smoke.mjs passes its FLOW_TESTS keys). Names double as filters. */
 export const FLOW_SCENARIOS = Object.freeze(['menu-flow', 'menu-scale', 'gamepad-flow', 'results-unlock']);
 
 const truthy = (v) => v !== undefined && v !== null && v !== '' && v !== '0' && String(v).toLowerCase() !== 'false';
@@ -68,10 +68,10 @@ export function wanted(filters, name) {
 
 /**
  * The ordered scenario list.
- * @param {{ trackIds: string[], filters?: string[], profile: ReturnType<typeof resolveProfile> }} o
+ * @param {{ trackIds: string[], filters?: string[], profile: ReturnType<typeof resolveProfile>, flows?: string[] }} o
  * @returns {Array<{ name: string, kind: 'race', trackId: string, players: number } | { name: string, kind: 'flow' }>}
  */
-export function planScenarios({ trackIds, filters = [], profile }) {
+export function planScenarios({ trackIds, filters = [], profile, flows = FLOW_SCENARIOS }) {
   const out = [];
   const ids = [...new Set(trackIds)];
   const fourP = (id) => {
@@ -89,7 +89,7 @@ export function planScenarios({ trackIds, filters = [], profile }) {
   if (ids.includes('cotton-candy-castle') && wanted(filters, spectator)) {
     out.push({ name: spectator, kind: 'race', trackId: 'cotton-candy-castle', players: 3 });
   }
-  for (const name of FLOW_SCENARIOS) {
+  for (const name of flows) {
     // legacy short filters keep working: "menu" → menu-flow + menu-scale, "scale", "gamepad", "results"
     if (wanted(filters, name)) out.push({ name, kind: 'flow' });
   }

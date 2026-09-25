@@ -5,6 +5,7 @@ import {
   ORIGINAL_TRACK_IDS, CI_4P_TRACK_IDS, FLOW_SCENARIOS,
   resolveProfile, timeoutFor, planScenarios, wanted, stalledKarts, isIgnorableError,
 } from '../scripts/smoke-plan.mjs';
+import { readFileSync } from 'node:fs';
 import { TRACKS } from '../src/tracks/index.js';
 
 const names = (plan) => plan.map((s) => s.name);
@@ -122,6 +123,20 @@ describe('planScenarios', () => {
       expect(s.name).toBe(`${s.trackId}-${s.players}p`);
     }
     expect(planScenarios({ trackIds: V2_TRACKS, filters: ['nope-nope'], profile: resolveProfile({}) })).toEqual([]);
+  });
+
+  it('custom flow lists (smoke.mjs FLOW_TESTS keys) are planned in order and filterable', () => {
+    const flows = ['menu-flow', 'settings-screen', 'results-unlock'];
+    const p = resolveProfile({});
+    expect(names(planScenarios({ trackIds: [], profile: p, flows }))).toEqual(flows);
+    expect(names(planScenarios({ trackIds: [], filters: ['settings'], profile: p, flows }))).toEqual(['settings-screen']);
+  });
+
+  it('smoke.mjs registers a test for every built-in flow scenario', () => {
+    const src = readFileSync(new URL('../scripts/smoke.mjs', import.meta.url), 'utf8');
+    const block = src.slice(src.indexOf('const FLOW_TESTS = {'), src.indexOf('};', src.indexOf('const FLOW_TESTS = {')));
+    const keys = [...block.matchAll(/'([a-z0-9-]+)':\s*\w+/g)].map((m) => m[1]);
+    expect(keys.slice(0, FLOW_SCENARIOS.length)).toEqual([...FLOW_SCENARIOS]);
   });
 
   it('the CI 4p tracks and original ids are real registered tracks', () => {
