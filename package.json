@@ -1,0 +1,25 @@
+{
+  "name": "sprinkle-kart",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vite build",
+    "preview": "vite preview --open",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Sprinkle Kart — a cute, family-friendly 3D split-screen kart racer made for Sophia",
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "vite": "^8.3.1",
+    "vitest": "^4.1.11"
+  },
+  "type": "module",
+  "private": true
+}
