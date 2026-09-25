@@ -24,6 +24,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
+    // Headless races and whole-registry suites are CPU-heavy and every worker competes for
+    // cores, so a single test may take several seconds (more on 4-vCPU CI runners).
+    testTimeout: process.env.CI ? 90000 : 45000,
+    hookTimeout: process.env.CI ? 90000 : 45000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.js'],
