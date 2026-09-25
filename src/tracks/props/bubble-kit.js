@@ -110,7 +110,7 @@ export function turnCentre(ctx, frac, r, side = 1) {
 export function waterGrid(ctx, {
   area, cell = 7, y = 0.12, sink = -0.9, wet, color = 0x7fd8ff, foam = 0xffffff, deep = null,
   foamWidth = 4, deepAt = 60, opacity = 1, emissive = 0x000000, emissiveIntensity = 0.25,
-  ripples = 0, rippleTile = 22, flow = [0.004, 0.0025], side = THREE.FrontSide,
+  ripples = 0, rippleTile = 22, flow = [0.004, 0.0025], side = THREE.FrontSide, skip = null,
 }) {
   const w = area.maxX - area.minX, d = area.maxZ - area.minZ;
   const nx = Math.max(1, Math.ceil(w / cell)), nz = Math.max(1, Math.ceil(d / cell));
@@ -129,6 +129,17 @@ export function waterGrid(ctx, {
     cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  if (skip) {
+    // drop every triangle touching a skipped spot (e.g. over a lagoon cut into the ground)
+    const idx = geo.index.array;
+    const keep = [];
+    const skipV = new Uint8Array(pos.count);
+    for (let i = 0; i < pos.count; i++) skipV[i] = skip(pos.getX(i), pos.getZ(i)) ? 1 : 0;
+    for (let t = 0; t < idx.length; t += 3) {
+      if (!skipV[idx[t]] && !skipV[idx[t + 1]] && !skipV[idx[t + 2]]) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    geo.setIndex(keep);
+  }
   geo.computeVertexNormals();
   const mat = ctx.own(new THREE.MeshToonMaterial({
     color: 0xffffff, vertexColors: true, transparent: opacity < 1, opacity, side,

@@ -5,6 +5,7 @@
  * Shared Bubble Cup props live in src/tracks/props/bubble-*.js.
  */
 import bubblegumBay from './bubblegum-bay.js';
+import mermaidLagoon from './mermaid-lagoon.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [bubblegumBay];
+export default [bubblegumBay, mermaidLagoon];
