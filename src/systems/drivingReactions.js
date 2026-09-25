@@ -6,6 +6,7 @@
  * sounds and brake / reverse cues live in drivingSounds.js ('race-frame').
  */
 import { driftBoostText } from '../game/setup.js';
+import { BOOST_VARIANT } from '../audio/sfx/driving.js';
 
 /** @type {import('./index.js').SystemDef} */
 export default {
@@ -24,14 +25,12 @@ export default {
         const k = e.kart;
         // Item boosts (Sprinkle Boost / Triple Sprinkle) belong to itemReactions.js.
         if (!s.isHuman(k) || e.source === 'item') return;
-        s.sfx('boost', { pan: s.panFor(k) });
+        // One 'boost' per boost (contract): the pad zing / rocket sparkle ride on
+        // it as a variant of the driving-owned 'boost' recipe (opts.level).
+        const variant = e.source === 'start' ? BOOST_VARIANT.start : e.source === 'pad' ? BOOST_VARIANT.pad : undefined;
+        s.sfx('boost', variant ? { pan: s.panFor(k), level: variant } : { pan: s.panFor(k) });
         s.rumble(k, 0.35, 160);
-        if (e.source === 'start') {
-          s.flash(k, 'Rocket Start! 🚀');
-          s.sfx('drive-rocket-sparkle', { pan: s.panFor(k) });
-        } else if (e.source === 'pad') {
-          s.sfx('drive-pad-zing', { pan: s.panFor(k) });
-        }
+        if (e.source === 'start') s.flash(k, 'Rocket Start! 🚀');
       }),
       bus.on('race:hop', (e, s) => {
         if (s.isHuman(e.kart)) s.sfx('drive-hop', { pan: s.panFor(e.kart), volume: 0.6 });

@@ -7,7 +7,8 @@
  *   one-shots   drive-rev, drive-rocket-sparkle, drive-brake-squeak, drive-reverse-beep,
  *               drive-hop, drive-drift-squeal, drive-land, drive-wall-boing, drive-honk,
  *               drive-pad-zing
- *   overrides   drift-spark (mini-turbo charge chime, rising per level),
+ *   overrides   boost (whoosh; level BOOST_VARIANT.pad adds the pad zing, .start the Rocket Start sparkle),
+ *               drift-spark (mini-turbo charge chime, rising per level),
  *               drift-boost (turbo release whoosh) — allowed by SFX_OWNERS.driving
  *
  * Named exports = continuous voices for src/systems/drivingSounds.js, built on
@@ -45,8 +46,24 @@ export const CHARGE_CHIMES = Object.freeze([
 /** Slide "sing" pitch (Hz) per drift level 0..3 — rises as the sparks change colour. */
 export const SLIDE_PITCH = Object.freeze([620, 740, 880, 1046]);
 
+/** `level` values of the driving 'boost' recipe: plain (item / default), boost pad, Rocket Start. */
+export const BOOST_VARIANT = Object.freeze({ pad: 11, start: 12 });
+
+function boostWhoosh(core, t, o) {
+  noise(core.ctx, core.out, core.noise, { t, dur: 0.55, vol: 0.13, attack: 0.16, filter: { type: 'bandpass', freq: 300, freqEnd: 2500, time: 0.55, Q: 1.4 }, pan: o.pan });
+  tone(core.ctx, core.out, { t, freq: 220 * o.pitch, freqEnd: 880 * o.pitch, glideTime: 0.4, dur: 0.45, vol: 0.09, type: 'triangle', attack: 0.02, release: 0.15, pan: o.pan });
+}
+
 export const recipes = {
   // ---- overrides (SFX_OWNERS.driving) ------------------------------------
+  boost(core, t, o) {
+    // The classic whoosh; boost pads add a bright "zing!", a Rocket Start a twinkly glissando.
+    boostWhoosh(core, t, o);
+    if (o.level === BOOST_VARIANT.pad) recipes['drive-pad-zing'](core, t, o);
+    else if (o.level === BOOST_VARIANT.start) recipes['drive-rocket-sparkle'](core, t + 0.05, o);
+    else twinkles(core, t + 0.1, [91, 96, 100], { step: 0.07, vol: 0.045, pan: o.pan });
+  },
+
   'drift-spark'(core, t, o) {
     // Mini-turbo charged: a rising little bell run, higher and longer per level.
     const level = lvl(o);

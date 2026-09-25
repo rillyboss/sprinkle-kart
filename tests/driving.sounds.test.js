@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import drivingPack, { recipes, createEngineVoice, createSlideVoice, createRustleVoice, CHARGE_CHIMES, SLIDE_PITCH } from '../src/audio/sfx/driving.js';
+import drivingPack, { BOOST_VARIANT, recipes, createEngineVoice, createSlideVoice, createRustleVoice, CHARGE_CHIMES, SLIDE_PITCH } from '../src/audio/sfx/driving.js';
 import { SFX, SFX_OWNERS, mergeSfxPacks } from '../src/audio/sfx.js';
 import drivingSounds, {
   engineMix, engineParams, cpuEngineGain, slideParams, surfaceFor, rustleParams, SURFACES,
@@ -163,6 +163,7 @@ describe('driving SFX pack', () => {
     for (const n of builtIns) expect(SFX_OWNERS.driving).toContain(n);
     expect(SFX['drift-spark']).toBe(recipes['drift-spark']);
     expect(SFX['drift-boost']).toBe(recipes['drift-boost']);
+    expect(SFX.boost).toBe(recipes.boost);
     for (const n of Object.keys(recipes)) expect(SFX[n]).toBe(recipes[n]);
     // A pack with the wrong owner name cannot take them.
     const target = { 'drift-spark': () => 'orig' };
@@ -173,7 +174,7 @@ describe('driving SFX pack', () => {
   it('every recipe plays cleanly on a strict mock context (all levels, pans, pitches)', () => {
     const { ctx, stats, core } = makeMockAudio();
     for (const [name, fn] of Object.entries(recipes)) {
-      for (const level of [undefined, 0, 1, 2, 3, 7]) {
+      for (const level of [undefined, 0, 1, 2, 3, 7, BOOST_VARIANT.pad, BOOST_VARIANT.start]) {
         for (const pan of [0, -0.35, 1]) {
           expect(() => fn(core, ctx.currentTime + 0.01, { pitch: 1, pan, level }), name).not.toThrow();
         }
@@ -369,7 +370,9 @@ describe('driving reactions (one-shots)', () => {
     fire('boost', { kart: karts[0], source: 'item' });
     fire('boost', { kart: cpuK(), source: 'pad' });
     const names = log.map((l) => l[0]);
-    expect(names).toEqual(['boost', 'flash', 'drive-rocket-sparkle', 'boost', 'drive-pad-zing']);
+    expect(names).toEqual(['boost', 'flash', 'boost']); // exactly one 'boost' each (contract)
+    expect(log[0][1].level).toBe(BOOST_VARIANT.start);
+    expect(log[2][1].level).toBe(BOOST_VARIANT.pad);
   });
 
   it('hop, landing thump and drift squeal for humans only', () => {
