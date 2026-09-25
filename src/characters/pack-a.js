@@ -1,13 +1,14 @@
 /**
  * Character pack A — OWNER: character builder A.
- * Racers (see src/content/lineup.js for names + unlock rules):
+ * Racers (see src/content/lineup.js for names + unlock rules), in menu order:
  *   bruno, shelly, boo-berry, twiggy, captain-crumbs, baby-bonbon
- *
- * Add one file per racer (src/characters/<id>.js, default-exporting
- * { def, build }) and list it here in menu order, e.g.
- *   import bruno from './bruno.js';
- *   export default [bruno, ...];
  */
+import bruno from './bruno.js';
+import shelly from './shelly.js';
+import booBerry from './boo-berry.js';
+import twiggy from './twiggy.js';
+import captainCrumbs from './captain-crumbs.js';
+import babyBonbon from './baby-bonbon.js';
 
 /** @type {import('./types.js').CharacterEntry[]} */
-export default [];
+export default [bruno, shelly, booBerry, twiggy, captainCrumbs, babyBonbon];
