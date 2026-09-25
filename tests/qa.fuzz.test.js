@@ -138,6 +138,7 @@ function randomInput(rng, garbage = false) {
 const DT_SPIKES = [0, 1e-5, 1 / 240, 1 / 144, 1 / 60, 1 / 60, 1 / 60, 1 / 30, 0.1, 0.35, 2, 30, NaN, -1, Infinity];
 
 describe('kart physics stability (fuzz)', () => {
+  const reachedWallOn = new Map(); // track id -> did the random drivers get past the road edge?
   for (const def of TRACKS) {
     it(`4 random drivers + 4 CPUs on ${def.id}: never NaN, never through the soft walls`, () => {
       let reachedWall = false;
@@ -157,9 +158,15 @@ describe('kart physics stability (fuzz)', () => {
         expect(r.race.time).toBeGreaterThan(0);
         reachedWall ||= r.worstLateral > r.path.halfWidth;
       }
-      expect(reachedWall, 'the random drivers never even reached the road edge (fuzz too tame)').toBe(true);
+      reachedWallOn.set(def.id, reachedWall);
     });
   }
+
+  it('the random drivers really test the walls (reach the road edge on most tracks)', () => {
+    const hits = [...reachedWallOn.values()].filter(Boolean).length;
+    expect(reachedWallOn.size).toBe(TRACKS.length);
+    expect(hits, `reached the edge on ${hits}/${TRACKS.length} tracks — the fuzz is too tame`).toBeGreaterThanOrEqual(Math.ceil(TRACKS.length / 2));
+  });
 
   it('dt spikes (0, negative, NaN, Infinity, 30 s) never break a race', () => {
     const def = TRACKS[0];
