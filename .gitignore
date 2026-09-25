@@ -5,3 +5,4 @@ dev/**/*.png
 *.log
 .claude/
 smoke-out-before
+coverage
