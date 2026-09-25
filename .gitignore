@@ -4,3 +4,4 @@ smoke-out
 dev/**/*.png
 *.log
 .claude/
+smoke-out-before
