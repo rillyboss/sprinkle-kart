@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fde}</style></head><body><script type="module">
+import * as THREE from 'three';
+import { buildGumdropMesh, buildRocketMesh } from '../../src/race/Items.js';
+import { buildItemBoxMesh } from '../../src/race/ItemBoxes.js';
+import { KartFx } from '../../src/race/KartFx.js';
+import { buildKartModel } from '../../src/render/characterModels.js';
+import { CHARACTERS } from '../../src/data/characters.js';
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(960, 540); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xffe4f4);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xffc0e0, 1.6)); const d = new THREE.DirectionalLight(0xffffff, 1.6); d.position.set(3, 8, 6); scene.add(d);
+const gd = buildGumdropMesh(0xff6fb5); gd.position.set(-3, 0, 0); scene.add(gd);
+const gd2 = buildGumdropMesh(0x7ee07e); gd2.position.set(-1.4, 0, 1); scene.add(gd2);
+const rk = buildRocketMesh(); rk.position.set(0.5, 1, 1); rk.rotation.y = -0.9; scene.add(rk);
+const box = buildItemBoxMesh(); box.position.set(3, 1.3, 0); box.children[0].rotation.set(0.35, 0.6, 0.35); scene.add(box);
+const kart = buildKartModel(CHARACTERS[2]); kart.group.position.set(0, 0, -4); kart.group.rotation.y = 0.5; scene.add(kart.group);
+const fx = new KartFx(scene); fx.update({ position: new THREE.Vector3(0, 0, -4), starPower: 5, item: 'triple-sprinkle', itemCharges: 3, itemRoulette: 0 }, 1.3);
+const cam = new THREE.PerspectiveCamera(45, 960 / 540, 0.1, 100); cam.position.set(0, 3.5, 8.5); cam.lookAt(0, 0.8, -0.5);
+r.render(scene, cam); window.done = true;
+</script></body></html>

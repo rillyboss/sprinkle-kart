@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const [,, query = '?quick=cotton-candy-castle&players=1&autodrive=1', out = 'dev/integrator/shot.png', waitMs = '8000', w='1280', h='720'] = process.argv;
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: +w, height: +h } });
+page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('[console]', m.type(), m.text()); });
+page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+await page.goto('http://localhost:' + (process.env.PORT || 5187) + '/' + query);
+await page.waitForTimeout(+waitMs);
+const info = await page.evaluate(() => { const g = window.__game; return g && { state: g.state, fps: g.fps, frames: g.frames, errors: g.errors, karts: g.race?.karts.map(k => [k.characterId, k.playerIndex, +k.progress.toFixed(1), k.place]) }; });
+console.log(JSON.stringify(info));
+await page.screenshot({ path: out });
+await browser.close();

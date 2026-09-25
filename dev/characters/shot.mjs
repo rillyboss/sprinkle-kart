@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+const [,, query = '', out = 'lineup.png'] = process.argv;
+const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1600, height: 700 } });
+const errs = []; p.on('console', m => { if (m.type() === 'error' || m.type()==='warning') errs.push(m.text()); }); p.on('pageerror', e => errs.push(String(e)));
+await p.goto('http://localhost:5181/dev/characters/index.html?' + query);
+await p.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
+await p.screenshot({ path: 'dev/characters/' + out, fullPage: true });
+if (errs.length) console.log('ERRORS', errs.join('\n'));
+await b.close();

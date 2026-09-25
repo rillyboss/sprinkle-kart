@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const [,, track, players] = process.argv;
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+await page.goto(`http://localhost:5192/?quick=${track}&players=${players}&autodrive=1`);
+await page.waitForFunction(() => window.__game?.race?.state === 'racing', null, {timeout: 120000});
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `smoke-out/review-look/split-${track}-${players}p-a.png` });
+await page.evaluate(() => { window.__game.params.simSpeed = 6; });
+await page.waitForTimeout(15000);
+await page.evaluate(() => { window.__game.params.simSpeed = 1; });
+await page.waitForTimeout(2500);
+console.log(await page.evaluate(()=>window.__game.race.getPlayerKart(0).progress));
+await page.screenshot({ path: `smoke-out/review-look/split-${track}-${players}p-b.png` });
+await browser.close();

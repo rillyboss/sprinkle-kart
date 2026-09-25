@@ -1,0 +1,24 @@
+import { chromium } from 'playwright';
+const O='smoke-out/review-look/';
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+await page.goto(`http://localhost:5192/`);
+await page.evaluate(()=>localStorage.setItem('sprinkle-kart-progress-v1', JSON.stringify({unlocked:['cotton-candy-girl'],wins:1,trophies:{'cotton-candy-castle':1}})));
+await page.reload();
+await page.waitForFunction(() => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, {timeout: 90000});
+await page.waitForTimeout(1200);
+const press = async (k, p=500) => { await page.keyboard.press(k); await page.waitForTimeout(p); };
+await press('Enter',1000); await press('Enter',1000);
+await press('KeyS'); await press('KeyD'); await press('KeyD'); await press('KeyD',800);
+await page.screenshot({ path: O+'ccg-select.png' });
+await press('Enter', 2200);
+await page.screenshot({ path: O+'ccg-tracks.png' });
+await press('Enter', 500);
+await page.waitForFunction(() => window.__game?.state === 'race', null, {timeout: 60000});
+for (let i=0;i<3;i++){ await page.waitForTimeout(900); await page.screenshot({ path: O+`ccg-cd${i}.png` }); }
+await page.waitForFunction(() => window.__game?.race?.state === 'racing', null, {timeout: 60000});
+await page.keyboard.down('KeyW'); await page.waitForTimeout(4000);
+await page.screenshot({ path: O+'ccg-drive.png' });
+await page.keyboard.up('KeyW');
+await browser.close();

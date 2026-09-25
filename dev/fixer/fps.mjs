@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const [,, track = 'sundae-slopes', players = '1', out = ''] = process.argv;
+const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+const errs = []; p.on('pageerror', (e) => errs.push(String(e))); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+await p.goto(`http://localhost:5181/?quick=${track}&players=${players}&autodrive=1`);
+await p.waitForFunction(() => window.__game?.race?.state === 'racing', null, { timeout: 120000 });
+await p.waitForTimeout(5000);
+console.log(track, players, 'fps', await p.evaluate(() => window.__game.fps));
+if (out) await p.screenshot({ path: out });
+if (errs.length) console.log(errs.join('\n'));
+await b.close();

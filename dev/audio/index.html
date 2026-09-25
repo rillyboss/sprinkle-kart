@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sprinkle Kart Sound Booth</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #fff0f8; color: #5a2d52; margin: 24px; }
+  h1 { margin: 0 0 8px; }
+  section { margin: 16px 0; }
+  button { font: inherit; margin: 3px; padding: 8px 14px; border-radius: 999px; border: 2px solid #ff8cc8; background: #fff; color: #7a2d6a; cursor: pointer; }
+  button:hover { background: #ffe0f0; }
+  #stats { white-space: pre; font-family: ui-monospace, monospace; font-size: 12px; background: #fff; padding: 8px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h1>Sprinkle Kart Sound Booth</h1>
+<p>Click anything to unlock audio. Volume: music <input id="mv" type="range" min="0" max="1" step="0.05" value="0.7"> sfx <input id="sv" type="range" min="0" max="1" step="0.05" value="0.85"></p>
+<section id="music"><h3>Music</h3></section>
+<section><h3>Tempo</h3><button data-tempo="1">Normal</button><button data-tempo="1.15">Final lap (1.15x)</button></section>
+<section id="sfx"><h3>SFX</h3></section>
+<section id="voices"><h3>Voices</h3></section>
+<div id="stats"></div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
