@@ -2,7 +2,7 @@
  * Kid-friendly progress text for locked content + the Sticker Book totals.
  * Pure (no DOM, no storage): pass the progress object in.
  *
- *   progressInfo(rule, p)       ruleProgress + { count: '1/3', best: 'Best so far: 3rd', text }
+ *   progressInfo(rule, p)       ruleProgress + { count: '1/3', best: 'Best so far: 3rd', text, short }
  *   progressLine(rule, p)       "Win 3 races — 1/3 ⭐" (short hint + count)
  *   STAT_BOOK                   [key, emoji, label] rows for the Sticker Book totals page
  */
@@ -37,7 +37,8 @@ export function progressInfo(rule, p) {
   const count = progressCount(pr);
   const best = pr.done ? '' : bestSoFar(rule, p);
   const text = count ? `${count} ⭐` : best;
-  return { ...pr, count, best, text };
+  const short = count ? `${count} ⭐` : best.replace('Best so far:', 'Best:');
+  return { ...pr, count, best, text, short };
 }
 
 /** "Win 3 races — 1/3 ⭐" — short hint plus how far along (hint alone for yes/no rules). */

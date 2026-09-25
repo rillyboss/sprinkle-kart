@@ -9,6 +9,7 @@ import { groupTracksByCup } from '../../data/cups.js';
 import { el, escapeHtml, glyph, kbd, hint, floatiesLayer } from '../dom.js';
 import { cssColor, lighten, trackOutlinePoints } from '../hudLogic.js';
 import { pc, hintsBar, backButton, shake, trackArt, lockHint, SPEED_HINT } from './_shared.js';
+import { lockProgressHtml } from './unlock.js';
 
 /** @type {import('./index.js').ScreenDef} */
 export default {
@@ -51,7 +52,8 @@ export default {
           + (outline ? `<svg viewBox="0 0 100 60" class="sk-card-map"><polygon points="${outline}"/></svg>` : '')
           + (locked ? '<div class="sk-card-lock">🔒</div>' : '')
           + `</div>${cups}<div class="sk-card-name">${escapeHtml(t.name)}</div>`
-          + `<div class="sk-card-sub">${escapeHtml(locked ? lockHint(t) : (t.subtitle ?? ''))}</div>`,
+          + `<div class="sk-card-sub">${escapeHtml(locked ? lockHint(t) : (t.subtitle ?? ''))}</div>`
+          + (locked ? lockProgressHtml(t, ctx, { cls: 'skp-bar-card' }) : ''),
       });
       if (locked) card.classList.add('sk-card-locked');
       return card;

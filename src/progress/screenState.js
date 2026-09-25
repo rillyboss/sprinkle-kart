@@ -55,8 +55,8 @@ export function gateReduce(g, ev) {
     case 'confirm': case 'start': case 'select': {
       if (g.value === gateAnswer(g)) return out(g, ['confirm'], 'pass');
       const tries = g.tries + 1;
-      if (tries >= GATE_TRIES) return out(createGate(g.seed), ['back'], null, { shake: true, fresh: true });
-      return out({ ...g, tries }, ['back'], null, { shake: true });
+      if (tries >= GATE_TRIES) return out(createGate(g.seed), ['gate-oops'], null, { shake: true, fresh: true });
+      return out({ ...g, tries }, ['gate-oops'], null, { shake: true });
     }
     case 'back': return out(g, ['back'], 'cancel');
     default: return out(g);
@@ -258,10 +258,10 @@ export function bookReduce(s, ev) {
   const cols = s.cols[s.tab];
   const i = s.index[s.tab];
   switch (ev.action) {
-    case 'toggle': return out(setTab(s, s.tab + 1), ['move']);
+    case 'toggle': return out(setTab(s, s.tab + 1), ['book-page']);
     case 'back': return out(s, ['back'], 'back');
     case 'set':
-      if (ev.key === 'tab' && Number.isInteger(ev.value)) return out(setTab({ ...s, focus: 'tabs' }, ev.value), ['move']);
+      if (ev.key === 'tab' && Number.isInteger(ev.value)) return out(setTab({ ...s, focus: 'tabs' }, ev.value), ['book-page']);
       return out(s);
     case 'pick':
       if (!(ev.index >= 0 && ev.index < n)) return out(s);
@@ -270,8 +270,8 @@ export function bookReduce(s, ev) {
   }
   if (s.focus === 'tabs' || n === 0) {
     switch (ev.action) {
-      case 'left': return out(setTab(s, s.tab - 1), ['move']);
-      case 'right': return out(setTab(s, s.tab + 1), ['move']);
+      case 'left': return out(setTab(s, s.tab - 1), ['book-page']);
+      case 'right': return out(setTab(s, s.tab + 1), ['book-page']);
       case 'down': case 'confirm':
         return n > 0 ? out({ ...s, focus: 'grid' }, ['move']) : out(s);
       case 'start': return out(s, ['back'], 'back');
@@ -291,7 +291,7 @@ export function bookReduce(s, ev) {
       if (i < lastRowStart) return out(withIndex(s, n - 1), ['move']);
       return out(s);
     }
-    case 'confirm': return out(s, ['confirm'], null, { cheer: true });
+    case 'confirm': return out(s, [], null, { cheer: true }); // the screen plays 'sticker' or a nope wiggle
     case 'start': return out(s, ['back'], 'back');
     default: return out(s);
   }

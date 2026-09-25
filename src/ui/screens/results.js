@@ -7,7 +7,7 @@ import * as S from '../menuState.js';
 import { el, escapeHtml, hint, portraitHtml, floatiesLayer, confettiLayer } from '../dom.js';
 import { ordinal, medalFor, cheerMessage, formatTime } from '../hudLogic.js';
 import { pc, hintsBar, UNLOCK_MIN_SHOW } from './_shared.js';
-import { unlockOverlay } from './unlock.js';
+import { unlockOverlay, nextUnlockTeaser } from './unlock.js';
 
 /** Results options: [id, label, icon]. Modes may pass their own via params.options. */
 export const RESULT_OPTIONS = [
@@ -79,6 +79,7 @@ export default {
         el('h1.sk-h1.sk-results-title', { html: headline }),
         el('p.sk-lead', { html: `${trackDef?.name ? `${escapeHtml(trackDef.name)} · ` : ''}Everybody did great!` })),
       el('div.sk-results-body', {}, podium, list),
+      params.teaser === false ? null : nextUnlockTeaser(ctx), // progression: "Next sticker" card
       el('div.sk-list.sk-list-row', {}, btns),
       hintsBar([hint('A', 'Enter', 'Choose')]),
     );
@@ -86,11 +87,13 @@ export default {
     let celebration = null;
     let celebrationAge = 0; // seconds the current unlock reveal has been on screen
     let celebrateTimer = queue.length ? 1.8 : 0;
+    const seqTotal = queue.length;
     const celebrate = () => {
       celebrateTimer = 0;
       const u = queue.shift();
       if (!u) return;
-      celebration = unlockOverlay(ctx, u, () => handle({ deviceId: 'mouse', action: 'confirm' }));
+      const seq = { index: seqTotal - queue.length - 1, total: seqTotal };
+      celebration = unlockOverlay(ctx, u, () => handle({ deviceId: 'mouse', action: 'confirm' }), seq);
       node.appendChild(celebration);
       ctx.sfx('unlock');
       if (u.kind !== 'track') { try { ctx.audio?.voice?.(u.def, 'win'); } catch { /* ignore */ } }

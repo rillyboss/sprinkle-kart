@@ -7,6 +7,7 @@
 import * as S from '../menuState.js';
 import { el, escapeHtml, hint, portraitHtml, floatiesLayer } from '../dom.js';
 import { pc, hintsBar, backButton, shake, keepVisible, lockHint, lockDetail, STAT_ROWS } from './_shared.js';
+import { lockProgressHtml } from './unlock.js';
 
 /** Rosters bigger than this get a scrolling grid. */
 const SCROLL_ABOVE = 12;
@@ -35,6 +36,7 @@ export default {
         onclick: (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'pick', index: i }); },
         html: `${portraitHtml(def, ctx.portraits, { locked: it.locked })}`
           + `<div class="sk-tile-name">${it.locked ? `🔒 ${escapeHtml(lockHint(def, { short: many }))}` : escapeHtml(def?.name ?? it.id)}</div>`
+          + (it.locked ? lockProgressHtml(def, ctx, { cls: 'skp-bar-tile', compact: true }) : '')
           + '<div class="sk-rings"></div>',
       });
       if (it.locked) t.classList.add('sk-tile-locked');
@@ -96,7 +98,8 @@ export default {
           body = `${portraitHtml(def, ctx.portraits, { locked: true, cls: 'sk-panel-portrait' })}`
             + '<div class="sk-panel-info"><div class="sk-panel-name">Mystery Friend!</div>'
             + `<div class="sk-panel-tag">🔒 ${escapeHtml(lockHint(def))}</div>`
-            + `<div class="sk-panel-hint">${escapeHtml(lockDetail(def, 'character'))}</div></div>`;
+            + `<div class="sk-panel-hint">${escapeHtml(lockDetail(def, 'character'))}</div>`
+            + `${lockProgressHtml(def, ctx, { cls: 'skp-bar-panel' })}</div>`;
         } else {
           const stats = STAT_ROWS.map(([key, label, icon]) => {
             const v = Math.max(1, Math.min(5, Math.round(def?.stats?.[key] ?? 3)));
