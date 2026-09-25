@@ -165,12 +165,13 @@ describe('progress-unlocks system', () => {
     const { bus, session } = setup();
     const s1 = summaryFor(true);
     bus.emit('race-end', s1, session);
-    expect(s1.unlocks).toEqual([{ kind: 'character', id: 'cotton-candy-girl' }]);
+    // The rule engine may unlock more registered content from the same race (tests/progress.system.test.js).
+    expect(s1.unlocks).toContainEqual({ kind: 'character', id: 'cotton-candy-girl' });
     expect(progress.isUnlocked('cotton-candy-girl')).toBe(true);
     expect(progress.loadProgress().trophies['gumdrop-meadow']).toBe(1);
     const s2 = summaryFor(true);
     bus.emit('race-end', s2, session);
-    expect(s2.unlocks).toEqual([]);
+    expect(s2.unlocks).not.toContainEqual({ kind: 'character', id: 'cotton-candy-girl' });
   });
 
   it('no unlock without a human win', () => {
