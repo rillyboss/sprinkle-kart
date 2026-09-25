@@ -1,13 +1,10 @@
 /**
- * Cozy Cup tracks — OWNER: track builder (Cozy Cup).
+ * Cozy Cup tracks — OWNER: Tracks — Cozy Cup.
  * Tracks, in cup order (see src/content/lineup.js for names, themes + unlock rules):
  *   pumpkin-patch, teacup-garden, peppermint-village, pillow-fort
- *
- * Add one module per track (src/tracks/<id>.js, default-exporting
- * { def, buildScenery, prepare?, buildRoadDetails? }) and list it here, e.g.
- *   import pumpkinPatch from './pumpkin-patch.js';
- *   export default [pumpkinPatch, ...];
+ * Shared Cozy props live in src/tracks/props/cozy-*.js; songs in src/audio/songs/<id>.js.
  */
+import pumpkinPatch from './pumpkin-patch.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [];
+export default [pumpkinPatch];
