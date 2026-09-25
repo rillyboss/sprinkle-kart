@@ -17,6 +17,7 @@ export const def = {
   locked: false,
   unlock: null,
   pack: 'original',
+  pronoun: 'she',
   emoji: '⭐',
   quotes: {
     select: 'Twinkle and I are ready to shine.',

@@ -17,6 +17,7 @@ export const def = {
   locked: false,
   unlock: null,
   pack: 'original',
+  pronoun: 'he',
   emoji: '🐻',
   quotes: {
     select: 'GRRR! (That means hello!)',

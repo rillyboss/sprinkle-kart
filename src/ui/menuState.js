@@ -83,10 +83,14 @@ export function joinReduce(state, ev) {
 /* Character select                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Grid width that looks nice for a roster size (9 -> 5, 8 -> 4, 6 -> 3). */
+/**
+ * Grid width that looks nice for a roster size (9 -> 5, 8 -> 4, 6 -> 3).
+ * Big v2 rosters use up to 7 columns in 3+ rows (21 -> 7), and the grid scrolls.
+ */
 export function gridColumns(n) {
   if (n <= 4) return Math.max(1, n);
-  return Math.ceil(n / 2);
+  if (n <= 12) return Math.ceil(n / 2);
+  return Math.min(7, Math.ceil(n / 3));
 }
 
 /**
@@ -241,10 +245,12 @@ function lapsIndexFor(laps) {
  * @param {{trackId?:string, speedClass?:string, laps?:number}|null} [o.previous]
  * @param {string|null} [o.controllerId] only this device may drive the screen (null = anyone)
  * @param {boolean} [o.easyDrive] someone has Magic Steering on: start on Cozy
+ * @param {(track)=>boolean} [o.isLocked] true if this track is still locked (shown with a padlock, can't be raced)
  */
-export function createTrackSelectState({ tracks, previous = null, controllerId = null, easyDrive = false }) {
-  let trackIndex = previous?.trackId ? tracks.findIndex((t) => t.id === previous.trackId) : 0;
-  if (trackIndex < 0) trackIndex = 0;
+export function createTrackSelectState({ tracks, previous = null, controllerId = null, easyDrive = false, isLocked = () => false }) {
+  const locked = tracks.map((t) => { try { return !!isLocked(t); } catch { return true; } });
+  let trackIndex = previous?.trackId ? tracks.findIndex((t) => t.id === previous.trackId) : -1;
+  if (trackIndex < 0 || locked[trackIndex]) trackIndex = Math.max(0, locked.indexOf(false));
   let speedIndex = SPEED_ORDER.indexOf(previous?.speedClass ?? (easyDrive ? 'cozy' : 'zippy'));
   if (speedIndex < 0) speedIndex = 1;
   const laps = previous?.laps ?? tracks[trackIndex]?.laps ?? DEFAULT_LAPS;
@@ -255,6 +261,7 @@ export function createTrackSelectState({ tracks, previous = null, controllerId =
     lapsIndex: lapsIndexFor(laps),
     trackCount: tracks.length,
     controllerId,
+    locked,
   };
 }
 
@@ -297,12 +304,27 @@ export function trackSelectReduce(state, ev) {
     }
     case 'confirm':
     case 'start':
+      if (state.locked?.[state.trackIndex]) return out(state, ['back'], null, { shake: 'track' });
       return out(state, ['confirm'], 'next');
     case 'back':
       return out(state, ['back'], 'back');
     default:
       return out(state);
   }
+}
+
+/**
+ * Which page (cup group) an index of the flat track list is on.
+ * @param {number[]} sizes tracks per page, in order (e.g. [4, 4, 3])
+ * @returns {{page:number, offset:number}}
+ */
+export function pageForIndex(sizes, index) {
+  let start = 0;
+  for (let page = 0; page < sizes.length; page++) {
+    if (index < start + sizes[page]) return { page, offset: index - start };
+    start += sizes[page];
+  }
+  return { page: Math.max(0, sizes.length - 1), offset: 0 };
 }
 
 /** { trackId, speedClass, laps } from a track-select state. */

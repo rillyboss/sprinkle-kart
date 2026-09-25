@@ -40,6 +40,7 @@ export function parseDebugParams(search = '') {
     cpus: q.has('cpus') ? intParam(q, 'cpus', 0, RACERS_PER_RACE - 1, null) : null,
     simSpeed: intParam(q, 'simspeed', 1, 8, 1),
     laps: q.has('laps') ? intParam(q, 'laps', 1, 9, null) : null,
+    demoContent: flag(q, 'democontent'),
   };
 }
 

@@ -14,6 +14,7 @@
  * @property {boolean} locked      true iff `unlock` is not null
  * @property {UnlockRule|null} unlock  how to earn this racer (plain data, see src/content/lineup.js)
  * @property {'original'|'a'|'b'} pack
+ * @property {'she'|'he'|'they'} [pronoun]  for friendly lines ("She can race with you now!"); default 'they'
  * @property {string} emoji
  * @property {{select:string, win:string, oops:string}} quotes
  * @property {string} [unlockHint]  optional override for the locked-tile hint (default: describeUnlock(unlock))

@@ -18,6 +18,7 @@ export const def = {
   locked: true,
   unlock: { type: 'stat', stat: 'wins', count: 1 },
   pack: 'original',
+  pronoun: 'she',
   emoji: '🍭',
   quotes: {
     select: 'Fluffy power, ACTIVATE!',

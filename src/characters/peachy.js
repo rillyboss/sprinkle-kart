@@ -17,6 +17,7 @@ export const def = {
   locked: false,
   unlock: null,
   pack: 'original',
+  pronoun: 'she',
   emoji: '👑',
   quotes: {
     select: 'Tee-hee! Let the sweetest racer win!',

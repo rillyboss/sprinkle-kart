@@ -8,7 +8,8 @@
  * SwiftShader WebGL) with Playwright and checks:
  *   1. every track, 1 and 4 players (plus a 3-player spectator run), autodrive:
  *      no console/page errors, every kart moves forward, fps is reported;
- *   2. the full menu flow with keyboard presses (title → join → racer → track → race);
+ *   2. the full menu flow with keyboard presses (title → join → racer → track → race),
+ *      and the menus at full v2 size (?democontent=1: 21 racers, 20 tracks);
  *   3. a 1-lap autodrive race that reaches the results screen and shows the
  *      Cotton Candy Girl unlock celebration (after resetting progress).
  * Screenshots land in smoke-out/. Exits non-zero on any failure.
@@ -193,6 +194,62 @@ async function menuFlowTest(browser) {
   }
 }
 
+/**
+ * The menus at full v2 size (?democontent=1 pads them with locked placeholders
+ * for all 21 racers and 20 tracks): the grid scrolls, tracks page by cup, and
+ * locked tracks / racers can't be picked.
+ */
+async function menuScaleTest(browser) {
+  const name = 'menu-scale';
+  const n0 = failures.length;
+  const t = await newPage(browser, name);
+  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `scale-${n}.png`) });
+  const press = async (key, pause = 450) => { await t.page.keyboard.press(key); await t.page.waitForTimeout(pause); };
+  try {
+    await t.page.goto(`${BASE}?unlockreset=1&democontent=1`);
+    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, 60000, 'title screen');
+    await t.page.waitForTimeout(1200);
+    await press('Enter', 1000);                // kb1 joins as P1
+    await press('Slash', 800);                 // kb2 joins as P2
+    await press('Enter', 1000);                // → character select
+    const tiles = await t.page.evaluate(() => document.querySelectorAll('.sk-tile').length);
+    if (tiles !== 21) fail(name, `expected 21 racer tiles, got ${tiles}`);
+    const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
+    if (locked !== 13) fail(name, `expected 13 locked racer tiles, got ${locked}`);
+    await shot('1-characters');
+    await press('KeyS');                       // P1 down two rows (grid scrolls)
+    await press('KeyS');
+    await shot('2-characters-scrolled');
+    await press('Enter', 500);                 // a locked racer: nope-wiggle, not ready
+    if (await t.page.evaluate(() => !!document.querySelector('.sk-panel-ready'))) fail(name, 'a locked racer was picked');
+    await press('KeyW');
+    await press('KeyW');
+    await press('Enter', 500);                 // P1 picks Rocco
+    await press('Slash', 2400);                // P2 picks too → track select
+    const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-card').length);
+    if (cards !== 20) fail(name, `expected 20 track cards, got ${cards}`);
+    const tabs = await t.page.evaluate(() => document.querySelectorAll('.sk-cup-tab').length);
+    if (tabs !== 5) fail(name, `expected 5 cup tabs, got ${tabs}`);
+    await shot('3-tracks');
+    for (let i = 0; i < 4; i++) await press('KeyD', 300); // → first Bubble Cup track (locked)
+    await shot('4-tracks-bubble-cup');
+    await press('Enter', 900);
+    if ((await gameInfo(t.page)).state !== 'menu') fail(name, 'a locked track started a race');
+    await press('KeyA', 300);                  // back to Sundae Slopes
+    await press('Enter', 500);
+    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'race to start from the big menus');
+    const setup = await t.page.evaluate(() => window.__game.setup);
+    if (setup.trackId !== 'sundae-slopes') fail(name, `expected sundae-slopes, got ${setup.trackId}`);
+    checkErrors(t);
+    if (failures.length === n0) log(`${name}: ok`);
+  } catch (err) {
+    fail(name, err.message);
+    await shot('FAIL').catch(() => {});
+  } finally {
+    await t.ctx.close();
+  }
+}
+
 /** A fake standard-mapping controller injected before the page loads. */
 const FAKE_PAD_SCRIPT = () => {
   const pad = {
@@ -327,6 +384,7 @@ try {
   }
   if (wanted('cotton-candy-castle-3p')) await raceTest(browser, 'cotton-candy-castle', 3);
   if (wanted('menu')) await menuFlowTest(browser);
+  if (wanted('scale')) await menuScaleTest(browser);
   if (wanted('gamepad')) await gamepadFlowTest(browser);
   if (wanted('results')) await resultsTest(browser);
 } catch (err) {

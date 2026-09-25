@@ -1236,3 +1236,97 @@
 @media (prefers-reduced-motion: reduce) {
   .sk-floaty, .sk-conf, .sk-rays, .sk-cloud, .sk-uheart { animation-duration: 60s !important; }
 }
+
+/* ---------- v2: big rosters, cup pages, locked tracks, track unlocks ---------- */
+/* Rosters above 12 racers: the grid scrolls (the hot tile is kept in view). */
+.sk-grid.sk-grid-many {
+  max-height: min(50vh, 30em);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1.1em 0.5em 0.8em;
+  scroll-padding: 1.1em 0 0.8em;
+  align-content: flex-start;
+  scrollbar-width: thin;
+  scrollbar-color: #ff9fd2 transparent;
+}
+.sk-chars-solo .sk-grid.sk-grid-many { max-height: min(70vh, 34em); }
+.sk-grid-many .sk-tile-name { font-size: 0.74em; min-height: 2em; }
+.sk-grid-many .sk-tile-locked .sk-tile-name { font-size: 0.62em; }
+
+/* Track pages: one cup of cards at a time, with a cup tab strip on top. */
+.sk-track-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 62em);
+  margin: 0.5em 0 0.6em;
+  padding: 0.4em 0.6em 0.2em;
+  border-radius: 2em;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.sk-track-row .sk-cards { width: 100%; margin: 0.9em 0 0.2em; padding: 0.3em; }
+.sk-track-row .sk-cards[hidden] { display: none; }
+.sk-cupbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.45em; }
+.sk-cup-tab {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.2em 0.8em !important;
+  border-radius: 2em !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  font-weight: 600 !important;
+  font-size: 0.85em;
+  box-shadow: 0 0.15em 0 rgba(160, 70, 150, 0.18);
+  opacity: 0.8;
+  transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1), opacity 0.2s;
+}
+.sk-cup-tab .sk-cup-e { font-size: 1.25em; }
+.sk-cup-tab.sk-sel {
+  opacity: 1;
+  background: linear-gradient(180deg, #ffe08a, #ffc933) !important;
+  box-shadow: 0 0.15em 0 #e3a92a;
+  transform: scale(1.08);
+}
+.sk-row-focus.sk-track-row {
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 0.2em rgba(255, 255, 255, 0.9), 0 0 0 0.4em rgba(255, 143, 200, 0.5);
+}
+.sk-row-focus.sk-track-row::before {
+  content: '▶';
+  position: absolute;
+  left: -1.4em;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--sk-pink-deep);
+  animation: sk-nudge 0.8s ease-in-out infinite;
+}
+.sk-card-locked .sk-card-art { filter: grayscale(0.75) brightness(0.92); }
+.sk-card-locked .sk-card-art span { opacity: 0.45; }
+.sk-card-lock {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2.6em;
+  filter: drop-shadow(0 0.08em 0 rgba(90, 30, 90, 0.35));
+}
+.sk-card-locked .sk-card-sub { color: #d9489c; font-weight: 600; }
+
+/* Track unlock celebration hero. */
+.sk-unlock-track {
+  position: relative;
+  width: 16em;
+  aspect-ratio: 4 / 3;
+  border-radius: 1.6em;
+  border: 0.45em solid #fff;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.8) 0 8%, transparent 30%),
+    linear-gradient(160deg, var(--c1), var(--c3) 55%, var(--c2));
+  box-shadow: 0 0 0 0.35em #ff9fd2, 0 0 3em rgba(255, 120, 200, 0.8), 0 0 6em rgba(160, 200, 255, 0.8);
+  animation: sk-bob 1.6s ease-in-out infinite;
+}
+.sk-unlock-track span { position: absolute; }
+.sk-unlock-track .a1 { font-size: 5em; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.sk-unlock-track .a2 { font-size: 2.4em; left: 8%; bottom: 6%; }
+.sk-unlock-track .a3 { font-size: 2.2em; right: 8%; top: 6%; }

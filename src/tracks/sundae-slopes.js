@@ -22,6 +22,7 @@ export const def = makeTrack(
     laps: 3,
     width: 18,
     previewColor: 0x9fe8ff,
+    art: ['🍦', '🍒', '❄️'], // menu card emoji: big, bottom-left, top-right
     cup: 'sprinkle-cup',
     unlock: null,
     theme: {

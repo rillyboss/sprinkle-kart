@@ -10,6 +10,7 @@
  * @property {number} laps
  * @property {number} width           road width (16..22)
  * @property {number} previewColor    menu card colour
+ * @property {[string,string,string]} art  menu card emoji (big centre, bottom-left, top-right)
  * @property {string} cup             cup id (src/data/cups.js)
  * @property {UnlockRule|null} unlock
  * @property {number[][]} controlPoints  closed loop [x,y,z] in race order (from makeTrack)

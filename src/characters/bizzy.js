@@ -17,6 +17,7 @@ export const def = {
   locked: false,
   unlock: null,
   pack: 'original',
+  pronoun: 'she',
   emoji: '🐝',
   quotes: {
     select: "Let's bee-gin! Buzz buzz!",

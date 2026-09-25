@@ -14,6 +14,7 @@
  *   ?unlockreset=1     wipe saved progress on load
  *   ?cpus=0..7         CPU racer count in a quick race (default: fill to 8)
  *   ?simspeed=1..8     run N simulation steps per frame (fast automated tests)
+ *   ?democontent=1     menus show locked placeholders for the whole v2 lineup
  */
 import * as THREE from 'three';
 import { RACERS_PER_RACE, MAX_PLAYERS, SPEED_CLASSES, DEFAULT_LAPS } from './config.js';
@@ -39,6 +40,7 @@ import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
 import { raceStartInfo, buildRaceSummary } from './game/summary.js';
 import { installSystems } from './systems/index.js';
+import { demoContent } from './game/demoContent.js';
 
 const params = parseDebugParams(typeof location !== 'undefined' ? location.search : '');
 if (params.unlockReset) progress.resetProgress();
@@ -173,7 +175,9 @@ async function boot() {
   }
   game.portraits = portraits;
 
-  menus = new Menus(uiRoot, { input, audio, portraits, characters: CHARACTERS, tracks: TRACKS, progress });
+  // ?democontent=1 pads the menus with locked placeholders for the whole v2 lineup (UI checks).
+  const menuContent = params.demoContent ? demoContent(CHARACTERS, TRACKS) : { characters: CHARACTERS, tracks: TRACKS };
+  menus = new Menus(uiRoot, { input, audio, portraits, characters: menuContent.characters, tracks: menuContent.tracks, progress });
   hud = new Hud(uiRoot, { characters: CHARACTERS });
   game.menus = menus;
   game.hud = hud;

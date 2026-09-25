@@ -17,6 +17,7 @@ export const def = {
   locked: false,
   unlock: null,
   pack: 'original',
+  pronoun: 'they',
   emoji: '🦖',
   quotes: {
     select: 'Rawr! Is there a snack stop?',
