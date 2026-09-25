@@ -31,7 +31,7 @@ export const TUNING = {
   driftStartWindow: 0.32, // after landing a hop you may still start the drift (forgiving)
   driftSteerStart: 0.3, // |steer| needed to pick a drift direction
   driftEaseIn: 0.38, // seconds for grip + drift yaw to blend from normal to full slide
-  driftEaseOut: 0.24, // seconds to regain full grip after letting go
+  driftEaseOut: 0.2, // seconds to regain full grip after letting go
   driftGrip: 4.5, // sideways grip while sliding (steady slide angle ~30 deg, never a spin-out)
   driftGripTransfer: 0.93, // speed kept while sliding (no sudden slow-down)
   driftTurnBase: 0.36, // yaw multiplier when steering against the drift (wide, forgiving arc)

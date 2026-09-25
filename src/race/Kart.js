@@ -371,7 +371,7 @@ export function stepKart(kart, input, env, dt) {
     // kick) and back out again as grip returns (exit: no snap either).
     const into = (p.steerSmoothed * arcDir + 1) / 2;
     const driftYaw = arcDir * T.turnRate * kart.stats.handling * lowSpeed * driftTurnFactor(into);
-    const w = kart.drifting ? blend * blend : smoothstep(p.slide);
+    const w = kart.drifting ? blend * blend : p.slide * p.slide;
     yaw += (driftYaw - yaw) * w;
   }
   if (f < -0.5) yaw = -yaw; // reversing steers like a real car

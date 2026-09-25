@@ -4,6 +4,8 @@ import { TUNING as T } from './tuning.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const _t = new THREE.Vector3();
+/** Seconds of "where is my nose taking me" a drifting CPU looks ahead before letting go. */
+export const AI_DRIFT_EXIT_LOOK = 0.1;
 
 /** Signed heading change (radians) along the track from s over `dist`. Negative = right turn. */
 export function turnAhead(path, s, dist) {
@@ -241,8 +243,11 @@ export class CpuBrain {
       const stillBending = Math.abs(turnAhead(path, k.s, 24)) > 0.2;
       const pinnedOut = steer * k.driftDir < -0.95;
       this.driftOutFor = pinnedOut ? this.driftOutFor + dt : 0;
-      const outsideEdge = -k.lateral * k.driftDir > hw - 1; // sliding wide
-      const insideEdge = k.lateral * k.driftDir > hw - 1; // turning too tight
+      const outsideEdge = -k.lateral * k.driftDir > hw - 2; // sliding wide: let go before the grass
+      // Turning too tight? Look where the NOSE points: when the drift ends the
+      // kart goes that way (plus a turbo), so let go before it reaches the grass.
+      const noseIn = Math.max(0, speed * Math.sin(wrapAngle(path.headingAt(k.s) - k.heading)) * k.driftDir);
+      const insideEdge = k.lateral * k.driftDir + noseIn * AI_DRIFT_EXIT_LOOK > hw - 1.5;
       input.drift = stillBending && this.driftOutFor < 0.5 && !outsideEdge && !insideEdge;
       if (!input.drift) this.driftPlan = false;
     }
