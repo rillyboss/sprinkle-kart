@@ -10,6 +10,8 @@
  *
  * `animated: true` skips transforms (character rigs are posed from a
  * per-kart random seed), keeping only geometry + materials.
+ * `skipKartFx: true` leaves out kart-effect subtrees (userData.kartFx, see
+ * src/fx/kartEffects.js) so effect restyles don't count as model changes.
  */
 import * as THREE from 'three';
 
@@ -66,10 +68,12 @@ function matSig(m) {
  * @param {{animated?: boolean}} [opts]
  * @returns {string[]} sorted signatures
  */
-export function fingerprint(root, { animated = false } = {}) {
+export function fingerprint(root, { animated = false, skipKartFx = false } = {}) {
   root.updateMatrixWorld(true);
   const out = [];
-  root.traverse((o) => {
+  const visit = (o) => {
+    if (skipKartFx && o.userData?.kartFx) return; // src/fx/ effect subtrees (owned by workstreams)
+    for (const c of o.children) visit(c);
     if (o === root) return;
     const bits = [o.type, o.name || '', o.visible ? 'v' : 'h', o.renderOrder];
     if (o.isLight) bits.push(colorHex(o.color), r(o.intensity), colorHex(o.groundColor));
@@ -81,7 +85,8 @@ export function fingerprint(root, { animated = false } = {}) {
     }
     if (!animated) bits.push(`mw:${sumArray(o.matrixWorld.elements)}`);
     out.push(bits.join(' '));
-  });
+  };
+  visit(root);
   return out.sort();
 }
 

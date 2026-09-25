@@ -8,6 +8,8 @@
  *   {
  *     id: 'mode-select',
  *     flow: { order: 25, when?: (ctx) => boolean },   // optional: part of the pre-race flow
+ *     menuEntry: { label, emoji?, order?, where? },    // optional: a button on the title screen
+ *                                                      // (where: 'title' default; see screenFlow.js menuEntries)
  *     mount(ctx, nav, params) -> ScreenInstance,
  *   }
  * ScreenInstance: { node: HTMLElement, cls?: string, handle(ev), update?(dt), refresh?(), destroy?() }
@@ -26,6 +28,7 @@
  *   nav.resolve(value)    close an overlay/one-off screen (pause, results): its promise resolves
  *
  * @typedef {{ id: string, flow?: { order: number, when?: (ctx: object) => boolean },
+ *   menuEntry?: { label: string, emoji?: string, order?: number, where?: string },
  *   mount: (ctx: object, nav: object, params?: object) => object }} ScreenDef
  */
 

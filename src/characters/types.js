@@ -18,6 +18,7 @@
  * @property {string} emoji
  * @property {{select:string, win:string, oops:string}} quotes
  * @property {string} [unlockHint]  optional override for the locked-tile hint (default: describeUnlock(unlock))
+ * @property {string} [unlockHintShort]  optional override for the compact hint in big grids (default: describeUnlockShort(unlock))
  * @property {{height?:number, lookHeight?:number}} [camera]  chase-camera nudge for tall hats/hair
  *
  * @typedef {Object} CharacterEntry  what a racer module default-exports

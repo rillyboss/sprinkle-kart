@@ -4,7 +4,7 @@
  */
 import { PLAYER_COLORS } from '../../config.js';
 import { el, glyph } from '../dom.js';
-import { describeUnlock, unlockDetail } from '../../progress/describeUnlock.js';
+import { describeUnlock, describeUnlockShort, unlockDetail } from '../../progress/describeUnlock.js';
 
 /** Player colour for P1..P4. */
 export const pc = (i) => PLAYER_COLORS[i] ?? '#ff9ad5';
@@ -30,7 +30,8 @@ export function trackArt(def) {
 }
 
 /** Short locked-tile hint for a character or track def. */
-export function lockHint(def) {
+export function lockHint(def, { short = false } = {}) {
+  if (short) return def?.unlockHintShort || describeUnlockShort(def?.unlock) || 'Keep racing!';
   return def?.unlockHint || describeUnlock(def?.unlock) || 'Keep racing to unlock!';
 }
 

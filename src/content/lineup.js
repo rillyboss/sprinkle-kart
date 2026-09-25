@@ -3,7 +3,7 @@
  * rules for every track, cup and racer (existing and planned).
  *
  * Every registry entry (src/tracks/*.js, src/characters/*.js) must use the id,
- * name, cup/pack and `unlock` rule listed here; tests/lineup.test.js checks
+ * name, cup/pack and `unlock` rule listed here; tests/registries.test.js checks
  * that. Code that needs to talk about content that is not built yet (unlock
  * hints, the progression engine, menus) reads names from here, so nothing
  * breaks while a track or racer is still being made.

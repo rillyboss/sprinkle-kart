@@ -246,28 +246,54 @@ function shimmer(core, t, o) {
 }
 
 /**
- * Extra SFX packs: every src/audio/sfx/*.js default-exports
- *   { recipes: { 'engine-rev'(core, t, o) {...}, ... }, throttle?: { 'engine-rev': 0.1 } }
- * and is merged in automatically (built-in names always win), so workstreams
- * add sounds without editing this file. Recipe signature as above.
+ * Who may restyle which BUILT-IN recipe. A pack file named after an owner
+ * (src/audio/sfx/<owner>.js) that sets `override: true` replaces the built-in
+ * recipes listed for that owner (and only those). Everything else stays
+ * built-in; new names are always free to add.
+ *   items      power-up clarity workstream
+ *   driving    driving-feel workstream
+ *   race-flow  modes + timing workstream
+ *   progress   progression workstream
  */
-export function mergeSfxPacks(packs, target = SFX, throttle = SFX_THROTTLE) {
+export const SFX_OWNERS = Object.freeze({
+  items: Object.freeze(['item-roulette', 'item-get', 'bonk', 'bubble', 'gumdrop', 'rocket', 'star']),
+  driving: Object.freeze(['boost', 'bump', 'drift-spark', 'drift-boost']),
+  'race-flow': Object.freeze(['countdown', 'go', 'lap', 'final-lap', 'finish']),
+  progress: Object.freeze(['unlock']),
+});
+
+/**
+ * Extra SFX packs: every src/audio/sfx/*.js default-exports
+ *   { recipes: { 'engine-rev'(core, t, o) {...}, ... }, throttle?: { 'engine-rev': 0.1 }, override?: true }
+ * and is merged in automatically, so workstreams add sounds without editing
+ * this file. New names are added; an existing name is only replaced when the
+ * pack sets `override: true` AND its file name owns that built-in in
+ * SFX_OWNERS (anything else is skipped). Recipe signature as above.
+ * @param {Array<object|[string, object]>} packs pack objects, or [ownerName, pack] pairs
+ * @returns {string[]} names added or overridden
+ */
+export function mergeSfxPacks(packs, target = SFX, throttle = SFX_THROTTLE, owners = SFX_OWNERS) {
   const added = [];
-  for (const pack of packs) {
+  const builtIn = new Set(Object.keys(target));
+  for (const entry of packs) {
+    const [owner, pack] = Array.isArray(entry) ? entry : [entry?.name ?? null, entry];
     if (!pack || typeof pack !== 'object') continue;
+    const mayOverride = pack.override === true ? new Set(owners[owner] || []) : new Set();
     for (const [name, fn] of Object.entries(pack.recipes || {})) {
-      if (typeof fn !== 'function' || name in target) continue;
+      if (typeof fn !== 'function') continue;
+      const replacing = name in target;
+      if (replacing && !(builtIn.has(name) && mayOverride.has(name))) continue;
       target[name] = fn;
       added.push(name);
       const gap = pack.throttle?.[name];
-      if (Number.isFinite(gap) && !(name in throttle)) throttle[name] = gap;
+      if (Number.isFinite(gap) && (replacing || !(name in throttle))) throttle[name] = gap;
     }
   }
   return added;
 }
 
 const SFX_PACKS = import.meta.glob('./sfx/*.js', { eager: true, import: 'default' });
-mergeSfxPacks(Object.keys(SFX_PACKS).sort().map((k) => SFX_PACKS[k]));
+mergeSfxPacks(Object.keys(SFX_PACKS).sort().map((k) => [k.replace(/^.*\//, '').replace(/\.js$/, ''), SFX_PACKS[k]]));
 
 export const SFX_NAMES = Object.keys(SFX);
 

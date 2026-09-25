@@ -1,6 +1,6 @@
 /**
- * Item reactions: item-box roulette, getting and using items, bonks, shield
- * pops — sounds, HUD callouts and rumble. OWNER: power-up clarity workstream.
+ * Item reactions: item-box roulette, getting and using items, item boosts
+ * (race:boost with source 'item'), bonks, shield pops — sounds, HUD callouts and rumble. OWNER: power-up clarity workstream.
  */
 
 const USE_SFX = { gumdrop: 'gumdrop', 'cupcake-rocket': 'rocket', 'rainbow-star': 'star', 'bubble-shield': 'bubble' };
@@ -34,6 +34,13 @@ export default {
           s.rumble(k, 0.75, 320);
         }
         if (s.isHuman(e.by) && e.by !== k) s.flash(e.by, 'Boop! 🎯');
+      }),
+      bus.on('race:boost', (e, s) => {
+        // Sprinkle boosts from items (pad / start / drift boosts are drivingReactions.js).
+        const k = e.kart;
+        if (e.source !== 'item' || !s.isHuman(k)) return;
+        s.sfx('boost', { pan: s.panFor(k) });
+        s.rumble(k, 0.35, 160);
       }),
       bus.on('race:shield-pop', (e, s) => {
         if (s.isHuman(e.kart)) s.sfx('bubble', { pan: s.panFor(e.kart), volume: 0.8 });

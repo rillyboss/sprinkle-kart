@@ -17,7 +17,28 @@ export default {
 };
 ```
 
-Play with `audio.sfx('brake-squeak', { pan, volume })`. Built-in names win on
-a clash, so pick fresh names (prefix them, e.g. `item-`, `drive-`). For
-continuous sounds (engine hum) use `audio.sfxCore()` from a system's
-`race-frame` handler. Keep everything soft, cute and never harsh.
+Play with `audio.sfx('brake-squeak', { pan, volume })`. New names are free
+to add (prefix them, e.g. `item-`, `drive-`); on a clash with a built-in name
+the built-in wins.
+
+**Restyling a built-in sound.** A pack whose file name is an owner in
+`SFX_OWNERS` (`src/audio/sfx.js`) and that sets `override: true` replaces the
+built-ins listed for that owner, and only those:
+
+| File | Workstream | May override |
+|---|---|---|
+| `items.js` | power-up clarity | item-roulette, item-get, bonk, bubble, gumdrop, rocket, star |
+| `driving.js` | driving feel | boost, bump, drift-spark, drift-boost |
+| `race-flow.js` | modes + timing | countdown, go, lap, final-lap, finish |
+| `progress.js` | progression | unlock |
+
+```js
+// src/audio/sfx/items.js
+export default { override: true, recipes: { bonk(core, t, o) { /* clearer bonk */ } } };
+```
+
+Note `boost` is played for pad / start boosts by `drivingReactions.js` and for
+item boosts by `itemReactions.js`; the item side may switch to its own
+`item-boost` name without touching driving. For continuous sounds (engine hum)
+use `audio.sfxCore()` from a system's `race-frame` handler. Keep everything
+soft, cute and never harsh.

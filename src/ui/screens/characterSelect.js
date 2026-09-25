@@ -27,13 +27,14 @@ export default {
     const solo = players.length === 1;
     const tiles = [];
     const tileSigs = [];
-    const grid = el(`div.sk-grid${state.items.length > SCROLL_ABOVE ? '.sk-grid-many' : ''}`, { '--cols': state.cols });
+    const many = state.items.length > SCROLL_ABOVE;
+    const grid = el(`div.sk-grid${many ? '.sk-grid-many' : ''}`, { '--cols': state.cols });
     state.items.forEach((it, i) => {
       const def = ctx.char(it.id);
       const t = el('button.sk-tile', {
         onclick: (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'pick', index: i }); },
         html: `${portraitHtml(def, ctx.portraits, { locked: it.locked })}`
-          + `<div class="sk-tile-name">${it.locked ? `🔒 ${escapeHtml(lockHint(def))}` : escapeHtml(def?.name ?? it.id)}</div>`
+          + `<div class="sk-tile-name">${it.locked ? `🔒 ${escapeHtml(lockHint(def, { short: many }))}` : escapeHtml(def?.name ?? it.id)}</div>`
           + '<div class="sk-rings"></div>',
       });
       if (it.locked) t.classList.add('sk-tile-locked');

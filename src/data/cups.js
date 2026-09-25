@@ -80,3 +80,55 @@ export function isCupPlayable(cup, isTrackAvailable, tracks = TRACKS) {
   const list = cupTracks(cup.id, tracks);
   return list.length === cup.trackIds.length && list.every((t) => { try { return !!isTrackAvailable(t); } catch { return false; } });
 }
+
+/**
+ * Grand Prix scoring — the ONE shared definition of the 'gp-race-end' / 'gp-end'
+ * payload (GrandPrixResult, see src/game/events.js). Modes builds it after each
+ * GP race; progression reads it on 'gp-end'.
+ *
+ * Racers are matched across races by player (humans) or by character (CPUs).
+ * Ties on points go to more 1st places, then the better place in the latest race.
+ *
+ * @param {string} cupId
+ * @param {Array<{standings: Array<{characterId:string, playerIndex:number|null, isCPU:boolean, place:number}>}>} races
+ *   RaceSummary of every race run so far, in order
+ * @param {{raceCount?: number}} [opts]
+ * @returns {import('../game/events.js').GrandPrixResult}
+ */
+export function scoreGrandPrix(cupId, races = [], { raceCount } = {}) {
+  const total = raceCount ?? getCup(cupId)?.trackIds.length ?? 4;
+  const rows = new Map();
+  races.forEach((summary, ri) => {
+    for (const s of summary?.standings || []) {
+      const human = s.playerIndex !== null && s.playerIndex !== undefined && !s.isCPU;
+      const key = human ? `p${s.playerIndex}` : `c:${s.characterId}`;
+      let row = rows.get(key);
+      if (!row) {
+        row = { characterId: s.characterId, playerIndex: human ? s.playerIndex : null, isCPU: !human, points: 0, place: 0, racePoints: new Array(races.length).fill(0), wins: 0, last: 99 };
+        rows.set(key, row);
+      }
+      row.characterId = s.characterId;
+      const pts = pointsForPlace(s.place);
+      row.racePoints[ri] = pts;
+      row.points += pts;
+      if (s.place === 1) row.wins += 1;
+      if (ri === races.length - 1) row.last = s.place;
+    }
+  });
+  const sorted = [...rows.values()].sort((a, b) => b.points - a.points || b.wins - a.wins || a.last - b.last);
+  sorted.forEach((r, i) => { r.place = i + 1; });
+  const standings = sorted.map(({ wins, last, ...r }) => r);
+  const humans = standings.filter((r) => !r.isCPU);
+  const top = standings[0];
+  return {
+    cupId,
+    raceIndex: Math.max(0, races.length - 1),
+    raceCount: total,
+    finished: races.length >= total,
+    races: [...races],
+    standings,
+    humanWinner: top && !top.isCPU ? { playerIndex: top.playerIndex, characterId: top.characterId } : null,
+    bestHumanPlace: humans.length ? humans[0].place : null,
+    unlocks: [],
+  };
+}

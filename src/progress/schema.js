@@ -80,3 +80,27 @@ export function isValidUnlockRule(rule) {
     default: return false;
   }
 }
+
+const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Merge a saved (possibly older / partial / hand-edited) progress object over
+ * emptyProgress(): `stats` is merged key by key (new STAT_KEYS start at 0, junk
+ * values are dropped), map fields fall back to {} and `unlocked` to [] when
+ * their saved value has the wrong type. Unknown top-level keys are kept.
+ * @param {unknown} saved
+ */
+export function mergeProgress(saved) {
+  const base = emptyProgress();
+  if (!isPlainObject(saved)) return base;
+  const out = { ...base, ...saved };
+  out.unlocked = Array.isArray(saved.unlocked) ? saved.unlocked.filter((id) => typeof id === 'string') : [];
+  out.wins = Number.isFinite(saved.wins) ? saved.wins : 0;
+  for (const k of ['trophies', 'tracks', 'cups', 'records']) out[k] = isPlainObject(saved[k]) ? { ...saved[k] } : {};
+  out.stats = emptyStats();
+  if (isPlainObject(saved.stats)) {
+    for (const [k, v] of Object.entries(saved.stats)) if (Number.isFinite(v)) out.stats[k] = v;
+  }
+  out.unlockAll = saved.unlockAll === true;
+  return out;
+}

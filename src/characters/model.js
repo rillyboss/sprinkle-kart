@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import {
-  Kit, FX, SHADOW_MAT, TAU, WHITE, DRIFT_COLORS, rng, buildEffects,
+  Kit, FX, SHADOW_MAT, TAU, WHITE, rng,
   buildKartBase, addArms, makeHead, addFace, G, toon, SKIN,
 } from './parts.js';
 import { CHARACTER_ENTRIES } from './index.js';
+import { buildKartEffects } from '../fx/kartEffects.js';
 
 /**
  * Kart model assembly: the rig, the per-frame animation and the effects.
@@ -21,7 +22,7 @@ import { CHARACTER_ENTRIES } from './index.js';
  *      ├─ chassis               bob / roll / boost pitch
  *      │  ├─ front wheel pivots (steer) → spin, rear axle (spin), steering wheel
  *      │  └─ driver             lean / bounce  → head (tilt, look) → eyes (blink)
- *      └─ effects               drift sparks, rainbow boost puff, shield bubble
+ *      └─ effects               src/fx/: drift sparks, rainbow boost puff, shield bubble, dizzy stars
  */
 
 function builderFor(id) {
@@ -101,7 +102,7 @@ export function buildKartModel(charDef) {
   for (const g of kit.geometries) triangles += g.attributes.position.count / 3;
 
   const owned = { geometries: kit.geometries, materials: [] };
-  const fx = buildEffects(rig, owned);
+  const fx = buildKartEffects(rig, owned);
 
   // Per-kart animation state (never reallocated).
   const seed = rng(0x9e3779b1 ^ (++seedCounter * 7919));
@@ -124,68 +125,6 @@ export function buildKartModel(charDef) {
     spinning: false,
     happy: false,
   };
-
-  function updateSparks(t, s) {
-    const sp = fx.sparks;
-    const on = !!s.drifting && (s.speed ?? 1) !== 0;
-    sp.visible = on;
-    if (!on) {
-      fx.sparkLevel = -1;
-      return;
-    }
-    const level = Math.max(0, Math.min(3, s.driftLevel | 0));
-    const d = fx.dummy;
-    const col = fx.color;
-    if (level !== fx.sparkLevel && level < 3) {
-      col.set(DRIFT_COLORS[level]);
-      for (let i = 0; i < sp.count; i++) sp.setColorAt(i, col);
-      sp.instanceColor.needsUpdate = true;
-    }
-    fx.sparkLevel = level;
-    const size = level === 0 ? 0.9 : 1.3 + level * 0.35;
-    const x0 = 0.8;
-    for (let i = 0; i < sp.count; i++) {
-      const side = i % 2 === 0 ? 1 : -1;
-      const ph = (t * (2.6 + level * 0.5) + i * 0.618) % 1;
-      const spread = ((i * 0.37) % 1) - 0.5;
-      d.position.set(side * (x0 + ph * (0.25 + spread * 0.4)), 0.1 + Math.sin(ph * Math.PI) * (0.35 + level * 0.12), -0.85 - ph * (0.9 + spread * 0.4));
-      d.rotation.set(t * 7 + i, t * 5 + i * 2, 0);
-      d.scale.setScalar(size * (1 - ph) * (0.7 + ((i * 0.53) % 1) * 0.6));
-      d.updateMatrix();
-      sp.setMatrixAt(i, d.matrix);
-      if (level === 3) {
-        col.setHSL((t * 1.8 + i * 0.13) % 1, 0.95, 0.65);
-        sp.setColorAt(i, col);
-      }
-    }
-    sp.instanceMatrix.needsUpdate = true;
-    if (level === 3) sp.instanceColor.needsUpdate = true;
-  }
-
-  function updateBoost(t, on) {
-    fx.boost.visible = on;
-    if (!on) return;
-    for (let i = 0; i < fx.flames.length; i++) {
-      const f = fx.flames[i];
-      const fl = 0.85 + Math.sin(t * 40 + i * 2) * 0.2;
-      f.scale.set(fl, fl, 0.9 + Math.sin(t * 33 + i) * 0.35);
-      f.position.z = rig.exhausts[i].z - 0.15;
-    }
-    const p = fx.puff;
-    const d = fx.dummy;
-    const ex = rig.exhausts;
-    for (let i = 0; i < p.count; i++) {
-      const e = ex[i % ex.length];
-      const ph = (t * 2.4 + i / p.count) % 1;
-      const j = ((i * 0.61) % 1) - 0.5;
-      d.position.set(e.x + j * 0.6 * ph, e.y + 0.05 + ph * 0.7 + j * 0.12, e.z - 0.2 - ph * 1.8);
-      d.rotation.set(t * 3 + i, t * 2, 0);
-      d.scale.setScalar((0.45 + ph * 1.2) * (1 - ph * ph));
-      d.updateMatrix();
-      p.setMatrixAt(i, d.matrix);
-    }
-    p.instanceMatrix.needsUpdate = true;
-  }
 
   function update(dt, state) {
     const s = state || IDLE;
@@ -260,20 +199,8 @@ export function buildKartModel(charDef) {
       if (rig.happyEyes) rig.happyEyes.visible = happyEyes;
     }
 
-    // effects
-    updateSparks(t, s);
-    updateBoost(t, st.boosting);
-    st.shieldS += ((s.shielded ? 1 : 0) - st.shieldS) * (1 - Math.exp(-dt * 12));
-    const sh = fx.shield;
-    sh.visible = st.shieldS > 0.02;
-    if (sh.visible) {
-      const w = Math.sin(t * 5) * 0.03;
-      sh.scale.set(st.shieldS * (1 + w), st.shieldS * (1 - w), st.shieldS * (1 + w * 0.5));
-      fx.hearts.rotation.y = t * 1.2;
-      fx.bubbleMat.opacity = 0.26 + Math.sin(t * 3) * 0.06;
-    }
-    fx.dizzy.visible = st.spinning;
-    if (st.spinning) fx.dizzy.rotation.y = -st.spinA * 1.3 + t * 3;
+    // effects (src/fx/kartEffects.js)
+    fx.update(t, dt, s, st);
 
     // character wiggles: (t, dt, st = smoothed anim state, s = raw model state from the Race:
     // speed, steer, drifting, driftLevel, spinning, boosting, shielded, star, driftDir, hop, offRoad, time)
@@ -287,8 +214,7 @@ export function buildKartModel(charDef) {
     group.removeFromParent();
     for (const g of owned.geometries) g.dispose();
     for (const m of owned.materials) m.dispose();
-    fx.sparks.dispose();
-    fx.puff.dispose();
+    fx.dispose();
   }
 
   update(0, IDLE);

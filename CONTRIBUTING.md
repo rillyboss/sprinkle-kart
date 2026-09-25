@@ -35,13 +35,14 @@ Every change is covered by tests, and the **full** suite is green:
 ```bash
 npx vitest run            # unit tests (node) — all of them, not just yours
 npx vite build            # production build must succeed
-node scripts/smoke.mjs    # end-to-end: every track 1p/4p/3p, menus (keyboard, pad, full-size), results + unlock
+node scripts/smoke.mjs    # end-to-end: every registered track 1p (Sprinkle Cup also 4p/3p), menus (keyboard, pad, full-size), results + unlock
 ```
 
 Then **look** at the screenshots in `smoke-out/` that show your work (and the ones you might
 have affected). `node scripts/smoke.mjs <filter…>` runs a subset while iterating
-(e.g. `node scripts/smoke.mjs menu scale`, `node scripts/smoke.mjs bubblegum-bay`) — add a
-smoke case for new tracks/screens by appending a function in `scripts/smoke.mjs`.
+(e.g. `node scripts/smoke.mjs menu scale`; `node scripts/smoke.mjs bubblegum-bay` runs that track in
+1p and 4p; `SMOKE_FULL=1` runs 4p for every track). New tracks are picked up from the registry
+automatically; add a smoke case for a new screen by appending a function in `scripts/smoke.mjs`.
 
 If `tests/visual.golden.test.js` fails, you changed how an ORIGINAL track or racer is built.
 That is only OK when intended: refresh with `UPDATE_GOLDEN=1 npx vitest run tests/visual.golden.test.js`

@@ -93,7 +93,7 @@ src/
     index.js               registry (CHARACTERS, getCharacter, getSelectableCharacters, getCharacterEntry)
     pack-original.js       the first 9 racers        pack-a.js / pack-b.js   v2 packs
     parts.js               Kit batcher, outlines, G.* geometry, faces, kart chassis, wheels, FX
-    model.js               buildKartModel(def): rig + animation + effects around a racer's build()
+    model.js               buildKartModel(def): rig + animation around a racer's build(); effects come from src/fx/
     <id>.js                { def: CharacterDef, build(kit, rig, def) }
     types.js               JSDoc CharacterDef / CharacterEntry
   tracks/                  tracks: one module per track + generic core
@@ -106,17 +106,20 @@ src/
     geometry.js            frames/ribbon/wall/outlines/shapes/mat4/Batch/procedural textures
     constants.js           FENCE_OFFSET, SKY_RADIUS, SHOULDER_IN, ...
     <id>.js                { def: TrackDef, buildScenery(ctx), prepare?, buildRoadDetails? }
+  fx/                      kart-model effects, one module per owner (§7)
+    kartEffects.js         host: buildKartEffects(rig, owned); tags nodes userData.kartFx (not fingerprinted)
+    driftSparks.js         drift sparks (driving feel)    powerupEffects.js   boost puff, shield, dizzy stars (power-up)
   data/                    compatibility shims + cups
     characters.js          → re-exports src/characters/index.js (race code + tests import this path)
     tracks.js              → re-exports src/tracks/index.js + runLayout
-    cups.js                CUPS, GP_POINTS, cupTracks(), groupTracksByCup(), isCupPlayable() ...
+    cups.js                CUPS, GP_POINTS, cupTracks(), groupTracksByCup(), isCupPlayable(), scoreGrandPrix() ...
   progress/                saved progress + unlock data (progression workstream)
-    progress.js            localStorage save: isUnlocked, unlock, recordWin, loadProgress, resetProgress
-    schema.js              STAT_KEYS, emptyProgress(), UnlockRule format, isValidUnlockRule()
-    describeUnlock.js      describeUnlock(rule) / unlockDetail(rule, kind) hint text
+    progress.js            localStorage save: isUnlocked, unlock, recordWin, getRecord, submitRecord, loadProgress, resetProgress
+    schema.js              STAT_KEYS, emptyProgress(), mergeProgress(), UnlockRule format, isValidUnlockRule()
+    describeUnlock.js      describeUnlock(rule) / describeUnlockShort(rule) / unlockDetail(rule, kind) hint text
     access.js              isAvailable(def) — "may a player use this?" for racers AND tracks
   game/
-    events.js              the event bus (bus, createEventBus, EVENTS)
+    events.js              the event bus (bus, createEventBus, EVENTS incl. gp-race-end / gp-end)
     session.js             createSessionHelpers(): sfx/voice/rumble/flash/isHuman/panFor per race
     raceStats.js           per-race counters per human from Race events
     summary.js             raceStartInfo() / buildRaceSummary() payloads, MODES
@@ -132,18 +135,19 @@ src/
     Menus.js               screen router (run / showPause / showResults / open / update)
     screens/index.js       screen registry (import.meta.glob)   screens/_shared.js  helpers
     screens/title.js join.js characterSelect.js trackSelect.js pause.js results.js unlock.js
-    screenFlow.js          pure flow ordering helpers
+    screenFlow.js          pure flow ordering helpers + menuEntries() / titleFocusReduce() (§8)
     menuState.js           pure reducers for every screen (tested)
-    Hud.js + hudLogic.js   race HUD; hudWidgets.js = per-player widget host (hud.addWidget)
+    Hud.js + hudLogic.js   race HUD; hudWidgets.js (+ .css) = per-player widget host with anchored zones (hud.addWidget)
     dom.js, ui.css         DOM helpers, base stylesheet (frozen — new CSS goes in your own file)
-  race/                    Race, Kart physics, AI (+ Kid-Assist), Items, ItemBoxes, KartFx, tuning
-  audio/                   AudioManager, sfx.js (+ sfx/*.js packs), songs.js (+ songs/*.js), voice, synth
+  race/                    Race, Kart physics, AI (+ Kid-Assist), Items, ItemBoxes, KartFx, tuning,
+                           gameplay.js (per-track physics multipliers -> env.gameplay)
+  audio/                   AudioManager, sfx.js (+ sfx/*.js packs, SFX_OWNERS overrides), songs.js (+ songs/*.js), voice, synth
   render/                  toon.js, SplitScreen, CameraRig, occlusion, portraits
                            characterModels.js + trackBuilder.js are re-export shims
   input/                   InputManager, gamepad mapping, keyboard layouts, menu repeat
   track/TrackPath.js       closed spline, arc-length s, project()
 tests/                     vitest (node) — see §11
-scripts/smoke.mjs          end-to-end smoke (Playwright + system Chrome)
+scripts/smoke.mjs          end-to-end smoke (Playwright + system Chrome); track list read from the live registry
 ```
 
 Every old import path still works (`src/data/characters.js`, `src/data/tracks.js`,
@@ -173,22 +177,40 @@ your PR description, and cover it with a test (the orchestrator merges in order)
 | 4 | **Tracks — Superstar Cup** | `cupcake-carnival, aurora-palace, moonbounce-base, ribbon-sky` + `pack-superstar.js`, `props/superstar-*.js`, `tests/tracks.superstar.test.js` | — | same |
 | 5 | **Characters — pack A** | `src/characters/{bruno,shelly,boo-berry,twiggy,captain-crumbs,baby-bonbon}.js`, `src/characters/pack-a.js`, `tests/characters.packA.test.js`, `dev/characters-a/**` | — | `parts.js`, `model.js`, `index.js`, other packs, `voice.js` |
 | 6 | **Characters — pack B** | `src/characters/{luna,bleep,puff,prince-ribbit,marina,lulu}.js`, `src/characters/pack-b.js`, `tests/characters.packB.test.js`, `dev/characters-b/**` | — | same |
-| 7 | **Progression / unlocks** | `src/progress/**`, `src/systems/progressUnlocks.js` (+ new `src/systems/progress*.js`), `src/ui/screens/unlock.js`, new screens `src/ui/screens/settings.js` (parent gate, reset, unlock-all) and e.g. `collection.js`, their CSS files, `tests/progress*.test.js` | `src/game/summary.js` (new optional fields only) | lineup rules (binding), `Menus.js` router |
-| 8 | **Modes + timing** (Grand Prix, Time Trial + ghost, timers & records) | `src/main.js` (flow / GP loop / time-trial session — the **only** workstream that edits it), `src/race/Race.js` (race rules: items on/off, CPU count, ghost hooks), `src/modes/**` (new), `src/systems/raceFlowReactions.js` (+ new `src/systems/timing*.js`, `gp*.js`), new screens `modeSelect.js` (order 25), `cupSelect.js`, `gpStandings.js`, `timeTrialResults.js`, HUD widgets for timers (`src/ui/widgets/timer*.js` via `hud.addWidget`), `src/game/summary.js`, `src/game/setup.js`, `tests/modes*.test.js` | `src/config.js` | `Hud.js` internals (use widgets), `menuState.js` existing reducers (add new ones in `src/modes/`) |
-| 9 | **Driving feel** (drift tuning, Kid-Assist, driving SFX) | `src/race/Kart.js`, `src/race/AI.js` (Kid-Assist = `applyEasyDrive`), `src/race/tuning.js`, `src/systems/drivingReactions.js` + new `src/systems/drivingSounds.js`, `src/audio/sfx/driving.js`, the `ASSIST_LABEL` constant in `src/ui/screens/join.js` + README Kid-Assist section, `tests/race.physics*.test.js`, `tests/driving*.test.js` | `src/audio/AudioManager.js` (new methods at the end, if `sfxCore()` isn't enough) | `Race.js` (ask modes), items |
-| 10 | **Power-up clarity** (item FX / SFX / HUD callouts) | `src/race/Items.js`, `src/race/ItemBoxes.js`, `src/race/KartFx.js`, `src/systems/itemReactions.js` (+ new `src/systems/item*.js`), `src/audio/sfx/items.js`, `src/ui/Hud.js` (item slot / roulette) + `src/ui/widgets/item*.js`, `tests/race.items*.test.js`, `tests/items*.test.js` | `src/ui/hudLogic.js` (`ITEM_ICONS` etc.) | `Kart.js` physics (ask driving) |
+| 7 | **Progression / unlocks** | `src/progress/**` (incl. the record storage behind `getRecord`/`submitRecord`), `src/systems/progressUnlocks.js` (+ new `src/systems/progress*.js`, which also handle `gp-end`), `src/ui/screens/unlock.js`, new screens `src/ui/screens/settings.js` (parent gate, reset, unlock-all) and e.g. `collection.js` (reached via `menuEntry`, §8), their CSS files, `src/audio/sfx/progress.js`, `tests/progress*.test.js` | `src/game/summary.js` (new optional fields only) | lineup rules (binding), `Menus.js` router, `title.js` (declare `menuEntry` instead) |
+| 8 | **Modes + timing** (Grand Prix, Time Trial + ghost, timers & records) | `src/main.js` (flow / GP loop / time-trial session — the **only** workstream that edits it; emits `gp-race-end` / `gp-end` built with `scoreGrandPrix()`), `src/race/Race.js` (race rules: items on/off, CPU count, ghost hooks — keep `env.gameplay`), `src/modes/**` (new), `src/systems/raceFlowReactions.js` (+ new `src/systems/timing*.js`, `gp*.js`; best times via `progress.submitRecord`), new screens `modeSelect.js` (order 25), `cupSelect.js`, `gpStandings.js`, `timeTrialResults.js`, HUD widgets for timers (`src/ui/widgets/timer*.js`, anchor `top-center`), `src/audio/sfx/race-flow.js`, `src/game/summary.js`, `src/game/setup.js`, `tests/modes*.test.js` | `src/config.js` | `Hud.js` internals (use widgets), `menuState.js` existing reducers (add new ones in `src/modes/`), `src/progress/*` (call its API) |
+| 9 | **Driving feel** (drift tuning, Kid-Assist, driving SFX/FX) | `src/race/Kart.js` (reads `env.gameplay`), `src/race/AI.js` (Kid-Assist = `applyEasyDrive`), `src/race/tuning.js`, `src/fx/driftSparks.js`, `src/systems/drivingReactions.js` + new `src/systems/drivingSounds.js`, `src/audio/sfx/driving.js` (may `override` boost / bump / drift-spark / drift-boost), HUD widgets `src/ui/widgets/drive*.js` (anchor `bottom-center`), the `ASSIST_LABEL` constant in `src/ui/screens/join.js` + README Kid-Assist section, `tests/race.physics*.test.js`, `tests/driving*.test.js` | `src/audio/AudioManager.js` (new methods at the end, if `sfxCore()` isn't enough) | `Race.js` (ask modes), items, `src/fx/powerupEffects.js` |
+| 10 | **Power-up clarity** (item FX / SFX / HUD callouts) | `src/race/Items.js`, `src/race/ItemBoxes.js`, `src/race/KartFx.js`, `src/fx/powerupEffects.js` (boost puff, shield bubble, dizzy stars), `src/systems/itemReactions.js` (+ new `src/systems/item*.js`; owns item-boost sounds), `src/audio/sfx/items.js` (may `override` item-roulette / item-get / bonk / bubble / gumdrop / rocket / star), `src/ui/Hud.js` (item slot / roulette) + `src/ui/widgets/item*.js` (anchors `under-cluster`, `callout`), `tests/race.items*.test.js`, `tests/items*.test.js` | `src/ui/hudLogic.js` (`ITEM_ICONS` etc.) | `Kart.js` physics (ask driving), `src/fx/driftSparks.js` |
 
 Shared, owned by the architect/orchestrator (change only with a heads-up in the PR):
 `ARCHITECTURE.md`, `CONTRIBUTING.md`, `src/content/lineup.js`, `src/characters/{parts,model,index,types}.js`,
+`src/fx/kartEffects.js`, `src/race/gameplay.js`, `src/audio/sfx.js` (built-in book + `SFX_OWNERS`), `src/ui/hudWidgets.css`,
 `src/tracks/{core,sceneryKit,geometry,pathTools,layout,constants,index,types}.js`, `src/data/cups.js`,
 `src/game/{events,session,raceStats}.js`, `src/systems/index.js`, `src/ui/{Menus,screenFlow,menuState,dom,hudWidgets}.js`,
 `src/ui/screens/{index,_shared,title,join,characterSelect,trackSelect,pause,results}.js`, `src/ui/ui.css`,
-`scripts/smoke.mjs` (append new test functions only), `tests/visual.golden.test.js` + `tests/golden/*`,
+`scripts/smoke.mjs` (append new test functions only; tracks come from the registry, never add ids),
+`tests/visual.golden.test.js` + `tests/golden/*` + `tests/helpers/fingerprint.js`, `tests/contract.seams.test.js`, `tests/kartEffects.test.js`,
 `README.md` (each workstream edits only its own section).
 
 Cross-workstream seams (agree in PR descriptions, don't reach into each other's files):
 - **Moonbounce Base low gravity**: the track sets `def.gameplay = { gravity: 0.55, hopBoost: 1.4 }`;
-  the driving-feel owner reads `trackDef.gameplay` in `Kart.js` (defaults = normal).
+  `Race` normalises it (`src/race/gameplay.js`: defaults 1, clamped) into `race.gameplay` and hands it to
+  physics as **`env.gameplay`** (`stepKart(kart, input, env, dt)`). The driving-feel owner decides what the
+  multipliers do in `Kart.js`; nobody needs to touch `Race.js` for it.
+- **Grand Prix -> progression**: modes emits `gp-race-end` after every GP race and `gp-end` after the last one,
+  with a `GrandPrixResult` built by `scoreGrandPrix(cupId, raceSummaries)` (`src/data/cups.js`, §6). Progression
+  subscribes to `gp-end` to count `grandPrixFinished` / `cupsWon` / `cups[cupId]` and pushes `{ kind, id }` into
+  `gp.unlocks`; the GP standings screen (modes) celebrates them with `screens/unlock.js`.
+- **Best times**: modes calls `progress.submitRecord(trackId, { raceTime, bestLap })` -> `{ newBestRace, newBestLap,
+  previous, record }` and reads `progress.getRecord(trackId)`; progression owns how and where they are stored.
+- **Kart effects**: drift sparks = `src/fx/driftSparks.js` (driving), boost puff / shield bubble / dizzy stars =
+  `src/fx/powerupEffects.js` (power-up). Neither is in the golden fingerprints, so both restyle freely.
+- **Sounds**: a built-in recipe is restyled only by its owner's pack with `override: true` (`SFX_OWNERS`, §7).
+  Pad / start / drift boosts are voiced by `drivingReactions.js`; item boosts (`race:boost` with `source: 'item'`)
+  by `itemReactions.js` — never both.
+- **Settings / Collection**: progression's screens declare `menuEntry` and appear on the title screen (§8);
+  mode select may list `where: 'mode-select'` entries the same way.
+- **HUD**: widgets pick a reserved zone with `anchor` (§7) so the timer, item callouts and drift meter never overlap.
 - **Time Trial**: modes owns the session (`setup.mode = 'time-trial'`, 1 human, no CPUs, no items);
   ghosts record from `race-frame` (kart position/heading) and render a translucent `buildKartModel()`.
 - **Kid-Assist**: `easyDrive` stays the field name in RaceSetup/participants/karts
@@ -261,7 +283,8 @@ shielded, star, driftDir, hop, offRoad, time }` (e.g. Bleep pops toast while `st
 eyes with highlights, rosy cheeks, smile); model fits the kart box (~2.2 long, 1.3–2.4 wide, sits on
 the ground, head behind z 0.2); **< ~3k triangles**; only toon/glow materials; animates without
 NaNs for every state; friendly words only; lineup name/pack/unlock match; balanced stats;
-never breaks the golden fingerprints of the original 9 (don't edit `parts.js`/`model.js`).
+never breaks the golden fingerprints of the original 9 (don't edit `parts.js`/`model.js`; the kart effects in
+`src/fx/` are not fingerprinted). Per-racer effect wiggles (e.g. Bleep's toast) go in your own `rig.anims`.
 
 ---
 
@@ -390,6 +413,8 @@ stops the others.
 | `race-end` | `(summary: RaceSummary, session)` | race complete, **before** the results screen — push unlocks into `summary.unlocks` |
 | `results-choice` | `({ choice }, session)` | player picked again / next-track / menu |
 | `race-exit` | `({ outcome }, session)` | session torn down |
+| `gp-race-end` | `(gp: GrandPrixResult, session)` | a Grand Prix race finished (after its `race-end`); standings so far. Emitted by **modes** |
+| `gp-end` | `(gp: GrandPrixResult, session)` | the last race of a cup finished, **before** the GP standings screen; push unlocks into `gp.unlocks`. Consumed by **progression** |
 
 **Race events** — every Race `onEvent` is forwarded as `race:<type>` with `(e, session)`:
 `race:countdown {n}`, `race:go`, `race:boost {source:'start'|'pad'|'item'…}`, `race:drift-level {level}`,
@@ -407,6 +432,14 @@ stats: { itemsUsed, bonksGiven, bonked, miniTurbos, driftBoosts[3], boosts, item
 standings: [{ characterId, playerIndex, isCPU, place, finished, estimated, finishTime }],
 winner: { playerIndex, characterId } | null (a real human 1st place), totals: { itemsUsed, bonksGiven, miniTurbos },
 unlocks: [] }` — `unlocks` is a collector: subscribers push `{ kind: 'character'|'track', id }`.
+
+**GrandPrixResult** (`scoreGrandPrix(cupId, races)` in `src/data/cups.js`; both GP events carry it):
+`{ cupId, raceIndex, raceCount, finished, races: RaceSummary[], standings: [{ characterId, playerIndex|null, isCPU,
+points, place, racePoints[] }] (best first; ties -> more wins -> better latest place), humanWinner: { playerIndex,
+characterId } | null (a human 1st on points), bestHumanPlace, unlocks: [] }`.
+Events that another workstream subscribes to are declared here in `EVENTS` (ask the architect) rather than with
+`bus.define` in the emitter's file: `bus.on` throws on undeclared names, so a subscriber installed before the
+emitter's module loads would be skipped.
 
 **Session** (2nd argument of race events): `race, trackDef, setup, mode, laps, humans, playerIndices,
 scene, built, path, rigs, spectator, stats, audio, input, hud, params, paused, resultsShown, outcome` plus
@@ -443,10 +476,27 @@ export default {
 ```
 
 Other zero-conflict extension points:
-- **HUD widgets** — `app.hud.addWidget({ id, create(vpNode, playerIndex) { return { update(kart, race, t), reset(), destroy() } } })`
-  (`src/ui/hudWidgets.js`). One instance per player viewport; put your CSS in your own file.
-- **SFX packs** — `src/audio/sfx/<pack>.js` default-exports `{ recipes: { name(core, t, o) }, throttle? }`
-  (`src/audio/sfx/README.md`). Play with `audio.sfx(name, { pan, volume, pitch, level })`.
+- **HUD widgets** — `app.hud.addWidget({ id, anchor, order, create(node, playerIndex, vpNode) { return { update(kart, race, t), reset(), destroy() } } })`
+  (`src/ui/hudWidgets.js`). One instance per player viewport; put your CSS in your own file. With an `anchor`, `node`
+  is the widget's own box inside a shared flex zone (stacked by `order`, removed for you); without one it is the raw
+  viewport node and you position yourself (avoid). **Reserved zones** (the built-in HUD has the item slot + lap pill
+  in the top corner on the item side, the place badge in a bottom corner, countdown / final-lap banner / flashes /
+  wrong-way in the 20-45% band, and the minimap on the divider or a corner):
+
+  | anchor | where | for |
+  |---|---|---|
+  | `top-center` | top middle | race timer, lap splits, ghost gap (modes + timing) |
+  | `under-cluster` | under the item slot, item side | item name, "hold to drag" hints (power-up) |
+  | `callout` | centre, from 50% down | big item callouts, "Incoming rocket!" (power-up) |
+  | `bottom-center` | bottom middle | drift / turbo meter, speed (driving feel) |
+- **SFX packs** — `src/audio/sfx/<pack>.js` default-exports `{ recipes: { name(core, t, o) }, throttle?, override? }`
+  (`src/audio/sfx/README.md`). Play with `audio.sfx(name, { pan, volume, pitch, level })`. New names are free;
+  a built-in is restyled only by the owner file named in `SFX_OWNERS` with `override: true`:
+  `items.js` (item-roulette, item-get, bonk, bubble, gumdrop, rocket, star) · `driving.js` (boost, bump,
+  drift-spark, drift-boost) · `race-flow.js` (countdown, go, lap, final-lap, finish) · `progress.js` (unlock).
+- **Kart effects** — `src/fx/<effect>.js` modules `{ id, build(rig, owned) -> { update(t, dt, s, st), dispose() } }`
+  hosted by `src/fx/kartEffects.js` (nodes tagged `userData.kartFx`, skipped by the golden fingerprints;
+  `tests/kartEffects.test.js` animates them for every racer).
 - **Continuous sounds** — `audio.sfxCore()` → `{ ctx, noise, out, wet }` or `null`.
 - **Songs** — `src/audio/songs/<id>.js` (`src/audio/songs/README.md`).
 - **Screens** — `src/ui/screens/<name>.js` (§8).
@@ -482,9 +532,16 @@ export default {
   `devices()`, `setCooldown(s)`. `ctx.draft` = `{ previous, joinState, charPicks, charState, trackPrev, mode, skip }`
   and any fields your screens add (e.g. `cupId`). The RaceSetup a flow finishes with may carry
   `mode` and `cupId` — main.js/summary read them (`mode` defaults to `'free'`).
+- **Menu entries**: a non-flow screen becomes reachable from the title screen by declaring
+  `menuEntry: { label: 'Grown-ups', emoji: '⚙️', order?: 90, where?: 'title' }`. The title screen shows the entries
+  as a button row under "Press A" (Down focuses it, Left/Right choose, A opens it with params `{ returnTo: 'title' }`,
+  Up/B go back to "Press A"; Start always plays). The screen returns with `nav.goto(params.returnTo ?? 'title')`.
+  Other hubs (e.g. mode select) list their own with `menuEntries(ctx.screens, '<their id>')` (`src/ui/screenFlow.js`).
+  With no entries the title screen looks exactly as before.
 - Keep screen logic in **pure reducers** (like `src/ui/menuState.js`) and test them in node.
 - Character select and track select are data-driven over the registries: locked entries show a `?`
-  silhouette / padlock with `describeUnlock(rule)` (or `def.unlockHint`); rosters > 12 get up to 7 columns and a
+  silhouette / padlock with `describeUnlock(rule)` (or `def.unlockHint`; big rosters use the compact
+  `describeUnlockShort(rule)` / `def.unlockHintShort` on tiles and keep the full sentence in the panel); rosters > 12 get up to 7 columns and a
   scrolling grid (cursor kept in view); tracks page by cup (tab strip, left/right walks across cups).
 - Results: `showResults({ standings, trackDef, humanWinner, unlocks: [{ kind, def }], summary, options? })`
   celebrates each unlock in order (`screens/unlock.js`); pause/results accept custom `options`.
@@ -507,10 +564,18 @@ Saved progress (`localStorage['sprinkle-kart-progress-v1']`, see `src/progress/s
            multiplayerRaces, kidAssistFinishes, grandPrixFinished, cupsWon },
   tracks: { [trackId]: { finishes, wins, top3, bestPlace } },
   cups: { [cupId]: { bestPlace, wins } },
-  records: { [trackId]: { bestRace, bestLap } },   // seconds — modes+timing
+  records: { [trackId]: { bestRace, bestLap } },   // seconds, written via submitRecord() (modes+timing calls it)
   unlockAll: boolean,                              // parent gate
 }
 ```
+
+Loading always goes through `mergeProgress(saved)` (`schema.js`): `stats` is merged key by key over `emptyStats()`,
+so a save from an older version gets every new STAT_KEY at 0 (never `undefined + 1 = NaN`), and wrong-typed fields
+fall back to empty. Add new counters to `STAT_KEYS` only; the merge picks them up.
+
+**Records API** (`src/progress/progress.js`): `getRecord(trackId) -> { bestRace, bestLap }` (seconds or null) and
+`submitRecord(trackId, { raceTime, bestLap }) -> { newBestRace, newBestLap, previous, record }` (invalid or missing
+times are ignored). Modes calls it (from a `race-end` system or the Time Trial flow); progression owns the storage.
 
 Counting rules: a "race" is a Free Race or Grand Prix race (not a Time Trial); counters are shared by the
 family (any human's result counts once per race); `wins`/`top3` ignore estimated finishes.
@@ -532,12 +597,15 @@ Girl); the progression workstream replaces it with a rule engine that evaluates 
   **Model forward is local +Z**; heading `h` ⇒ forward `(sin h, 0, cos h)`, `object.rotation.y = h`.
 - `src/config.js`: `MAX_PLAYERS 4`, `RACERS_PER_RACE 8`, `DEFAULT_LAPS 3`, `SPEED_CLASSES { cozy, zippy, zoomy }`,
   `UNLOCK_CHARACTER_ID`, `PLAYER_COLORS`.
-- **KartModel** = `buildKartModel(def) → { group, update(dt, state), dispose(), characterId, triangles, head }`.
+- **KartModel** = `buildKartModel(def) → { group, update(dt, state), dispose(), characterId, triangles, head }`
+  (effects from `src/fx/`).
 - **BuiltTrack** = `buildTrack(def, path, { module? }) → { group, sky, itemBoxSlots, boostPads, lights,
   terrainHeight(x, z), update(dt, time), dispose() }`; the caller applies `theme.fog*` to `scene.fog`.
 - **Race** (`src/race/Race.js`): `new Race({ scene, trackDef, path, builtTrack, participants, speedClass,
   buildKartModel, onEvent, laps })`, `update(dt, inputs)`, `karts`, `getStandings()`, `getPlayerKart(pi)`,
   `state 'countdown'|'racing'|'finished'`, `countdown`, `time`, `clock`, `dispose()`.
+  `race.gameplay` (normalised `trackDef.gameplay`, `src/race/gameplay.js`); physics gets it as `env.gameplay` in
+  `stepKart(kart, input, env = { path, boostPads, emit, gameplay }, dt)`.
   `participants: [{ characterId, playerIndex|null, easyDrive }]`; `DriveInput = { steer -1..1, accel 0..1,
   brake 0..1, drift (held), useItem (edge), lookBack }`.
   **KartState**: `id, characterId, charDef, playerIndex, isCPU, name, position, heading, speed, velocity, s, lateral,
@@ -562,6 +630,9 @@ Girl); the progression workstream replaces it with a rule engine that evaluates 
 
 - **Every change is covered by tests and the FULL suite stays green** before you move on:
   `npx vitest run` · `npx vite build` · `node scripts/smoke.mjs` (or a filter: `node scripts/smoke.mjs menu scale results`).
+- The smoke reads the track list from the live registry: every registered track runs in 1p; 4p runs for the
+  Sprinkle Cup, for tracks named in the filter (`node scripts/smoke.mjs bubblegum-bay` -> 1p + 4p) or for all
+  tracks with `SMOKE_FULL=1`. Stale `*-FAIL.png` screenshots are deleted at the start of every run.
 - Put new tests in new files named after your area (see §3) so they never conflict.
 - Shared contract tests run over **every** registered racer/track automatically (`registries`, `characters`,
   `charactersModels`, `tracks`, `tracksBuilder`, `race.fairness`) — new content must pass them, not change them.

@@ -296,6 +296,13 @@
   box-shadow: 0 0.15em 0 #efc24a;
 }
 .sk-wins span { font-weight: 500; font-size: 0.8em; }
+.sk-title-entries { display: flex; gap: 0.6em; flex-wrap: wrap; justify-content: center; position: relative; z-index: 2; }
+.sk-title-entry {
+  font: inherit; font-size: 0.95em; font-weight: 700; color: var(--sk-ink, #6a3a6e);
+  padding: 0.25em 0.9em; border-radius: 2em; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, 0.85); box-shadow: 0 0.15em 0 rgba(160, 70, 150, 0.25);
+}
+.sk-title-entry.sk-focus, .sk-title-entry:hover { background: #fff; box-shadow: 0 0 0 0.18em #ff5fb4, 0 0.15em 0 rgba(160, 70, 150, 0.25); transform: scale(1.06); }
 .sk-title-karts { position: absolute !important; bottom: 1.2em; left: 0; right: 0; height: 3em; }
 .sk-title-karts span { position: absolute; font-size: 2.4em; animation: sk-drive 9s linear infinite; }
 .sk-title-karts span:nth-child(2) { animation-delay: -3s; }
@@ -1240,7 +1247,7 @@
 /* ---------- v2: big rosters, cup pages, locked tracks, track unlocks ---------- */
 /* Rosters above 12 racers: the grid scrolls (the hot tile is kept in view). */
 .sk-grid.sk-grid-many {
-  max-height: min(50vh, 30em);
+  max-height: min(54vh, 31em);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1.1em 0.5em 0.8em;

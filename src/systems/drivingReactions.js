@@ -1,5 +1,6 @@
 /**
- * Driving reactions: boosts (pads, sprinkles, Rocket Start), drift sparks and
+ * Driving reactions: boosts (pads, drift turbos, Rocket Start; item boosts are
+ * handled by itemReactions.js), drift sparks and
  * drift turbos, kart-kart bumps — sounds, HUD callouts and rumble.
  * OWNER: driving-feel workstream. Per-frame engine / tyre / brake sounds go in
  * their own system file (e.g. src/systems/drivingSounds.js) via 'race-frame'.
@@ -14,7 +15,8 @@ export default {
     const offs = [
       bus.on('race:boost', (e, s) => {
         const k = e.kart;
-        if (!s.isHuman(k)) return;
+        // Item boosts (Sprinkle Boost / Triple Sprinkle) belong to itemReactions.js.
+        if (!s.isHuman(k) || e.source === 'item') return;
         s.sfx('boost', { pan: s.panFor(k) });
         s.rumble(k, 0.35, 160);
         if (e.source === 'start') s.flash(k, 'Rocket Start! 🚀');

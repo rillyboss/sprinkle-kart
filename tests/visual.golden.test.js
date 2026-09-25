@@ -1,7 +1,9 @@
 /**
  * Visual regression guard for the ORIGINAL content (Sprinkle Cup tracks and
  * the original 9 racers): the built scene graphs must match the recorded
- * fingerprints in tests/golden/visual.json exactly.
+ * fingerprints in tests/golden/visual.json exactly. Kart effects (src/fx/:
+ * drift sparks, boost puff, shield, dizzy stars) are NOT fingerprinted; the
+ * driving-feel and power-up workstreams restyle them freely.
  *
  * If you changed shared building code ON PURPOSE (e.g. prettier trees in the
  * scenery kit), look at the game, then refresh the goldens:
@@ -43,7 +45,7 @@ function current() {
   for (const id of ORIGINAL_CHARACTERS) {
     const def = CHARACTERS.find((c) => c.id === id);
     const m = buildKartModel(def);
-    const fp = fingerprint(m.group, { animated: true });
+    const fp = fingerprint(m.group, { animated: true, skipKartFx: true });
     out.characters[id] = digest(fp);
     lines.characters[id] = fp;
     m.dispose();

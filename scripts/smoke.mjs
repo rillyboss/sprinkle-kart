@@ -6,16 +6,20 @@
  *
  * Starts its own Vite dev server on :5190, drives system Chrome (headless,
  * SwiftShader WebGL) with Playwright and checks:
- *   1. every track, 1 and 4 players (plus a 3-player spectator run), autodrive:
+ *   1. every REGISTERED track (read from the live registry, so new tracks are
+ *      covered automatically): 1 player always; 4 players for the original Sprinkle
+ *      Cup, for any track named in the filters (e.g. `node scripts/smoke.mjs bubblegum-bay`)
+ *      or for all tracks with SMOKE_FULL=1; plus a 3-player spectator run. Autodrive:
  *      no console/page errors, every kart moves forward, fps is reported;
  *   2. the full menu flow with keyboard presses (title → join → racer → track → race),
  *      and the menus at full v2 size (?democontent=1: 21 racers, 20 tracks);
  *   3. a 1-lap autodrive race that reaches the results screen and shows the
  *      Cotton Candy Girl unlock celebration (after resetting progress).
- * Screenshots land in smoke-out/. Exits non-zero on any failure.
+ * Screenshots land in smoke-out/ (stale *-FAIL.png files are cleared at the start).
+ * Exits non-zero on any failure.
  */
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { chromium } from 'playwright';
@@ -24,11 +28,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'smoke-out');
 const PORT = 5190;
 const BASE = `http://localhost:${PORT}/`;
-const TRACK_IDS = ['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes'];
+/** The original Sprinkle Cup: always smoke-tested in 1p and 4p. */
+const ORIGINAL_TRACK_IDS = ['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes'];
+const FULL = !!process.env.SMOKE_FULL;
 const RACE_WAIT_MS = Number(process.env.SMOKE_WAIT_MS || 12000);
 const only = process.argv.slice(2); // optional filters: e.g. "menu", "results", a track id
 
 mkdirSync(OUT, { recursive: true });
+for (const f of readdirSync(OUT)) if (f.endsWith('-FAIL.png')) rmSync(path.join(OUT, f), { force: true });
 
 const failures = [];
 const log = (...a) => console.log('[smoke]', ...a);
@@ -68,6 +75,23 @@ async function waitForServer(ms = 40000) {
 process.on('SIGINT', () => { stopServer(); process.exit(130); });
 
 /* ---------------- helpers ---------------- */
+
+/** Track ids from the live registry (src/tracks/index.js via the dev server). */
+async function registeredTrackIds(browser) {
+  const ctx = await browser.newContext();
+  try {
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}?smoke-registry=1`);
+    const ids = await page.evaluate(async () => (await import('/src/tracks/index.js')).TRACKS.map((t) => t.id));
+    if (!Array.isArray(ids) || !ids.length) throw new Error('no tracks registered');
+    return ids;
+  } catch (err) {
+    fail('track-registry', err.message);
+    return ORIGINAL_TRACK_IDS;
+  } finally {
+    await ctx.close().catch(() => {});
+  }
+}
 
 async function newPage(browser, name, viewport = { width: 1280, height: 720 }) {
   const ctx = await browser.newContext({ viewport });
@@ -379,8 +403,12 @@ try {
     headless: true,
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
-  for (const id of TRACK_IDS) {
-    for (const n of [1, 4]) if (wanted(`${id}-${n}p`)) await raceTest(browser, id, n);
+  const trackIds = await registeredTrackIds(browser);
+  log(`tracks: ${trackIds.join(', ')}`);
+  for (const id of trackIds) {
+    if (wanted(`${id}-1p`)) await raceTest(browser, id, 1);
+    const named = only.some((f) => f === id || f === `${id}-4p`);
+    if ((ORIGINAL_TRACK_IDS.includes(id) || FULL || named) && wanted(`${id}-4p`)) await raceTest(browser, id, 4);
   }
   if (wanted('cotton-candy-castle-3p')) await raceTest(browser, 'cotton-candy-castle', 3);
   if (wanted('menu')) await menuFlowTest(browser);

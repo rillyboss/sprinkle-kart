@@ -8,7 +8,9 @@
  *
  * "Typed" = event names must be declared: the built-ins are in EVENTS below;
  * a module that emits its own event declares it once with
- * `bus.define('gp-standings', 'payload description')` in its own file.
+ * `bus.define('my-event', 'payload description')` in its own file (declare it
+ * at import time, and prefer asking the architect to add shared events here so
+ * a subscriber installed before the emitter never hits an undeclared name).
  * The 'race:*' namespace is open: every Race event is forwarded as
  * `race:<type>` with the Race event object (see ARCHITECTURE.md), so new Race
  * event types need no declaration here.
@@ -30,7 +32,29 @@ export const EVENTS = Object.freeze({
   'race-end': '(summary: RaceSummary, session) — race complete, BEFORE the results screen; push unlocks into summary.unlocks',
   'race-exit': '({ outcome }, session) — session torn down (again|next-track|restart|menu)',
   'results-choice': '({ choice }, session) — player picked on the results screen',
+
+  // --- Grand Prix (emitted by the modes workstream, consumed by progression) ---
+  'gp-race-end': '(gp: GrandPrixResult, session) — a Grand Prix race finished; gp.standings = points so far (after race-end)',
+  'gp-end': '(gp: GrandPrixResult, session) — all races of a cup done, BEFORE the GP standings screen; push unlocks into gp.unlocks',
 });
+
+/**
+ * Payload of 'gp-race-end' and 'gp-end' (built with scoreGrandPrix() from
+ * src/data/cups.js so both workstreams agree on it):
+ *
+ * @typedef {{
+ *   cupId: string,
+ *   raceIndex: number,                      // 0-based index of the race just run
+ *   raceCount: number,                      // races in this cup (4)
+ *   finished: boolean,                      // true for 'gp-end'
+ *   races: object[],                        // RaceSummary of every race so far, in order
+ *   standings: Array<{ characterId: string, playerIndex: number|null, isCPU: boolean,
+ *                      points: number, place: number, racePoints: number[] }>,  // best first
+ *   humanWinner: { playerIndex: number, characterId: string } | null,   // a human 1st on points
+ *   bestHumanPlace: number | null,
+ *   unlocks: Array<{ kind: 'character'|'track', id: string }>,          // collector (gp-end)
+ * }} GrandPrixResult
+ */
 
 /**
  * @param {{ onError?: (err: unknown, name: string) => void }} [opts]

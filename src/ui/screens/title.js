@@ -1,9 +1,12 @@
 /**
  * Title screen — "Press A!". The device that presses first becomes P1.
- * Flow order 10 (first).
+ * Flow order 10 (first). Screens with a `menuEntry` (see ../screenFlow.js
+ * menuEntries) appear as a small button row under "Press A": Down focuses it,
+ * Left/Right choose, A opens (with params { returnTo: 'title' }), Up/B go back.
  */
 import * as S from '../menuState.js';
-import { el, glyph, kbd, floatiesLayer } from '../dom.js';
+import { el, glyph, kbd, floatiesLayer, escapeHtml } from '../dom.js';
+import { menuEntries, titleFocusReduce } from '../screenFlow.js';
 
 /** @type {import('./index.js').ScreenDef} */
 export default {
@@ -21,8 +24,23 @@ export default {
       return `<i class="sk-logo-sprinkle" style="left:${x}%;top:${y}%;--r:${(i * 47) % 180}deg;--c:${colors[i % colors.length]};--i:${i}"></i>`;
     }).join('');
 
+    const entries = menuEntries(ctx.screens, 'title');
+    let focus = -1;
+    const chips = entries.map((en, i) => el('button.sk-title-entry', {
+      onclick: (e) => { e.stopPropagation(); openEntry(i); },
+      html: `${en.emoji ? `<span>${escapeHtml(en.emoji)}</span> ` : ''}${escapeHtml(en.label)}`,
+    }));
+    const showFocus = () => chips.forEach((c, i) => c.classList.toggle('sk-focus', i === focus));
+    function openEntry(i) {
+      ctx.sfx('confirm');
+      nav.goto(entries[i].id, { returnTo: 'title' });
+    }
+
     const handle = (ev) => {
-      if (ev.action === 'confirm' || ev.action === 'start') {
+      const r = titleFocusReduce(focus, ev.action, entries.length);
+      if (r.open !== null) { openEntry(r.open); return; }
+      if (r.focus !== focus) { focus = r.focus; ctx.sfx('move'); showFocus(); return; }
+      if (r.play) {
         ctx.sfx('confirm');
         const dev = ev.deviceId === 'mouse' ? 'kb1' : ev.deviceId;
         // The device that pressed A becomes P1 straight away.
@@ -43,6 +61,7 @@ export default {
         el('div.sk-subtitle', { html: 'made with <b>Sophia</b> <span class="sk-beat">💖</span>' }),
       ),
       el('div.sk-press', { html: `Press ${glyph('A')} or ${kbd('Enter')}!` }),
+      chips.length ? el('div.sk-title-entries', {}, ...chips) : null,
       wins > 0 ? el('div.sk-wins', { html: `🏆 × ${wins} <span>trophies won</span>` }) : null,
       el('div.sk-title-karts', { 'aria-hidden': 'true', html: '<span>🍭</span><span>🧁</span><span>🍬</span>' }),
     );

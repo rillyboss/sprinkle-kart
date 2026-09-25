@@ -1,7 +1,8 @@
 /**
  * Friendly, kid-readable unlock hints from an UnlockRule (see ./schema.js).
  *
- *   describeUnlock(rule)  -> short hint for tiles/cards, e.g. "Win a race to unlock!"
+ *   describeUnlock(rule)  -> hint for tiles/cards, e.g. "Win a race to unlock!"
+ *   describeUnlockShort(rule) -> compact hint for crowded grids, e.g. "Top 3: Starlight Galaxy"
  *   unlockDetail(rule, kind) -> a longer sentence for info panels
  *
  * Names come from the content lineup so hints work even for tracks/cups that
@@ -60,4 +61,32 @@ export function unlockDetail(rule, kind = 'character') {
   const who = kind === 'track' ? 'a brand-new track' : 'a sweet new racer';
   if (rule.type === 'stat' && rule.stat === 'wins' && rule.count === 1) return `Finish in 1st place to meet ${who}…`;
   return `${describeUnlock(rule).replace(/ to unlock!$/, '')} to meet ${who}…`;
+}
+
+const SHORT_STAT = {
+  racesFinished: (n) => plural(n, 'Finish a race', 'Finish # races'),
+  wins: (n) => plural(n, 'Win a race', 'Win # races'),
+  podiums: (n) => plural(n, 'Top 3 once', 'Top 3 × #'),
+  itemsUsed: (n) => plural(n, 'Use an item', 'Use # items'),
+  bonksGiven: (n) => plural(n, 'Bonk a racer', 'Bonk # racers'),
+  miniTurbos: (n) => plural(n, 'Drift turbo', '# drift turbos'),
+  timeTrialsFinished: (n) => plural(n, 'Do a Time Trial', '# Time Trials'),
+  multiplayerRaces: (n) => plural(n, 'Race a friend', 'Race friends × #'),
+  kidAssistFinishes: (n) => plural(n, 'Finish w/ Kid-Assist', '# Kid-Assist races'),
+  grandPrixFinished: (n) => plural(n, 'Finish a Grand Prix', '# Grand Prix'),
+  cupsWon: (n) => plural(n, 'Win a cup', 'Win # cups'),
+};
+const SHORT_RESULT = { win: 'Win', top3: 'Top 3', finish: 'Finish' };
+
+/** Compact hint for crowded grids (no "to unlock!"); the full sentence goes in detail panels. */
+export function describeUnlockShort(rule) {
+  if (!rule) return '';
+  const r = SHORT_RESULT[rule.result];
+  switch (rule.type) {
+    case 'stat': return SHORT_STAT[rule.stat]?.(rule.count ?? 1) ?? 'Keep racing!';
+    case 'track': return r ? `${r}: ${trackName(rule.trackId)}` : 'Keep racing!';
+    case 'cup-track': return r ? `${r}: any ${cupName(rule.cupId)}` : 'Keep racing!';
+    case 'distinct-tracks': return r ? `${r} on ${rule.count} tracks` : 'Keep racing!';
+    default: return 'Keep racing!';
+  }
 }

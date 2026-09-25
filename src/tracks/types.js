@@ -18,6 +18,7 @@
  * @property {number[]} itemBoxRows   fractions of the lap
  * @property {{at:number, lateral:number}[]} boostPads
  * @property {object} scenery         builder hints: terrain, hills, bridges, basin, fence, arch, center, ...
+ * @property {{gravity?:number, hopBoost?:number}} [gameplay]  physics multipliers (src/race/gameplay.js), e.g. Moonbounce low gravity
  *
  * @typedef {Object} TrackModule      what a track module default-exports
  * @property {TrackDef} def
