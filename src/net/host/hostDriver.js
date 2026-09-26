@@ -69,6 +69,7 @@ export function createHostDriver({
   let currentTick = 0;
   let lastSentSeq = 0;
   let started = false;
+  const startInfo = { startTick: 1, goTick: 1 };
   let paused = false;
   let disposed = false;
   const stats = { ticks: 0, snapshots: 0, eventBatches: 0, frags: 0, pings: 0, badMessages: 0, tickMsMax: 0 };
@@ -184,6 +185,8 @@ export function createHostDriver({
     start({ nowMs = now(), goTick, startTick = 1 } = {}) {
       started = true;
       clock.start(nowMs, startTick);
+      startInfo.startTick = startTick;
+      startInfo.goTick = goTick;
       const msg = { raceId, startTick, goTick, epoch: clock.epoch };
       transport.broadcast('ctrl', wire.encodeCtrl(wire.MSG.START, msg));
       transport.broadcast('ctrl', wire.encodeCtrl(wire.MSG.TIMEBASE, clock.timebase(1)));
@@ -232,6 +235,26 @@ export function createHostDriver({
     },
     /** Tell the house's buffer a HELLO / RESYNC / reconnect happened (baseline without presses). */
     rebaseline(houseId) { H.get(houseId)?.buffer.rebaseline(); },
+    /** The peer id a house is reached on (null = no such house). */
+    housePeer(houseId) { return H.get(houseId)?.peerId ?? null; },
+    /** A house reconnected on a new peer id: route its inputs / snapshots / events there from now on. */
+    setHousePeer(houseId, peerId) {
+      const st = H.get(houseId);
+      if (!st || typeof peerId !== 'string') return false;
+      if (byPeer.get(st.peerId) === st) byPeer.delete(st.peerId);
+      st.peerId = peerId;
+      st.fragQueue.length = 0;
+      byPeer.set(peerId, st);
+      return true;
+    },
+    /** START + the current TIMEBASE to one (re)joined peer. */
+    sendStartTo(peerId) {
+      if (!started) return false;
+      transport.send(peerId, 'ctrl', wire.encodeCtrl(wire.MSG.START, { raceId, startTick: startInfo.startTick, goTick: startInfo.goTick, epoch: clock.epoch }));
+      transport.send(peerId, 'ctrl', wire.encodeCtrl(wire.MSG.TIMEBASE, clock.timebase(TIMEBASE_REASON.periodic)));
+      if (paused) transport.send(peerId, 'ctrl', wire.encodeCtrl(wire.MSG.PAUSE, { paused: true, reason: PAUSE_REASON.snack, tick: clock.lastTick, epoch: clock.epoch }));
+      return true;
+    },
     stats() {
       const housesOut = {};
       for (const st of H.values()) {

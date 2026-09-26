@@ -12,6 +12,7 @@ export { ReplicaRace } from '../net/guest/replicaRace.js';
 export { createTickPump } from '../net/tickPump.js';
 export { jsonEncode } from '../net/session/wire.js';
 export { housePis } from '../net/session/lobby.js';
+export { RACING_PHASES } from '../net/session/hostSession.js';
 export { matchEmoji } from '../net/session/approval.js';
 export { TEXT, signalingErrorText } from '../net/session/texts.js';
 export { resolveSignalConfig } from '../net/signaling/index.js';

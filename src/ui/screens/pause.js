@@ -15,7 +15,7 @@ export const PAUSE_OPTIONS = [
 /** @type {import('./index.js').ScreenDef} */
 export default {
   id: 'pause',
-  mount(ctx, nav, { label = '', options = PAUSE_OPTIONS } = {}) {
+  mount(ctx, nav, { label = '', options = PAUSE_OPTIONS, title = 'Snack break!', emoji = '🍪' } = {}) {
     let state = S.createListState(options.map((o) => o[0]));
     const btns = options.map(([, text, icon], i) => el('button.sk-listbtn', {
       onclick: (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'select', index: i }); },
@@ -23,8 +23,8 @@ export default {
     }));
     const node = el('div.sk-screen.sk-pause', {},
       el('div.sk-card-pop.sk-pause-card', {},
-        el('div.sk-pause-emoji', { html: '🍪' }),
-        el('h1.sk-h1', { html: 'Snack break!' }),
+        el('div.sk-pause-emoji', { html: escapeHtml(emoji) }),
+        el('h1.sk-h1', { html: escapeHtml(title) }),
         el('p.sk-lead', { html: escapeHtml(S.pauseLeadText(label)) }),
         el('div.sk-list', {}, btns),
         el('div.sk-hints.sk-hints-in', { html: hint('A', 'Enter', 'Choose') + hint('B', 'Esc', 'Keep racing') })));

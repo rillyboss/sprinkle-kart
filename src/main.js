@@ -287,7 +287,7 @@ async function flow() {
       onlineRequest = null;
       if (raw?.__online) {
         const after = await runOnline(raw.__online);
-        startAt = { id: 'online-hub', params: after?.message ? { message: after.message } : {} };
+        startAt = { id: 'online-hub', params: after?.message ? { message: after.message, ...(after.tips?.length ? { tips: after.tips } : {}) } : {} };
         previous = null;
         skipTitle = false;
         continue;
@@ -830,6 +830,19 @@ function onlineEnabledNow() {
   try { return !!progress.getSettings().onlineEnabled; } catch { return false; }
 }
 
+/**
+ * Closing or reloading the tab while a room is open: say goodbye right away (host BYE {hostEnding} / guest BYE
+ * {leaving} on ctrl) and close the connections, so friends know within a second or two instead of waiting for
+ * the ICE timeout (§13.3).
+ */
+function sayByeOnPageHide() {
+  const o = online;
+  if (!o) return;
+  try { o.room.session.dispatch(o.role === 'host' ? { type: 'close' } : { type: 'leave' }); } catch { /* going away anyway */ }
+  try { o.room.transport?.close?.(); } catch { /* going away anyway */ }
+}
+if (typeof window !== 'undefined') window.addEventListener('pagehide', sayByeOnPageHide);
+
 /** menus.online (the Online hub / lobby / net-waiting screens call these). */
 function installOnlineActions(m) {
   m.online = {
@@ -898,8 +911,10 @@ function createOnlineState(mod, room) {
     left: left.promise,
     lobbyAction: null,
     backToLobby: null,
-    raceHooks: null,     // { choice(c), ended(text) } while a guest race / results screen is open
-    lastTick: 0,
+    raceHooks: null,     // { choice(c), ended(text), newSetup(setup) } while a guest race / results screen is open
+    reconnecting: false, // a guest's link dropped and it is knocking again (§13.2)
+    reconnectText: '',
+    sessionTimer: null,
     overlay: null,
     lastOverlay: 0,
     leave() { left.resolve('leave'); state.lobbyAction?.resolve('leave'); state.raceHooks?.leave?.(); },
@@ -918,7 +933,14 @@ function createOnlineState(mod, room) {
   });
   room.session.onEffect((e) => {
     if (e.type === 'emote') bus.emit('net-emote', { globalPi: e.globalPi, emote: e.emote, local: state.localPis().includes(e.globalPi) });
+    if (e.type === 'net-state') { state.reconnecting = !!e.reconnecting; state.reconnectText = e.text || ''; }
   });
+  // Session housekeeping (KEEP heartbeat, approvals, host silence, reconnects) on a plain timer, never rAF: a
+  // hidden or busy tab keeps its room open (a throttled 1 Hz timer is still plenty).
+  const onlineNow = () => { try { return typeof navigator === 'undefined' || navigator.onLine !== false; } catch { return true; } };
+  state.sessionTimer = setInterval(() => {
+    try { room.session.dispatch({ type: 'tick', online: onlineNow() }); } catch (err) { console.warn('[online] tick', err); }
+  }, mod.SESSION_TICK_MS);
   const search = typeof location !== 'undefined' ? location.search : '';
   let showInfo = false;
   try { showInfo = !!progress.getSettings().showNetworkInfo; } catch { /* ignore */ }
@@ -930,10 +952,7 @@ function createOnlineState(mod, room) {
 function onlineTick(now) {
   const o = online;
   const { room, mod } = o;
-  if (now - o.lastTick >= mod.SESSION_TICK_MS) {
-    o.lastTick = now;
-    try { room.session.dispatch({ type: 'tick' }); } catch (err) { console.warn('[online] tick', err); }
-  }
+  void now;
   const lobby = room.session.lobby();
   if (lobby) setLabelContext({ localPis: o.localPis(), lobby, characters: CHARACTERS });
   if (!o.racing && menus?.active) {
@@ -987,6 +1006,7 @@ function netInfo(o) {
 }
 
 function closeOnline(o) {
+  clearInterval(o.sessionTimer);
   try { o.room.close(); } catch (err) { console.warn('[online] close', err); }
   try { o.overlay?.destroy(); } catch { /* ignore */ }
   if (menus) menus.net = null;
@@ -1083,22 +1103,29 @@ async function runOnlineGuest(mod, secret) {
     switch (e.type) {
       case 'screen':
         if (e.id === 'online-hub') break; // 'ended' carries the sentence
-        if (!o.racing) menus.goto(e.id, e.params);
+        if (o.racing) break;
+        // back from a reconnect while the host races without us: wait for the next race instead of the lobby
+        if (e.id === 'online-lobby' && mod.RACING_PHASES.includes(room.session.state.hostPhase)) menus.goto('net-waiting', { mode: 'waiting', text: mod.TEXT.hostWaiting });
+        else menus.goto(e.id, e.params);
         break;
       case 'phase': queue.push({ type: 'phase', phase: e.phase }); break;
       case 'choice': if (o.raceHooks) o.raceHooks.choice(e.choice); break;
       case 'ended':
         if (o.raceHooks) o.raceHooks.ended(e.text);
-        queue.push({ type: 'ended', text: e.text });
+        queue.push({ type: 'ended', text: e.text, tips: e.reason === 'no-connect' ? [...mod.TEXT.noConnectTips] : null });
         break;
       default: break;
     }
   });
-  room.router?.on('setup', (rc) => { room.router.expectRace(); queue.push({ type: 'setup', setup: rc.setup }); });
+  room.router?.on('setup', (rc) => {
+    room.router.expectRace();
+    o.raceHooks?.newSetup?.(rc.setup); // the host moved on (Start over / a new race): leave the old one
+    queue.push({ type: 'setup', setup: rc.setup });
+  });
   o.left.then(() => queue.push({ type: 'leave' }));
   // whatever the session already decided before we listened
   const st0 = room.session.state;
-  if (st0.phase === 'ended') { closeOnline(o); return { message: st0.end?.text ?? '' }; }
+  if (st0.phase === 'ended') { closeOnline(o); return { message: st0.end?.text ?? '', tips: st0.end?.reason === 'no-connect' ? [...mod.TEXT.noConnectTips] : null }; }
   if (st0.phase === 'waiting-approval') menus.goto('net-waiting', { mode: 'approval', animals: matchText(st0.match), text: mod.TEXT.showHost(matchText(st0.match)), label: secret.label });
   bus.emit('net-room', { role: 'guest', phase: 'connecting', label: secret?.label ?? null });
   let guestPrev = null;
@@ -1106,7 +1133,7 @@ async function runOnlineGuest(mod, secret) {
     for (;;) {
       const ev = await queue.next();
       if (ev.type === 'leave') return {};
-      if (ev.type === 'ended') return { message: ev.text };
+      if (ev.type === 'ended') return { message: ev.text, tips: ev.tips ?? null };
       if (ev.type === 'phase') {
         if (o.racing) continue;
         if (ev.phase === 'lobby') { picking = false; menus.goto('online-lobby'); }
@@ -1120,13 +1147,18 @@ async function runOnlineGuest(mod, secret) {
         continue;
       }
       if (ev.type === 'setup') {
+        if (!mod.localHumans(ev.setup, room.session.state.houseId, []).length) {
+          // a race composed while this house was away (reconnect window): watch the next one
+          menus.goto('net-waiting', { mode: 'waiting', text: mod.TEXT.hostWaiting });
+          continue;
+        }
         guestPrev = { players: [...(menus.draft?.joinState?.players ?? [])], trackId: ev.setup.trackId, speedClass: ev.setup.speedClass, laps: ev.setup.laps, mode: 'free' };
         const deviceIds = localDeviceIds();
         menus.hide();
         const outcome = await playRace(ev.setup, { net: { mod, room, role: 'guest', deviceIds } });
         picking = false;
         if (outcome === 'leave') return {};
-        if (outcome && typeof outcome === 'object' && outcome.ended) return { message: outcome.ended };
+        if (outcome && typeof outcome === 'object' && outcome.ended) return { message: outcome.ended, tips: outcome.tips ?? null };
         // 'again' / 'next-track': the next SETUP comes; 'lobby': the host's PHASE lobby follows
         const queuedSetup = queue.take((x) => x.type === 'setup');
         if (queuedSetup) queue.push(queuedSetup);
@@ -1212,9 +1244,10 @@ function startNetRace(setup, done, { net }) {
     offs.push(room.transport.onPeer((ev) => {
       if (ev.type !== 'leave') return;
       link.loaded(ev.peerId); // a house that left never holds the start
-      for (const [hid, h] of mod.driverHouses(setup, 0, () => null)) if (room.peerOf(hid) === null) link.setHouseRobo(hid, true);
-      void h;
+      for (const hid of mod.driverHouses(setup, 0, () => null).keys()) if (room.peerOf(hid) === null) link.setHouseRobo(hid, true);
     }));
+    // a house came back with its ticket (§13.2): its new connection gets the race and its karts back
+    offs.push(room.session.onEffect((e) => { if (e.type === 'reattach') link.reattach(e.houseId, e.peerId); }));
     room.router.setRace(link);
     room.session.dispatch({ type: 'phase', phase: 'loading' });
     room.transport.broadcast('ctrl', mod.encodeSetup(stack, setup));
@@ -1312,9 +1345,15 @@ function startNetRace(setup, done, { net }) {
 
   if (!host) {
     online.raceHooks = {
-      choice(c) { pendingChoice = c; },
+      choice(c) {
+        // on the results the host's pick closes them; mid-race ("Back to the lobby" / "Start over" from the host's
+        // pause) it ends this race at once, so nobody is left in a frozen race
+        const act = mod.guestChoiceAction(c, resultsShown);
+        if (act.end) { bus.emit('results-choice', { choice: act.end }, session); end(act.end); } else pendingChoice = c;
+      },
       ended(text) { end({ ended: text }); },
       leave() { end('leave'); },
+      newSetup(s) { if (mod.setupEndsRace(setup, s)) end('again'); },
     };
   } else {
     online.raceHooks = { leave() { end('leave'); } };
@@ -1328,22 +1367,26 @@ function startNetRace(setup, done, { net }) {
       // "Pause everyone 🍪": every machine freezes until the host keeps racing
       link.pauseAll(true);
       bus.emit('race-pause', { label: 'everyone' }, session);
-      menus.showPause(mod.ONLINE_TEXT.pausedEveryone, { options: mod.HOST_PAUSE_OPTIONS }).then((choice) => {
+      menus.showPause(mod.ONLINE_TEXT.pausedEveryone, { options: mod.HOST_PAUSE_OPTIONS, noPhoto: true }).then((choice) => {
         pauseOpen = false;
         link.pauseAll(false);
         bus.emit('race-resume', { choice }, session);
         input.clearMenuEvents?.();
-        if (choice === 'restart') end('restart');
-        else if (choice === 'lobby') { broadcastChoice('lobby'); end('lobby'); }
+        // every guest follows the host's pick right away (they are frozen in the same race)
+        if (choice === 'restart') { broadcastChoice('restart'); end('restart'); } else if (choice === 'lobby') { broadcastChoice('lobby'); end('lobby'); }
       });
     } else {
-      // a guest's pause is local: Robo Driver drives meanwhile, the race goes on for everyone
-      bus.emit('race-pause', { label: `P${humans.indexOf(p) + 1}` }, session);
-      menus.showPause(`P${humans.indexOf(p) + 1}`, { options: mod.GUEST_PAUSE_OPTIONS }).then((choice) => {
+      // a guest's pause is local: Robo Driver drives meanwhile, the race goes on for everyone (§4, §10.4)
+      const k = race.getPlayerKart(p.playerIndex);
+      if (k) helpers.flash(k, mod.ONLINE_TEXT.robo);
+      bus.emit('race-pause', { label: 'robo', local: true }, session);
+      menus.showPause(mod.ONLINE_TEXT.guestPauseLine, { options: mod.GUEST_PAUSE_OPTIONS, title: mod.ONLINE_TEXT.guestPauseTitle, emoji: '🤖', noPhoto: true }).then((choice) => {
         pauseOpen = false;
         bus.emit('race-resume', { choice }, session);
         input.clearMenuEvents?.();
-        if (choice === 'leave') { online?.leave(); end('leave'); }
+        if (choice === 'leave') { online?.leave(); end('leave'); return; }
+        const k2 = race.getPlayerKart(p.playerIndex);
+        if (k2 && !finished) helpers.flash(k2, mod.ONLINE_TEXT.roboBack);
       });
     }
   }
@@ -1447,7 +1490,10 @@ function startNetRace(setup, done, { net }) {
       session.net.wobbly = houses.some((h) => h.robo);
       if (completeAt !== null && !resultsShown && race.clock - completeAt >= mod.RESULTS_DELAY_S) showHostResults();
     } else {
-      humans.forEach((p, i) => seats[i].setFrame(inputs[p.playerIndex], { robo: pauseOpen || unplugged.has(p.playerIndex) }));
+      const away = !!online?.reconnecting;
+      humans.forEach((p, i) => seats[i].setFrame(inputs[p.playerIndex], { robo: pauseOpen || unplugged.has(p.playerIndex) || away }));
+      session.net.reconnecting = away;
+      session.net.reconnectText = away ? online.reconnectText : '';
       link.frame(dt);
       itemView.update(dt);
       boxView.update(dt);
@@ -1455,7 +1501,7 @@ function startNetRace(setup, done, { net }) {
       const snaps = link.stats().snapshots;
       const t = performance.now();
       if (snaps !== lastSnaps) { lastSnaps = snaps; lastSnapAt = t; }
-      session.net.wobbly = snaps > 0 && !link.paused && !resultsShown && t - lastSnapAt > 3000;
+      session.net.wobbly = snaps > 0 && !link.paused && !resultsShown && !away && t - lastSnapAt > 3000;
       if (pendingResult && !resultsShown) showGuestResults(pendingResult);
       if (pendingChoice && resultsShown) { const c = pendingChoice; pendingChoice = null; menus.resolveCurrent(`host:${c}`); }
     }
@@ -1474,6 +1520,9 @@ function startNetRace(setup, done, { net }) {
   }
 
   function dispose() {
+    session.net.wobbly = false;
+    session.net.reconnecting = false;
+    session.net.paused = false;
     bus.emit('race-exit', { outcome: session.outcome }, session);
     offs.splice(0).forEach((off) => { try { off?.(); } catch { /* ignore */ } });
     try { pump?.dispose(); } catch { /* ignore */ }

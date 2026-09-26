@@ -79,7 +79,8 @@ export default {
     }
 
     menus.showPause = function showPauseWithPhoto(label = '', extra = {}) {
-      if (!available()) return original.call(this, label, extra);
+      // online the race never stops for a photo (a guest's pause is local; the host's freezes everyone)
+      if (!available() || extra?.noPhoto || app.game?.session?.net) return original.call(this, label, extra);
       const self = this;
       return (async () => {
         for (;;) {

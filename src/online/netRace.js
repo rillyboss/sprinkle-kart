@@ -286,6 +286,18 @@ export function createHostNetRace({ stack, race, transport, setup, houses, local
       return true;
     },
     setHouseRobo(houseId, on) { driver.setHouseRobo(houseId, on); },
+    /**
+     * A house came back on a new connection (§13.2): snapshots, events and inputs follow the new peer, it
+     * gets START + the current TIMEBASE again, Robo Driver hands the karts back and the input baseline resets.
+     */
+    reattach(houseId, peerId) {
+      waiting.delete(driver.housePeer(houseId));
+      if (!driver.setHousePeer(houseId, peerId)) return false;
+      driver.rebaseline(houseId);
+      driver.setHouseRobo(houseId, false);
+      if (started) driver.sendStartTo(peerId);
+      return true;
+    },
     /** A queued ctrl message for one peer (FRAG-paced while racing). */
     sendCtrl(peerId, bytes) { return driver.sendCtrl(peerId, bytes); },
     get alpha() { return lastAlpha; },
