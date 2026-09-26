@@ -6,7 +6,8 @@
  * `isUnlocked(id)` is THE single source of truth for “may a player use this
  * character / track” for every other module.
  */
-import { emptyProgress, mergeProgress } from './schema.js';
+import { emptyProgress, mergeProgress, defaultSettings } from './schema.js';
+import { applyRaceSummary, applyGrandPrix, evaluateUnlocks, lineupEntries } from './engine.js';
 
 export const PROGRESS_KEY = 'sprinkle-kart-progress-v1';
 const KEY = PROGRESS_KEY;
@@ -38,7 +39,14 @@ function save() {
   try { ls.setItem(KEY, JSON.stringify(memory)); } catch { /* ignore */ }
 }
 
+/** May a player use this racer / track? Earned, or a grown-up turned on "unlock everything". */
 export function isUnlocked(id) {
+  const p = loadProgress();
+  return p.unlockAll === true || p.unlocked.includes(id);
+}
+
+/** Earned by playing (ignores the parent "unlock everything" switch). */
+export function isEarned(id) {
   return loadProgress().unlocked.includes(id);
 }
 
@@ -60,10 +68,75 @@ export function recordWin(trackId) {
   return memory;
 }
 
-/** For the "reset progress" option and tests. */
-export function resetProgress() {
+/**
+ * For the "reset progress" option and tests. `keepSettings` keeps the
+ * volumes / Kid-Assist default (the Settings screen's reset keeps them).
+ */
+export function resetProgress({ keepSettings = false } = {}) {
+  const settings = keepSettings ? { ...loadProgress().settings } : null;
   memory = emptyProgress();
+  if (settings) memory.settings = { ...memory.settings, ...settings };
   save();
+}
+
+/* ---------------- v2: stats + rule engine ---------------- */
+
+/**
+ * Apply `fn(progress)` to the loaded progress and save. `fn` mutates the
+ * object it gets (a merged, sanitised copy) and may return a value.
+ */
+export function update(fn) {
+  loadProgress();
+  const draft = mergeProgress(JSON.parse(JSON.stringify(memory)));
+  const result = fn(draft);
+  memory = mergeProgress(draft);
+  save();
+  return result;
+}
+
+/**
+ * Earn every entry whose rule is now met (see engine.js evaluateUnlocks).
+ * @param {{kind, id, unlock}[]} [entries] defaults to the whole lineup
+ * @returns {{kind:'character'|'track', id:string}[]} newly earned, in order
+ */
+export function evaluate(entries = lineupEntries()) {
+  return update((p) => {
+    const fresh = evaluateUnlocks(p, entries);
+    for (const u of fresh) p.unlocked.push(u.id);
+    return fresh;
+  });
+}
+
+/**
+ * Record a finished race (RaceSummary) and earn what it unlocked.
+ * @returns {{kind, id}[]} newly earned
+ */
+export function recordRace(summary, { entries = lineupEntries(), tallies = null } = {}) {
+  update((p) => applyRaceSummary(p, summary, { tallies }));
+  return evaluate(entries);
+}
+
+/** Record a finished Grand Prix (GrandPrixResult) and earn what it unlocked. */
+export function recordGrandPrix(gp, { entries = lineupEntries() } = {}) {
+  update((p) => applyGrandPrix(p, gp));
+  return evaluate(entries);
+}
+
+/** Parent gate switch: every racer and track becomes available (earned list is kept). */
+export function setUnlockAll(on) {
+  update((p) => { p.unlockAll = !!on; });
+  return loadProgress().unlockAll;
+}
+
+/** @returns {{ music: number, sfx: number, kidAssistDefault: boolean }} */
+export function getSettings() {
+  return { ...defaultSettings(), ...(loadProgress().settings || {}) };
+}
+
+/** Merge a settings patch (clamped / validated by mergeProgress) and save. */
+export function setSettings(patch = {}) {
+  update((p) => { p.settings = { ...p.settings, ...patch }; });
+  return getSettings();
 }
 
 /* ---------------- best-time records (written by modes+timing, stored here) ---------------- */
@@ -97,6 +170,7 @@ export function submitRecord(trackId, { raceTime = null, bestLap = null } = {}) 
   };
   if (newBestRace || newBestLap) {
     memory.records = { ...(memory.records || {}), [trackId]: record };
+    memory.stats.recordsSet = (Number.isFinite(memory.stats.recordsSet) ? memory.stats.recordsSet : 0) + 1;
     save();
   }
   return { newBestRace, newBestLap, previous, record };

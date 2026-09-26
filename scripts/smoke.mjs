@@ -447,6 +447,33 @@ async function gamepadFlowTest(t) {
   checkErrors(t);
 }
 
+/** In-page: a key for the reveal on screen ('' when none), so a press can wait for it to change. */
+const revealKey = () => {
+  const u = document.querySelector('.sk-unlock:not(.sk-leaving)');
+  return u ? `${u.classList.contains('sk-unlock-is-track') ? 'track' : 'character'}:${u.querySelector('.skp-ribbon')?.textContent ?? ''}:${u.textContent.length}` : '';
+};
+
+/** Dismiss every unlock reveal in a row (each one only once it may continue). Returns their keys. */
+async function dismissUnlocks(t, max = 12) {
+  const seen = [];
+  for (let i = 0; i < max; i++) {
+    await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue:not(.sk-leaving)'), null, T(30000), `unlock reveal ${i + 1} ready to continue`);
+    const key = await t.page.evaluate(revealKey);
+    seen.push(key);
+    await pressKey(t, 'Enter', { until: (prev) => {
+      const u = document.querySelector('.sk-unlock:not(.sk-leaving)');
+      const now = u ? `${u.classList.contains('sk-unlock-is-track') ? 'track' : 'character'}:${u.querySelector('.skp-ribbon')?.textContent ?? ''}:${u.textContent.length}` : '';
+      return now !== prev;
+    }, arg: key, what: `unlock reveal ${i + 1} to close` });
+    // the next unlock (if any) follows after a 0.7 s game-time breath
+    const t0 = await t.page.evaluate(() => window.__game?.menus?.time ?? 0);
+    await waitGame(t.page, (m0) => !!document.querySelector('.sk-unlock:not(.sk-leaving)') || (window.__game?.menus?.time ?? 0) >= m0 + 1.6,
+      t0, T(30000), 'next unlock reveal or none');
+    if (!(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')))) break;
+  }
+  return seen;
+}
+
 async function resultsTest(t) {
   await t.page.goto(`${BASE}?quick=cotton-candy-castle&players=1&cpus=0&autodrive=1&fastfinish=1&unlockreset=1&simspeed=6&speed=zoomy`, { timeout: T(60000) });
   await waitGame(t.page, () => window.__game?.state === 'race', null, T(60000), 'race to start');
@@ -464,12 +491,91 @@ async function resultsTest(t) {
   await t.page.keyboard.press('Enter');
   await waitFrames(t.page, 1);
   t.check(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')), 'unlock reveal was skipped by an early press');
-  // once the reveal has had its moment, dismiss it, then pick "Race again" → a new race starts
-  await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, T(30000), 'unlock reveal ready to continue');
-  await pressKey(t, 'Enter', { until: () => !document.querySelector('.sk-unlock:not(.sk-leaving)'), what: 'unlock reveal to close' });
+  // once each reveal has had its moment, dismiss it (the rule engine may celebrate several
+  // unlocks in a row), then pick "Race again" → a new race starts
+  await dismissUnlocks(t);
   await waitMenusReady(t.page);
   await t.shot('results-after.png');
   await pressKey(t, 'Enter', { ...inState('race', 'next race after results'), timeout: T(15000) });
+  checkErrors(t);
+}
+
+/**
+ * Progression: the Sticker Book and Grown-ups corner from the title screen with the
+ * keyboard, the parent gate unlocking everything, and a 3-unlock celebration sequence.
+ */
+async function progressionTest(t) {
+  const shot = (n) => t.shot(`progress-${n}.png`);
+  const has = (sel) => t.page.evaluate((q) => !!document.querySelector(q), sel);
+  const saved = () => t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}'));
+  /** From the title screen: focus the menu entries, walk right to the one matching `re`, open it. */
+  const openEntry = async (re, screenId) => {
+    const idx = await t.page.evaluate((src) => [...document.querySelectorAll('.sk-title-entry')].findIndex((b) => new RegExp(src).test(b.textContent)), re);
+    if (idx < 0) throw new Error(`no title entry matching ${re}`);
+    await pressKey(t, 'KeyS');
+    for (let i = 0; i < idx; i++) await pressKey(t, 'KeyD');
+    await pressKey(t, 'Enter', onScreen(screenId));
+    await waitMenusReady(t.page);
+  };
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-title'), null, T(60000), 'title screen');
+  await waitMenusReady(t.page);
+  const chips = await t.page.evaluate(() => [...document.querySelectorAll('.sk-title-entry')].map((b) => b.textContent));
+  t.check(chips.some((c) => /Sticker Book/.test(c)) && chips.some((c) => /Grown-ups/.test(c)), `title entries: ${JSON.stringify(chips)}`);
+  await openEntry('Sticker Book', 'collection');
+  t.check(await has('.skp-book'), 'Sticker Book did not open');
+  const counts = await t.page.evaluate(() => [
+    document.querySelectorAll('.skp-sticker').length, document.querySelectorAll('.skp-tsticker').length,
+    window.__game.menus.characters.length, window.__game.menus.tracks.length,
+  ]);
+  // the book shows the whole v2 lineup (21 racers, 20 tracks), registered or not
+  t.check(counts[0] === 21 && counts[1] === 20, `expected 21 racer + 20 track stickers, got ${counts.slice(0, 2)}`);
+  await shot('1-book');
+  await pressKey(t, 'Tab');
+  await waitFrames(t.page, 2);
+  await shot('2-book-tracks');
+  await pressKey(t, 'Tab');
+  await waitFrames(t.page, 2);
+  await shot('3-book-totals');
+  await pressKey(t, 'Escape', onScreen('title', 'B back to the title'));
+  await openEntry('Grown-ups', 'settings');
+  t.check(await has('.skp-settings'), 'Grown-ups corner did not open');
+  for (let i = 0; i < 3; i++) await pressKey(t, 'KeyS');
+  await pressKey(t, 'Enter', { until: () => !!document.querySelector('.skp-gate-q'), what: 'parent gate' }); // Unlock everything
+  await pressKey(t, 'Enter', { until: () => /not quite/.test(document.querySelector('.skp-gate-oops')?.textContent ?? ''), what: 'wrong-answer hint' }); // 0 = wrong
+  t.check(!(await saved()).unlockAll, 'a wrong gate answer unlocked everything');
+  const answer = await t.page.evaluate(() => { const m = document.querySelector('.skp-gate-q').textContent.match(/(\d+)\D+(\d+)/); return Number(m[1]) + Number(m[2]); });
+  for (let i = 0; i < answer; i++) await pressKey(t, 'KeyW');
+  await shot('4-gate');
+  await pressKey(t, 'Enter', { until: () => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}').unlockAll === true, what: 'parent gate to unlock everything' });
+  await waitMenusReady(t.page);
+  await shot('5-unlocked');
+  await pressKey(t, 'Enter', { until: () => !document.querySelector('.skp-modal:not([hidden])'), what: 'done card to close' });
+  await pressKey(t, 'Escape', onScreen('title', 'back to the title'));
+  await pressKey(t, 'Enter', onScreen('join', 'join screen'));
+  await pressKey(t, 'Enter', { until: () => window.__game?.menus?.screenId !== 'join', what: 'leave join' });
+  if (await t.page.evaluate(() => window.__game?.menus?.screenId === 'mode-select')) {
+    await pressKey(t, 'Enter', onScreen('character-select', 'character select (Free Race)'));
+  }
+  await waitCond(t.page, onScreen('character-select'));
+  await waitFrames(t.page, 2);
+  const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
+  t.check(locked === 0, `unlock everything left ${locked} locked racer tiles`);
+  // A 3-unlock celebration, straight through the results screen.
+  await t.page.evaluate(() => {
+    const m = window.__game.menus;
+    const c = m.characters;
+    const standings = c.slice(0, 8).map((d, i) => ({ characterId: d.id, playerIndex: i ? null : 0, isCPU: !!i, finishPlace: i + 1, finished: true, finishTime: 70 + i }));
+    window.__smokeResults = m.showResults({ standings, trackDef: m.tracks[0], humanWinner: standings[0], unlocks: [
+      { kind: 'character', id: c[8].id, def: c[8] }, { kind: 'track', id: m.tracks[1].id, def: m.tracks[1] }, { kind: 'character', id: c[3].id, def: c[3] },
+    ] });
+  });
+  await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue:not(.sk-leaving)'), null, T(30000), 'first reveal');
+  await shot('6-reveal');
+  const seen = (await dismissUnlocks(t, 3)).map((k) => k.split(':').slice(0, 2).join(':'));
+  const want = ['character:Surprise 1 of 3!', 'track:Surprise 2 of 3!', 'character:Surprise 3 of 3!'];
+  t.check(JSON.stringify(seen) === JSON.stringify(want), `reveal sequence ${JSON.stringify(seen)}`);
+  t.check(!(await has('.sk-unlock:not(.sk-leaving)')), 'a reveal stayed up after the sequence');
   checkErrors(t);
 }
 
@@ -482,6 +588,7 @@ const FLOW_TESTS = {
   'menu-scale': menuScaleTest,
   'gamepad-flow': gamepadFlowTest,
   'results-unlock': resultsTest,
+  progression: progressionTest,
 };
 
 /* ---------------- runner ---------------- */

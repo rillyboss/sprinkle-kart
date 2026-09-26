@@ -19,7 +19,10 @@
  *     unlockAll: boolean,          // parent gate "unlock everything"
  *   }
  *
- * TrackStats: { finishes, wins, top3, bestPlace (1-8 | null) } — Free Race + Grand Prix races.
+ *     racers: {[characterId]: { races, wins, podiums }},   // per-racer tallies (v2)
+ *     settings: { music, sfx, kidAssistDefault },           // v2, kept by "reset progress"
+ *
+ * TrackStats: { finishes, wins, top3, bestPlace (1-8 | null), timeTrials } — Free Race + Grand Prix races.
  */
 
 /**
@@ -39,6 +42,15 @@ export const STAT_KEYS = Object.freeze([
   'kidAssistFinishes',  // races finished by a human with Kid-Assist on
   'grandPrixFinished',  // Grand Prix cups completed (all 4 races)
   'cupsWon',            // Grand Prix cups won (1st overall on points)
+  // --- v2 detail counters (Collection / Sticker Book totals; valid in 'stat' rules too) ---
+  'miniTurbos1',        // level-1 (blue) drift turbos by humans
+  'miniTurbos2',        // level-2 (orange) drift turbos by humans
+  'miniTurbos3',        // level-3 (rainbow) drift turbos by humans
+  'itemBoxes',          // item boxes popped by humans
+  'boosts',             // boosts enjoyed by humans (pads, sprinkles, rocket starts ...)
+  'bonked',             // times a human got spun into a happy twirl
+  'racesPlayed',        // human race slots played (a 2-player race counts 2)
+  'recordsSet',         // new best race / lap times saved via submitRecord()
 ]);
 
 /** @typedef {{[K in typeof STAT_KEYS[number]]: number}} Stats */
@@ -47,8 +59,30 @@ export function emptyStats() {
   return Object.fromEntries(STAT_KEYS.map((k) => [k, 0]));
 }
 
+/**
+ * Player settings (saved alongside progress, kept by "reset progress").
+ *   music, sfx          0..1 volumes (AudioManager.setVolume)
+ *   kidAssistDefault    new players join with Kid-Assist on
+ */
+export function defaultSettings() {
+  return { music: 0.7, sfx: 0.85, kidAssistDefault: false };
+}
+
+/** Per-racer tallies (any human who raced as that character). */
+export function emptyRacerStats() {
+  return { races: 0, wins: 0, podiums: 0 };
+}
+
+/** Per-track tallies (Free Race + Grand Prix races; Time Trials only bump `timeTrials`). */
+export function emptyTrackStats() {
+  return { finishes: 0, wins: 0, top3: 0, bestPlace: null, timeTrials: 0 };
+}
+
 export function emptyProgress() {
-  return { unlocked: [], wins: 0, trophies: {}, stats: emptyStats(), tracks: {}, cups: {}, records: {}, unlockAll: false };
+  return {
+    unlocked: [], wins: 0, trophies: {}, stats: emptyStats(), tracks: {}, cups: {}, records: {},
+    racers: {}, settings: defaultSettings(), unlockAll: false,
+  };
 }
 
 /**
@@ -96,11 +130,40 @@ export function mergeProgress(saved) {
   const out = { ...base, ...saved };
   out.unlocked = Array.isArray(saved.unlocked) ? saved.unlocked.filter((id) => typeof id === 'string') : [];
   out.wins = Number.isFinite(saved.wins) ? saved.wins : 0;
-  for (const k of ['trophies', 'tracks', 'cups', 'records']) out[k] = isPlainObject(saved[k]) ? { ...saved[k] } : {};
+  for (const k of ['trophies', 'tracks', 'cups', 'records', 'racers']) out[k] = isPlainObject(saved[k]) ? { ...saved[k] } : {};
+  out.tracks = mergeEntries(out.tracks, emptyTrackStats);
+  out.racers = mergeEntries(out.racers, emptyRacerStats);
+  out.cups = mergeEntries(out.cups, () => ({ bestPlace: null, wins: 0, finished: 0 }));
   out.stats = emptyStats();
   if (isPlainObject(saved.stats)) {
     for (const [k, v] of Object.entries(saved.stats)) if (Number.isFinite(v)) out.stats[k] = v;
   }
+  out.settings = defaultSettings();
+  if (isPlainObject(saved.settings)) {
+    const st = saved.settings;
+    for (const k of ['music', 'sfx']) if (Number.isFinite(st[k])) out.settings[k] = Math.max(0, Math.min(1, st[k]));
+    if (typeof st.kidAssistDefault === 'boolean') out.settings.kidAssistDefault = st.kidAssistDefault;
+  }
+  out.unlocked = [...new Set(out.unlocked)];
   out.unlockAll = saved.unlockAll === true;
+  return out;
+}
+
+/**
+ * Merge every entry of a {id: tallies} map over its empty shape: numeric
+ * counters keep finite values (others -> 0), `bestPlace` keeps a positive
+ * integer or null. Non-object entries are dropped.
+ */
+function mergeEntries(map, empty) {
+  const out = {};
+  for (const [id, v] of Object.entries(map)) {
+    if (!isPlainObject(v)) continue;
+    const e = { ...v, ...empty() };
+    for (const [k, def] of Object.entries(empty())) {
+      if (k === 'bestPlace') e[k] = Number.isInteger(v[k]) && v[k] >= 1 ? v[k] : null;
+      else if (typeof def === 'number') e[k] = Number.isFinite(v[k]) ? v[k] : 0;
+    }
+    out[id] = e;
+  }
   return out;
 }

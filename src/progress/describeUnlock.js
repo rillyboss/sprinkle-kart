@@ -28,6 +28,14 @@ const STAT_TEXT = {
   kidAssistFinishes: (n) => plural(n, 'Finish a race with Kid-Assist on', 'Finish # races with Kid-Assist on'),
   grandPrixFinished: (n) => plural(n, 'Finish a Grand Prix', 'Finish # Grand Prix cups'),
   cupsWon: (n) => plural(n, 'Win a Grand Prix cup', 'Win # Grand Prix cups'),
+  miniTurbos1: (n) => plural(n, 'Do a Mini-Turbo', 'Do # Mini-Turbos'),
+  miniTurbos2: (n) => plural(n, 'Do a Super Turbo', 'Do # Super Turbos'),
+  miniTurbos3: (n) => plural(n, 'Do a Rainbow Turbo', 'Do # Rainbow Turbos'),
+  itemBoxes: (n) => plural(n, 'Pop an item box', 'Pop # item boxes'),
+  boosts: (n) => plural(n, 'Zoom over a boost', 'Zoom over # boosts'),
+  bonked: (n) => plural(n, 'Get spun into a happy twirl', 'Get spun into # happy twirls'),
+  racesPlayed: (n) => plural(n, 'Race once', 'Race # times'),
+  recordsSet: (n) => plural(n, 'Set a new best time', 'Set # new best times'),
 };
 
 const RESULT_ON = { win: 'Win on', top3: 'Finish top 3 on', finish: 'Finish a race on' };
@@ -75,6 +83,14 @@ const SHORT_STAT = {
   kidAssistFinishes: (n) => plural(n, 'Finish w/ Kid-Assist', '# Kid-Assist races'),
   grandPrixFinished: (n) => plural(n, 'Finish a Grand Prix', '# Grand Prix'),
   cupsWon: (n) => plural(n, 'Win a cup', 'Win # cups'),
+  miniTurbos1: (n) => plural(n, 'Mini-Turbo', '# Mini-Turbos'),
+  miniTurbos2: (n) => plural(n, 'Super Turbo', '# Super Turbos'),
+  miniTurbos3: (n) => plural(n, 'Rainbow Turbo', '# Rainbow Turbos'),
+  itemBoxes: (n) => plural(n, 'Pop an item box', 'Pop # boxes'),
+  boosts: (n) => plural(n, 'Zoom a boost', '# boosts'),
+  bonked: (n) => plural(n, 'Happy twirl', '# happy twirls'),
+  racesPlayed: (n) => plural(n, 'Race once', 'Race # times'),
+  recordsSet: (n) => plural(n, 'Set a record', 'Set # records'),
 };
 const SHORT_RESULT = { win: 'Win', top3: 'Top 3', finish: 'Finish' };
 
