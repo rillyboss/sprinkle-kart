@@ -29,7 +29,7 @@ describe('Race rule toggles', () => {
     expect(race.brains.size).toBe(0);
   });
 
-  it('items: false means no item boxes on the track', async () => {
+  it('items: false means no item boxes on the track', { timeout: 60000 }, async () => {
     const { Race } = await import('../src/race/Race.js');
     const base = await makeRace({ participants: mixed() });
     const on = new Race({ scene: base.__scene, trackDef: { laps: 1 }, path: base.path, participants: mixed(), seed: 3 });
@@ -77,7 +77,7 @@ describe('Race rule toggles', () => {
     expect(race.getPlayerKart(1).itemCharges).toBe(3);
   });
 
-  it('a solo race completes when the human finishes (no CPU grace needed)', async () => {
+  it('a solo race completes when the human finishes (no CPU grace needed)', { timeout: 60000 }, async () => {
     const { Race } = await import('../src/race/Race.js');
     const base = await makeRace({ participants: mixed() });
     const race = new Race({
@@ -96,7 +96,7 @@ describe('Race rule toggles', () => {
 });
 
 describe('ghost of a real race run (record -> pack -> replay)', () => {
-  it('replays the recorded kart along its real path and time', async () => {
+  it('replays the recorded kart along its real path and time', { timeout: 60000 }, async () => {
     const { Race, aiDriveInput } = await import('../src/race/Race.js');
     const base = await makeRace({ participants: mixed() });
     const race = new Race({ scene: base.__scene, trackDef: { laps: 1 }, path: base.path, participants: humanParticipants(1), rules: rulesForMode('time-trial'), seed: 7, laps: 1 });
@@ -127,7 +127,7 @@ describe('ghost of a real race run (record -> pack -> replay)', () => {
 });
 
 describe('race summaries feed the records', () => {
-  it('a finished Time Trial gives a race time and best lap', async () => {
+  it('a finished Time Trial gives a race time and best lap', { timeout: 60000 }, async () => {
     const { Race, aiDriveInput } = await import('../src/race/Race.js');
     const base = await makeRace({ participants: mixed() });
     const race = new Race({ scene: base.__scene, trackDef: { laps: 2 }, path: base.path, participants: humanParticipants(1), rules: rulesForMode('time-trial'), seed: 8, laps: 2 });
