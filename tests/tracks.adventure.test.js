@@ -214,7 +214,7 @@ describe('Jellybean Jungle — figure-eight over the vine bridge', () => {
 });
 
 describe('Cocoa Canyon — slot canyon, arch, river and hairpin', () => {
-  const { def, path, index } = prepared('cocoa-canyon');
+  const { def, path } = prepared('cocoa-canyon');
   const river = def.scenery.riverLine;
 
   it('traces a chocolate river that crosses the road only under the bridge', () => {
@@ -270,7 +270,6 @@ describe('Cocoa Canyon — slot canyon, arch, river and hairpin', () => {
     const tex = cocoaFlowTexture(0x7a4127, 0xa8643a, 0xd89a6a);
     expect(tex.image.width).toBe(64);
     tex.dispose();
-    void index;
   });
 });
 
@@ -399,7 +398,6 @@ describe('Donut Downtown — night city and the giant donut', () => {
 });
 
 describe('adventure prop kit', () => {
-  const t = getTrack('cocoa-canyon');
   const path = pathOf('cocoa-canyon');
   const index = createPathIndex(path);
   const hw = path.halfWidth;
@@ -448,6 +446,5 @@ describe('adventure prop kit', () => {
       expect(r).toBeGreaterThanOrEqual(100);
       expect(r).toBeLessThanOrEqual(150);
     }
-    void t;
   });
 });

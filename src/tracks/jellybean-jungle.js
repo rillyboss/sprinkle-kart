@@ -160,7 +160,6 @@ export function buildScenery(ctx) {
     def, path, group, rng, own, hw, center, extent, distToRoad, clearOfRoad, animators,
     scatter, sparkles, backgroundHills,
   } = ctx;
-  const col = new THREE.Color();
   const pick = (arr) => arr[Math.floor(rng() * arr.length)];
   const crossing = findCrossing(path);
 

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { toon, glow } from '../render/toon.js';
 import { makeTrack } from './layout.js';
 import { FENCE_OFFSET, mat4, ribbon, dataTexture, rgb, distToPolyline } from './sceneryKit.js';
-import { instanced, animatedInstances, isClearOfCamera, farRing, lathe, capsule } from './props/adventure-kit.js';
+import { instanced, animatedInstances, isClearOfCamera, farRing, lathe } from './props/adventure-kit.js';
 
 /** Sea level of the lemonade (the hills apron sits at -3). */
 export const SEA_Y = -1.3;
