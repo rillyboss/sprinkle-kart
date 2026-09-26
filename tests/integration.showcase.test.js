@@ -169,3 +169,17 @@ describe('calm music on the new browsing screens', () => {
     }
   });
 });
+
+describe('CI has room for every smoke scenario', () => {
+  it('the smoke job timeout fits the showcase scenarios (the old 45 min cut it off mid-run)', () => {
+    const yml = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+    const smokeJob = yml.slice(yml.indexOf('\n  smoke:'));
+    const m = /timeout-minutes:\s*(\d+)/.exec(smokeJob);
+    expect(m).not.toBe(null);
+    expect(Number(m[1])).toBeGreaterThanOrEqual(75);
+    const smoke = readFileSync(new URL('../scripts/smoke.mjs', import.meta.url), 'utf8');
+    for (const id of ['showcase', 'modes-battle', 'modes-team', 'modes-daily', 'modes-my-cup', 'modes-tutorial', 'modes-paint']) {
+      expect(smoke).toContain(`'${id}'` === "'showcase'" ? 'showcase: showcaseTest' : `'${id}':`);
+    }
+  });
+});
