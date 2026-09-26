@@ -12,10 +12,16 @@ export const roomCode = () => `r${hex(24)}`;
 export const peerId = () => hex(16);
 
 let ipSeq = 0;
-/** A distinct documentation-range IP per call, so tests never share guard counters by accident. */
+let ipA = -1;
+let ipB = 0;
+/**
+ * A distinct IP per call (random per test file, then counting), so tests never share guard counters by
+ * accident, not even across test files within the same minute.
+ */
 export function freshIp() {
+  if (ipA < 0) [ipA, ipB] = crypto.getRandomValues(new Uint8Array(2));
   ipSeq += 1;
-  return `198.51.${Math.floor(ipSeq / 250) % 250}.${(ipSeq % 250) + 1}`;
+  return `10.${ipA}.${(ipB + (ipSeq >> 8)) & 255}.${ipSeq & 255}`;
 }
 
 export function get(path, headers = {}, init = {}) {

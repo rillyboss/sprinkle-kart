@@ -35,5 +35,7 @@ export default defineConfig({
     globalSetup: ['./test/turnMock.global.js'],
     provide: { prodAllowedOrigins, devAllowedOrigins },
     testTimeout: 30000,
+    // One TURN mock and one global guard instance are shared, so files run one after another (still ~5 s).
+    fileParallelism: false,
   },
 });
