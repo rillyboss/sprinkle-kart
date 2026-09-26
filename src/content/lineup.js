@@ -70,9 +70,9 @@ export const LINEUP_CHARACTERS = [
   { id: 'bizzy', name: 'Bizzy Bumble', pack: 'original', unlock: null },
   { id: 'cotton-candy-girl', name: 'Cotton Candy Girl', pack: 'original', unlock: stat('wins', 1) },
   // Pack A — src/characters/pack-a.js
-  { id: 'bruno', name: 'Bruno Bananas', pack: 'a', unlock: stat('racesFinished', 2), concept: 'Gentle giant gorilla in a banana-split kart with a licorice necktie' },
+  { id: 'bruno', name: 'Bruno Bananas', pack: 'a', unlock: stat('racesFinished', 2), concept: 'Gentle giant lavender gorilla in a banana-split kart with a sprinkle scarf and a waffle-cone hat' },
   { id: 'shelly', name: 'Shelly Macaroon', pack: 'a', unlock: onTrack('gumdrop-meadow', 'win'), concept: 'Speedy turtle with a pastel macaron shell' },
-  { id: 'boo-berry', name: 'Boo Berry', pack: 'a', unlock: onTrack('starlight-galaxy', 'top3'), concept: 'Shy, giggly blueberry ghost who blushes see-through' },
+  { id: 'peekaberry', name: 'Peekaberry', pack: 'a', unlock: onTrack('starlight-galaxy', 'top3'), concept: 'Shy, giggly blueberry ghost who blushes see-through' },
   { id: 'twiggy', name: 'Twiggy Licorice', pack: 'a', unlock: stat('wins', 3), concept: 'Dramatically tall licorice showman with a top hat, strikes poses' },
   { id: 'captain-crumbs', name: 'Captain Crumbs', pack: 'a', unlock: stat('bonksGiven', 20), concept: 'Cookie pirate captain, "Arr-some!", chocolate-chip beard' },
   { id: 'baby-bonbon', name: 'Baby Bonbon', pack: 'a', unlock: stat('kidAssistFinishes', 1), concept: 'Giggly baby in a bonbon-wrapper onesie, stroller kart' },

@@ -88,6 +88,9 @@ export default {
     let celebrationAge = 0; // seconds the current unlock reveal has been on screen
     let celebrateTimer = queue.length ? 1.8 : 0;
     const seqTotal = queue.length;
+    let leaving = 0;
+    // hide the podium + list while a reveal is up or fading (see CELEBRATING_CLASS in _modes.js)
+    const cover = () => node.classList.toggle('sk-celebrating', !!celebration || leaving > 0 || (seqTotal > queue.length && celebrateTimer > 0));
     const celebrate = () => {
       celebrateTimer = 0;
       const u = queue.shift();
@@ -95,6 +98,7 @@ export default {
       const seq = { index: seqTotal - queue.length - 1, total: seqTotal };
       celebration = unlockOverlay(ctx, u, () => handle({ deviceId: 'mouse', action: 'confirm' }), seq);
       node.appendChild(celebration);
+      cover();
       ctx.sfx('unlock');
       if (u.kind !== 'track') { try { ctx.audio?.voice?.(u.def, 'win'); } catch { /* ignore */ } }
       celebrationAge = 0;
@@ -114,9 +118,11 @@ export default {
           celebration.classList.add('sk-leaving');
           const c = celebration;
           celebration = null;
-          setTimeout(() => c.remove(), 450);
+          leaving++;
+          setTimeout(() => { c.remove(); leaving--; cover(); }, 450);
           ctx.setCooldown(0.9);
           if (queue.length) celebrateTimer = 0.7; // next unlock after a breath
+          cover();
         }
         return;
       }

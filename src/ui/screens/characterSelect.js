@@ -8,6 +8,7 @@ import * as S from '../menuState.js';
 import { el, escapeHtml, hint, portraitHtml, floatiesLayer } from '../dom.js';
 import { pc, hintsBar, backButton, shake, keepVisible, lockHint, lockDetail, STAT_ROWS } from './_shared.js';
 import { lockProgressHtml } from './unlock.js';
+import './characterSelect.css';
 
 /** Rosters bigger than this get a scrolling grid. */
 const SCROLL_ABOVE = 12;
@@ -24,12 +25,14 @@ export default {
       characters: ctx.characters,
       isLocked: (def) => ctx.isLocked(def),
       previous: d.charPicks,
+      cols: S.rosterColumns(ctx.characters.length, players.length),
     });
     const solo = players.length === 1;
     const tiles = [];
     const tileSigs = [];
     const many = state.items.length > SCROLL_ABOVE;
-    const grid = el(`div.sk-grid${many ? '.sk-grid-many' : ''}`, { '--cols': state.cols });
+    const wide = many && !solo && state.cols > S.gridColumns(state.items.length);
+    const grid = el(`div.sk-grid${many ? '.sk-grid-many' : ''}${wide ? '.sk-grid-wide' : ''}`, { '--cols': state.cols });
     state.items.forEach((it, i) => {
       const def = ctx.char(it.id);
       const t = el('button.sk-tile', {
@@ -43,6 +46,12 @@ export default {
       tiles.push(t);
       grid.appendChild(t);
     });
+    // "More friends below!" cue: sticks to the bottom of the scroll box while rows are hidden
+    const cue = many ? el('div.sk-grid-cue', { html: '<span>More friends below! ⌄</span>' }) : null;
+    if (cue) grid.appendChild(cue);
+    const fitGrid = () => fitRosterGrid(grid, tiles, state.cols);
+    const onScroll = () => updateGridCue(grid);
+    grid.addEventListener?.('scroll', onScroll);
 
     const panelWrap = el('div.sk-panels');
     const panels = state.cursors.map((c) => {
@@ -150,11 +159,14 @@ export default {
     };
 
     sync(true);
+    let fitted = 0;
     return {
       node,
       cls: 'sk-mode-full',
       handle,
       update: (dt) => {
+        // once laid out (and again every ~second, for window resizes): whole rows only + scroll cue
+        if (many && (fitted -= dt) <= 0) { fitted = 1; fitGrid(); }
         if (readyTimer > 0) {
           readyTimer -= dt;
           if (readyTimer <= 0 && S.allReady(state)) finish();
@@ -168,7 +180,40 @@ export default {
         });
         sync(true);
       },
-      destroy: () => { done = true; },
+      destroy: () => { done = true; grid.removeEventListener?.('scroll', onScroll); },
     };
   },
 };
+
+/**
+ * Size a scrolling roster grid to a whole number of rows (a row is never cut
+ * in half, so every locked card's progress bar shows) and toggle the "more
+ * friends" cue. Pure DOM measuring; does nothing before layout (or in tests).
+ */
+export function fitRosterGrid(grid, tiles, cols) {
+  try {
+    if (!grid || !tiles?.length || typeof getComputedStyle !== 'function') return;
+    const first = tiles[0];
+    const next = tiles[cols];
+    const cs = getComputedStyle(grid);
+    const padT = parseFloat(cs.paddingTop) || 0;
+    const padB = parseFloat(cs.paddingBottom) || 0;
+    if (next && first.offsetHeight > 0) {
+      const rowH = next.offsetTop - first.offsetTop;
+      const gap = rowH - first.offsetHeight;
+      grid.style.maxHeight = '';
+      const room = grid.clientHeight - padT - padB + gap;
+      const rows = Math.max(1, Math.floor(room / rowH + 0.02));
+      const allRows = Math.ceil(tiles.length / cols);
+      if (rows < allRows && rowH > 0) grid.style.maxHeight = `${Math.ceil(rows * rowH - gap + padT + padB)}px`;
+    }
+    updateGridCue(grid);
+  } catch { /* measuring is best effort */ }
+}
+
+/** Show the cue while there is more roster below the fold. */
+export function updateGridCue(grid) {
+  if (!grid) return;
+  const more = grid.scrollHeight - grid.clientHeight - grid.scrollTop > 8;
+  grid.classList.toggle('sk-grid-more', more);
+}

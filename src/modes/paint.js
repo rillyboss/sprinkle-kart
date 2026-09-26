@@ -18,6 +18,7 @@
  * OWNER: showcase features & modes.
  */
 import { jsonStore } from './storage.js';
+import { migrateIdKeys } from '../content/idAliases.js';
 
 export const PAINT_KEY = 'sprinkle-kart-paint-v1';
 export const ORIGINAL = 'original';
@@ -59,7 +60,7 @@ export function paintStore(backend) {
     const out = {};
     const src = v && typeof v === 'object' && v.racers && typeof v.racers === 'object' ? v.racers : {};
     for (const [id, paint] of Object.entries(src)) if (typeof id === 'string' && getPaint(paint) && paint !== ORIGINAL) out[id] = paint;
-    return out;
+    return migrateIdKeys(out); // renamed racers keep their paint (a paint saved under the new id wins)
   };
   const api = {
     load: () => clean(store.read()),

@@ -25,6 +25,8 @@
  * TrackStats: { finishes, wins, top3, bestPlace (1-8 | null), timeTrials } — Free Race + Grand Prix races.
  */
 
+import { migrateIdList, migrateIdKeys } from '../content/idAliases.js';
+
 /**
  * Lifetime counters. "Race" = a Free Race or Grand Prix race (NOT a Time Trial).
  * Counted once per race for the humans in it (any human's result counts, it is
@@ -128,11 +130,12 @@ export function mergeProgress(saved) {
   const base = emptyProgress();
   if (!isPlainObject(saved)) return base;
   const out = { ...base, ...saved };
-  out.unlocked = Array.isArray(saved.unlocked) ? saved.unlocked.filter((id) => typeof id === 'string') : [];
+  out.unlocked = Array.isArray(saved.unlocked) ? migrateIdList(saved.unlocked.filter((id) => typeof id === 'string')) : [];
   out.wins = Number.isFinite(saved.wins) ? saved.wins : 0;
   for (const k of ['trophies', 'tracks', 'cups', 'records', 'racers']) out[k] = isPlainObject(saved[k]) ? { ...saved[k] } : {};
-  out.tracks = mergeEntries(out.tracks, emptyTrackStats);
-  out.racers = mergeEntries(out.racers, emptyRacerStats);
+  out.tracks = migrateIdKeys(mergeEntries(out.tracks, emptyTrackStats), addTallies);
+  out.racers = migrateIdKeys(mergeEntries(out.racers, emptyRacerStats), addTallies);
+  for (const k of ['trophies', 'records']) out[k] = migrateIdKeys(out[k]);
   out.cups = mergeEntries(out.cups, () => ({ bestPlace: null, wins: 0, finished: 0 }));
   out.stats = emptyStats();
   if (isPlainObject(saved.stats)) {
@@ -146,6 +149,16 @@ export function mergeProgress(saved) {
   }
   out.unlocked = [...new Set(out.unlocked)];
   out.unlockAll = saved.unlockAll === true;
+  return out;
+}
+
+/** Combine two tallies of the same racer/track (a renamed id met its new id): counts add, best place is the best. */
+function addTallies(a, b) {
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    if (k === 'bestPlace') out[k] = a[k] == null ? v : v == null ? a[k] : Math.min(a[k], v);
+    else if (Number.isFinite(v) && Number.isFinite(a[k])) out[k] = a[k] + v;
+  }
   return out;
 }
 

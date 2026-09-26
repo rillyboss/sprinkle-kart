@@ -93,6 +93,20 @@ export function gridColumns(n) {
   return Math.min(7, Math.ceil(n / 3));
 }
 
+/** The widest roster row the character grid uses when 2+ players share the screen. */
+export const WIDE_ROSTER_MAX_COLS = 11;
+
+/**
+ * Columns for the character grid. One player gets the roomy gridColumns()
+ * layout next to their big panel; with 2+ players the panels take half the
+ * height, so a big roster goes wide (two rows of up to 11) and the whole
+ * cast stays on screen.
+ */
+export function rosterColumns(n, players = 1) {
+  if (players <= 1 || n <= 12) return gridColumns(n);
+  return Math.min(WIDE_ROSTER_MAX_COLS, Math.ceil(n / 2));
+}
+
 /**
  * @param {object} o
  * @param {Array<{playerIndex:number, deviceId:string}>} o.players

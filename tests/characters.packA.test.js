@@ -1,5 +1,5 @@
 /**
- * Character pack A: Bruno Bananas, Shelly Macaroon, Boo Berry, Twiggy Licorice,
+ * Character pack A: Bruno Bananas, Shelly Macaroon, Peekaberry, Twiggy Licorice,
  * Captain Crumbs and Baby Bonbon (src/characters/pack-a.js).
  *
  * The shared contract tests (characters, charactersModels, registries,
@@ -20,7 +20,7 @@ import { isAvailable } from '../src/progress/access.js';
 import { buildUtterance, VOICE_STYLES } from '../src/audio/voice.js';
 import { pickCpuCharacters } from '../src/game/setup.js';
 
-const IDS = ['bruno', 'shelly', 'boo-berry', 'twiggy', 'captain-crumbs', 'baby-bonbon'];
+const IDS = ['bruno', 'shelly', 'peekaberry', 'twiggy', 'captain-crumbs', 'baby-bonbon'];
 const DEFS = PACK_A.map((e) => e.def);
 const ORIGINAL = CHARACTER_PACKS.find((p) => p.id === 'original').entries.map((e) => e.def);
 const STAT_NAMES = ['speed', 'accel', 'handling', 'weight'];
@@ -146,9 +146,9 @@ describe('pack A matches the binding lineup', () => {
 
   it('spells out the concept of each racer in their personality', () => {
     const concept = {
-      bruno: [/gorilla/i, /banana/i, /licorice/i, /neck ?tie/i],
+      bruno: [/gorilla/i, /banana/i, /lavender/i, /sprinkle scarf/i, /waffle-cone/i],
       shelly: [/turtle/i, /macaron/i],
-      'boo-berry': [/blueberry/i, /ghost/i, /see-through/i, /shy/i],
+      'peekaberry': [/blueberry/i, /ghost/i, /see-through/i, /shy/i],
       twiggy: [/licorice/i, /tall/i, /top hat/i, /pose/i],
       'captain-crumbs': [/cookie/i, /pirate/i, /chocolate-chip beard/i, /Arr-some/],
       'baby-bonbon': [/baby/i, /bonbon/i, /stroller/i, /giggl/i],
@@ -215,7 +215,7 @@ describe('pack A stats are balanced against the originals', () => {
     expect(s('bruno').weight).toBeGreaterThanOrEqual(4);
     expect(s('captain-crumbs').weight).toBeGreaterThanOrEqual(4);
     expect(s('baby-bonbon').accel).toBe(5);
-    expect(s('boo-berry').weight).toBe(1);
+    expect(s('peekaberry').weight).toBe(1);
   });
 });
 
@@ -238,7 +238,7 @@ describe('pack A voices, words and colours', () => {
     // big fellas talk low, the baby and the ghost talk high
     expect(getCharacter('bruno').voice.pitch).toBeLessThan(0.8);
     expect(getCharacter('baby-bonbon').voice.pitch).toBeGreaterThan(1.7);
-    expect(getCharacter('boo-berry').voice.style).toBe('giggle');
+    expect(getCharacter('peekaberry').voice.style).toBe('giggle');
   });
 
   it('has taglines, personality, emoji, pronoun and all three quotes', () => {
@@ -259,12 +259,12 @@ describe('pack A voices, words and colours', () => {
 
   it('uses friendly, kid-safe, original words only', () => {
     const banned = /\b(hit|hits|kill|killed|destroy|destroyed|die|dies|dead|attack|hate|stupid|weapon|crash|crashed|scary|skull|blood|fight|punch|sword|cannon|gun|shoot)\b/i;
-    const borrowed = /\b(mario|luigi|peach|bowser|yoshi|toad|koopa|donkey kong|diddy|boo|shy guy|wario|waluigi|nintendo|rosalina|daisy)\b/i;
+    const borrowed = /\b(mario|luigi|peach|bowser|yoshi|toad|koopa|donkey kong|diddy|boo|shy guy|wario|waluigi|nintendo|rosalina|daisy|boo berry|count chocula|franken berry)\b/i;
     for (const d of DEFS) {
       const text = [d.name, d.tagline, d.personality, ...Object.values(d.quotes)].join(' ');
       expect(text, d.id).not.toMatch(banned);
-      // "Boo Berry" (the binding lineup name), boo-hoo and peek-a-boo are everyday words; nothing else may borrow a trademark
-      expect(text.replace(/Boo Berry|Boo-hoo|Peek-a-boo/gi, ''), d.id).not.toMatch(borrowed);
+      // peek-a-boo is an everyday nursery word; nothing else may borrow a trademark
+      expect(text.replace(/Peek-a-boo/gi, ''), d.id).not.toMatch(borrowed);
       expect(d.emoji).not.toMatch(/☠|💀/u);
     }
   });
@@ -396,10 +396,11 @@ describe('pack A models', () => {
 });
 
 describe('pack A personality animations', () => {
-  it("Bruno's licorice tie flutters with speed and flips up to boop his nose on boosts", () => {
+  it("Bruno's sprinkle scarf flutters with speed and flips up to boop his nose on boosts", () => {
     const m = buildKartModel(getCharacter('bruno'));
-    const tie = part(m, 'bruno:tie');
+    const tie = part(m, 'bruno:scarf');
     const brow = part(m, 'bruno:brow');
+    part(m, 'bruno:hat');
     run(m, 60, { speed: 0 });
     const rest = tie.rotation.x;
     const browRest = brow.position.y;
@@ -416,6 +417,24 @@ describe('pack A personality animations', () => {
     expect(brow.position.y).toBeGreaterThan(browRest + 0.03); // surprised brows
     run(m, 90, { speed: 0 });
     expect(Math.abs(tie.rotation.x - rest)).toBeLessThan(0.15); // back on his tummy
+    m.dispose();
+  });
+
+  it('Bruno is an original look: soft lavender fur (not brown), no necktie, a sprinkle scarf and a waffle-cone hat', () => {
+    const d = getCharacter('bruno');
+    const rgb = (hex) => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+    const [r, g, b] = rgb(d.colors.primary);
+    expect(b).toBeGreaterThan(r); // cool lavender, not a warm brown
+    expect(r + g + b).toBeGreaterThan(450); // light and soft
+    const text = `${d.tagline} ${d.personality} ${Object.values(d.quotes).join(' ')}`;
+    expect(text).not.toMatch(/neck ?tie|tie|brown/i);
+    expect(lineupCharacter('bruno').concept).not.toMatch(/neck ?tie/i);
+    const m = buildKartModel(d);
+    const names = [];
+    m.group.traverse((o) => { if (o.name) names.push(o.name); });
+    expect(names).toContain('bruno:scarf');
+    expect(names).toContain('bruno:hat');
+    expect(names.some((n) => /tie/.test(n))).toBe(false);
     m.dispose();
   });
 
@@ -438,11 +457,11 @@ describe('pack A personality animations', () => {
     m.dispose();
   });
 
-  it('Boo Berry blushes see-through when bonked and when she wins, then turns solid again', () => {
-    const m = buildKartModel(getCharacter('boo-berry'));
-    const solid = part(m, 'boo-berry:solid');
-    const ghost = part(m, 'boo-berry:see-through');
-    const blush = part(m, 'boo-berry:blush');
+  it('Peekaberry blushes see-through when bonked and when she wins, then turns solid again', () => {
+    const m = buildKartModel(getCharacter('peekaberry'));
+    const solid = part(m, 'peekaberry:solid');
+    const ghost = part(m, 'peekaberry:see-through');
+    const blush = part(m, 'peekaberry:blush');
     const seeThroughMeshes = () => {
       const list = [];
       ghost.traverse((o) => { if (o.isMesh && o.material.transparent && o.material.opacity < 0.6) list.push(o); });

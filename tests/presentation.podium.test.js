@@ -191,3 +191,15 @@ describe('victory-podium system helpers', () => {
     expect(PODIUM_CLASS).toBe('skx-podium3d');
   });
 });
+
+describe('podium name labels stay readable over the 3D karts', () => {
+  it('results and ceremony names get a white halo, sit above the canvas art and leave room under the kart', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync('src/presentation/presentation.css', 'utf8');
+    const m = /body\.skx-podium3d \.sk-results \.sk-step-name,\s*body\.skx-podium3d \.sk-cer \.sk-cer-name \{([^}]*)\}/.exec(css);
+    expect(m).not.toBe(null);
+    expect(m[1]).toMatch(/text-shadow:[^;]*#fff/);
+    expect(m[1]).toMatch(/z-index:\s*3/);
+    expect(parseFloat(/margin-top:\s*([\d.]+)em/.exec(m[1])[1])).toBeGreaterThanOrEqual(0.5);
+  });
+});

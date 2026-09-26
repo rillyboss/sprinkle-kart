@@ -1,13 +1,16 @@
 /* Fun Goal sticker toasts (src/ui/goalToasts.js). OWNER: showcase features & modes. */
+/* Top-left corner, stacking down: the results / standings headings are centred at the top
+   and the unlock reveal's "Surprise 1 of N" ribbon sits top-right,
+   so a sticker toast never covers "What a race!", "P1 ... wins!" or the ribbon. */
 .skg-toasts {
   position: fixed;
-  top: 1.2em;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 1em;
+  left: 1.2em;
+  max-width: min(40vw, 22em);
   z-index: 60;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5em;
   pointer-events: none;
   font-family: var(--sk-font, 'Fredoka', system-ui, sans-serif);
@@ -41,6 +44,6 @@
 .skg-text small { font-size: 0.72em; font-weight: 700; color: #e08a00; text-transform: uppercase; letter-spacing: 0.08em; }
 .skg-text b { font-size: 1.15em; }
 .skg-text i { font-style: normal; font-size: 0.78em; color: var(--sk-ink-soft, #9a6aa8); }
-@keyframes skg-in { from { transform: translateY(-2.5em) scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes skg-out { to { transform: translateY(-1.5em) scale(0.8); opacity: 0; } }
+@keyframes skg-in { from { transform: translateX(-2.5em) scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes skg-out { to { transform: translateX(-1.5em) scale(0.8); opacity: 0; } }
 @keyframes skg-stick { from { transform: rotate(-30deg) scale(1.8); opacity: 0; } to { transform: rotate(-8deg) scale(1); opacity: 1; } }

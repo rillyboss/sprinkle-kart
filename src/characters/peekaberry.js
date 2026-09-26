@@ -1,5 +1,5 @@
 /**
- * Boo Berry — racer module (data + look).
+ * Peekaberry — racer module (data + look).
  * Pack: A. Built with the shared parts library (./parts.js).
  *
  * A shy, giggly blueberry ghost. She floats above her seat, and when she gets
@@ -9,8 +9,8 @@ import { G, toon, glow, frame, surf, limb, part, addFace, buildKartBase, WHITE, 
 
 /** @type {import('./types.js').CharacterDef} */
 export const def = {
-  id: 'boo-berry',
-  name: 'Boo Berry',
+  id: 'peekaberry',
+  name: 'Peekaberry',
   tagline: 'Peek-a-boo... oh! Hee hee, hello!',
   personality:
     'A shy little blueberry ghost who giggles behind her hands, floats instead of sitting and blushes so much she goes see-through.',
@@ -25,7 +25,7 @@ export const def = {
   quotes: {
     select: 'Oh! Um... hi! Can I race too? Hee hee!',
     win: 'I won? Eep! I am SO berry happy!',
-    oops: 'Boo-hoo... just kidding, hee hee!',
+    oops: 'Oopsie-berry... I am okay, hee hee!',
   },
 };
 
@@ -56,9 +56,9 @@ export function build(kit, rig, def) {
   for (const sd of [-1, 1]) {
     for (const [y, z] of [[0.5, 0.18], [0.44, -0.06], [0.52, -0.2]]) kit.add(C, G.sph(0.075, 8, 6), berry, { p: [sd * 0.78, y, z] });
   }
-  // a little friendly ghost-pal spoiler (Boo's plushie buddy, waving hello)
+  // a little friendly ghost-pal spoiler (Peeka's plushie buddy, waving hello)
   const flag = part(C, [0, 0.98, -1.06]);
-  flag.scale.setScalar(0.72); // small, so Boo herself stays the star of the chase view
+  flag.scale.setScalar(0.72); // small, so Peeka herself stays the star of the chase view
   const sheet = toon(WHITE);
   kit.add(flag, G.sph(0.3, 14, 10), sheet, { p: [0, 0.06, 0], s: [1.25, 1, 0.55] });
   kit.add(flag, G.cyl(0.37, 0.4, 0.22, 14, 1), sheet, { p: [0, -0.1, 0], s: [1, 1, 0.55] });
@@ -71,7 +71,7 @@ export function build(kit, rig, def) {
   kit.add(flag, G.tor(0.035, 0.01, 4, 8, Math.PI), toon(BERRY_DARK), { p: [0, 0.01, -0.165], r: [0, Math.PI, Math.PI], outline: false });
   for (const sd of [-1, 1]) kit.add(C, G.cyl(0.03, 0.03, 0.34, 6), crust, { p: [sd * 0.22, 0.72, -1.0] });
 
-  // ── Boo: the body IS the berry (the head), with a wispy ghost tail ──
+  // ── Peeka: the body IS the berry (the head), with a wispy ghost tail ──
   const D = rig.driver;
   rig.bounce = 0.4;
   const H = part(D, [0, 1.38, 0]);
@@ -82,8 +82,8 @@ export function build(kit, rig, def) {
   const solid = part(H, [0, 0, 0]);
   const ghosty = part(H, [0, 0, 0]);
   ghosty.visible = false;
-  solid.name = 'boo-berry:solid';
-  ghosty.name = 'boo-berry:see-through';
+  solid.name = 'peekaberry:solid';
+  ghosty.name = 'peekaberry:see-through';
   const seeThrough = toon(BERRY, { transparent: true, opacity: 0.42, emissive: 0xff8fc8, emissiveIntensity: 0.35 });
   const seeTail = toon(0xc8d2ff, { transparent: true, opacity: 0.35 });
   const berryBody = (target, mat, tailMat) => {
@@ -117,7 +117,7 @@ export function build(kit, rig, def) {
   });
   // extra-big blush that glows when she's flustered
   const blush = part(H, [0, 0, 0]);
-  blush.name = 'boo-berry:blush';
+  blush.name = 'peekaberry:blush';
   for (const sd of [-1, 1]) {
     kit.add(blush, G.sph(1, 10, 6), glow(0xff8fc8), { f: surf(R, 0.55 * sd, -0.26, 1.0), s: [0.1, 0.06, 0.03], outline: false });
   }

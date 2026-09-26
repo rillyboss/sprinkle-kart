@@ -62,9 +62,9 @@ All ids are kebab-case and unique across characters **and** tracks (they share o
 
 | Pack | id | Name | Concept | Unlock |
 |---|---|---|---|---|
-| A | bruno | Bruno Bananas | gentle giant gorilla, banana-split kart, licorice necktie | finish 2 races |
+| A | bruno | Bruno Bananas | gentle giant lavender gorilla, banana-split kart, sprinkle scarf + waffle-cone hat | finish 2 races |
 | A | shelly | Shelly Macaroon | speedy turtle with a pastel macaron shell | win on Gumdrop Meadow `{track gumdrop-meadow win}` |
-| A | boo-berry | Boo Berry | shy, giggly blueberry ghost who blushes see-through | top-3 on Starlight Galaxy |
+| A | peekaberry | Peekaberry | shy, giggly blueberry ghost who blushes see-through | top-3 on Starlight Galaxy |
 | A | twiggy | Twiggy Licorice | dramatically tall licorice showman, top hat, strikes poses | win 3 races |
 | A | captain-crumbs | Captain Crumbs | cookie pirate captain, "Arr-some!", chocolate-chip beard | bonk racers 20 times `{stat bonksGiven 20}` |
 | A | baby-bonbon | Baby Bonbon | giggly baby in a bonbon-wrapper onesie, stroller kart | finish 1 race with Kid-Assist `{stat kidAssistFinishes 1}` |
@@ -175,7 +175,7 @@ your PR description, and cover it with a test (the orchestrator merges in order)
 | 2 | **Tracks — Cozy Cup** | same pattern: `pumpkin-patch, teacup-garden, peppermint-village, pillow-fort` + `pack-cozy.js`, `props/cozy-*.js`, `tests/tracks.cozy.test.js` | — | same |
 | 3 | **Tracks — Adventure Cup** | `jellybean-jungle, cocoa-canyon, lemonade-volcano, donut-downtown` + `pack-adventure.js`, `props/adventure-*.js`, `tests/tracks.adventure.test.js` | — | same |
 | 4 | **Tracks — Superstar Cup** | `cupcake-carnival, aurora-palace, moonbounce-base, ribbon-sky` + `pack-superstar.js`, `props/superstar-*.js`, `tests/tracks.superstar.test.js` | — | same |
-| 5 | **Characters — pack A** | `src/characters/{bruno,shelly,boo-berry,twiggy,captain-crumbs,baby-bonbon}.js`, `src/characters/pack-a.js`, `tests/characters.packA.test.js`, `dev/characters-a/**` | — | `parts.js`, `model.js`, `index.js`, other packs, `voice.js` |
+| 5 | **Characters — pack A** | `src/characters/{bruno,shelly,peekaberry,twiggy,captain-crumbs,baby-bonbon}.js`, `src/characters/pack-a.js`, `tests/characters.packA.test.js`, `dev/characters-a/**` | — | `parts.js`, `model.js`, `index.js`, other packs, `voice.js` |
 | 6 | **Characters — pack B** | `src/characters/{luna,bleep,puff,prince-ribbit,marina,lulu}.js`, `src/characters/pack-b.js`, `tests/characters.packB.test.js`, `dev/characters-b/**` | — | same |
 | 7 | **Progression / unlocks** | `src/progress/**` (incl. the record storage behind `getRecord`/`submitRecord`), `src/systems/progressUnlocks.js` (+ new `src/systems/progress*.js`, which also handle `gp-end`), `src/ui/screens/unlock.js`, new screens `src/ui/screens/settings.js` (parent gate, reset, unlock-all) and e.g. `collection.js` (reached via `menuEntry`, §8), their CSS files, `src/audio/sfx/progress.js`, `tests/progress*.test.js` | `src/game/summary.js` (new optional fields only) | lineup rules (binding), `Menus.js` router, `title.js` (declare `menuEntry` instead) |
 | 8 | **Modes + timing** (Grand Prix, Time Trial + ghost, timers & records) | `src/main.js` (flow / GP loop / time-trial session — the **only** workstream that edits it; emits `gp-race-end` / `gp-end` built with `scoreGrandPrix()`), `src/race/Race.js` (race rules: items on/off, CPU count, ghost hooks — keep `env.gameplay`), `src/modes/**` (new), `src/systems/raceFlowReactions.js` (+ new `src/systems/timing*.js`, `gp*.js`; best times via `progress.submitRecord`), new screens `modeSelect.js` (order 25), `cupSelect.js`, `gpStandings.js`, `timeTrialResults.js`, HUD widgets for timers (`src/ui/widgets/timer*.js`, anchor `top-center`), `src/audio/sfx/race-flow.js`, `src/game/summary.js`, `src/game/setup.js`, `tests/modes*.test.js` | `src/config.js` | `Hud.js` internals (use widgets), `menuState.js` existing reducers (add new ones in `src/modes/`), `src/progress/*` (call its API) |
@@ -420,7 +420,7 @@ stops the others.
 `race:countdown {n}`, `race:go`, `race:boost {source:'start'|'pad'|'item'…}`, `race:drift-level {level}`,
 `race:drift-boost {level}`, `race:item-box {rolling}`, `race:item-get {item}`, `race:item-use {item}`,
 `race:bonked {cause, by}`, `race:shield-pop {cause?, by?, expired?}`, `race:bump {other, strength}`,
-`race:lap {lap}`, `race:final-lap`, `race:finish {place}`, `race:race-complete {standings}`.
+`race:lap {lap}`, `race:final-lap`, `race:finish {place}`, `race:keep-going {karts, seconds}` (every CPU is home but a human is still out; the race wraps up `seconds` later with estimated places), `race:race-complete {standings}`.
 Every `e` has `e.kart` (KartState, see §10) except countdown/go/race-complete.
 
 **RaceStartInfo** (`src/game/summary.js`): `{ mode: 'free'|'grand-prix'|'time-trial', trackId, cupId,

@@ -11,6 +11,7 @@
  */
 import { jsonStore, defaultBackend } from './storage.js';
 import { formatTime } from './timing.js';
+import { migrateId } from '../content/idAliases.js';
 
 export const HOLDERS_KEY = 'sprinkle-kart-record-holders-v1';
 
@@ -29,7 +30,7 @@ export function createRecordHolders(backend = defaultBackend()) {
     /** The characterId behind a record time, or null when unknown / out of date. */
     holder(trackId, kind, time) {
       const h = store.read()[trackId]?.[kind];
-      return h && same(h.time, time) && typeof h.characterId === 'string' ? h.characterId : null;
+      return h && same(h.time, time) && typeof h.characterId === 'string' ? migrateId(h.characterId) : null;
     },
     /** Update from a submitRaceRecords() result (only the times that became records). */
     remember(result) {

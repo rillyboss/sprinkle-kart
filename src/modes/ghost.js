@@ -13,6 +13,7 @@
  * OWNER: modes + timing workstream.
  */
 import { jsonStore, defaultBackend } from './storage.js';
+import { migrateId } from '../content/idAliases.js';
 
 export const GHOST_KEY = 'sprinkle-kart-ghosts-v1';
 export const GHOST_VERSION = 1;
@@ -285,7 +286,8 @@ export function createGhostStore(backend = defaultBackend()) {
     /** The saved ghost (packed) for a track + laps, or null. */
     load(trackId, laps) {
       const g = store.read()[trackId]?.[String(laps)];
-      return g && g.v === GHOST_VERSION ? g : null;
+      if (!g || g.v !== GHOST_VERSION) return null;
+      return migrateId(g.characterId) === g.characterId ? g : { ...g, characterId: migrateId(g.characterId) };
     },
     /** Save a packed ghost if it beats the saved one. Returns true if saved. */
     offer(ghost) {

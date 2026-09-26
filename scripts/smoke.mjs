@@ -375,6 +375,30 @@ async function menuFlowTest(t) {
  * for all 21 racers and 20 tracks): the grid scrolls, tracks page by cup, and
  * locked tracks / racers can't be picked.
  */
+/**
+ * Layout check for the character grid: every cursor tag, locked-card progress bar and
+ * tile that shows in the scroll box must fit inside it (nothing sliced by the edge),
+ * and with 2+ players the whole roster must be on screen or a "more" cue must show.
+ */
+async function charGridClipping(page) {
+  return page.evaluate(() => {
+    const grid = document.querySelector('.sk-grid');
+    if (!grid) return ['no .sk-grid'];
+    const g = grid.getBoundingClientRect();
+    const out = [];
+    for (const sel of ['.sk-tag', '.skp-bar-tile', '.sk-tile']) {
+      for (const el of grid.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || r.bottom <= g.top || r.top >= g.bottom) continue; // not in view at all
+        if (r.top < g.top - 1 || r.bottom > g.bottom + 1) out.push(`${sel} "${el.textContent.trim().slice(0, 18)}" cut by the grid edge (${Math.round(r.top)}-${Math.round(r.bottom)} vs ${Math.round(g.top)}-${Math.round(g.bottom)})`);
+      }
+    }
+    const hidden = [...grid.querySelectorAll('.sk-tile')].filter((el) => { const r = el.getBoundingClientRect(); return r.bottom <= g.top || r.top >= g.bottom; }).length;
+    if (hidden && !grid.classList.contains('sk-grid-more') && grid.scrollTop + grid.clientHeight < grid.scrollHeight - 8) out.push(`${hidden} racers hidden below with no "more" cue`);
+    return out;
+  });
+}
+
 async function menuScaleTest(t) {
   const shot = (n) => t.shot(`scale-${n}.png`);
   await t.page.goto(`${BASE}?unlockreset=1&democontent=1`, { timeout: T(60000) });
@@ -389,13 +413,13 @@ async function menuScaleTest(t) {
   const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
   t.check(locked === 13, `expected 13 locked racer tiles, got ${locked}`);
   await shot('1-characters');
-  await pressKey(t, 'KeyS');                 // P1 down two rows (grid scrolls)
-  await pressKey(t, 'KeyS');
+  for (const p of await charGridClipping(t.page)) t.check(false, `character grid: ${p}`);
+  await pressKey(t, 'KeyS');                 // P1 down a row: 2 players = 2 wide rows of 11, onto a locked racer
   await shot('2-characters-scrolled');
+  for (const p of await charGridClipping(t.page)) t.check(false, `character grid (scrolled): ${p}`);
   await pressKey(t, 'Enter');                // a locked racer: nope-wiggle, not ready
   await waitFrames(t.page, 2);
   t.check(!(await t.page.evaluate(() => !!document.querySelector('.sk-panel-ready'))), 'a locked racer was picked');
-  await pressKey(t, 'KeyW');
   await pressKey(t, 'KeyW');
   await pressKey(t, 'Enter');                // P1 picks Rocco
   await pressKey(t, 'Slash');                // P2 picks too → track select
@@ -679,7 +703,21 @@ async function grandPrixTest(t) {
   }
   await waitGame(t.page, () => document.querySelectorAll('.sk-cer-podium .sk-trophy').length >= 3 || document.querySelectorAll('.sk-trophy').length >= 3, null, T(20000), 'trophies on the podium');
   // the podium has finished rising once the ceremony's options show
-  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
+  // the podium has risen and any unlock reveals (which come first, covering the ceremony) are dismissed
+  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium .sk-trophy'), null, T(20000), 'ceremony podium');
+  const covered = await t.page.evaluate(() => new Promise((resolve) => {
+    // while a reveal is up, nothing of the ceremony may show through it
+    const t0 = performance.now();
+    const tick = () => {
+      const u = document.querySelector('.sk-gp .sk-unlock, .sk-unlock');
+      if (u) { resolve(!!u.parentElement?.classList.contains('sk-celebrating')); return; }
+      if (document.querySelector('.sk-gp-opts.sk-show') || performance.now() - t0 > 8000) { resolve(null); return; }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }));
+  if (covered !== null) t.check(covered, 'the unlock reveal does not cover the trophy ceremony underneath');
+  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options');
   await waitFrames(t.page, 3);
   await shot('3-ceremony');
   const info = await t.page.evaluate(() => ({ ev: window.__gpEvents, gp: window.__game.lastGp, cer: !!document.querySelector('.sk-cer-podium'), cups: document.querySelectorAll('.sk-trophy').length }));
@@ -983,7 +1021,7 @@ async function myCupTest(t) {
     if (r === 0) await pressThrough(t, () => window.__game?.state === 'race', 'My Cup race 2 to start');
     else await pressThrough(t, () => !!document.querySelector('.sk-cer-podium'), 'trophy ceremony');
   }
-  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
+  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options');
   await waitFrames(t.page, 3);
   await shot('4-ceremony');
   const end = await t.page.evaluate(() => ({ gp: window.__game.lastGp, kicker: document.querySelector('.sk-gp-kicker')?.textContent }));

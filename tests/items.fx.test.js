@@ -156,3 +156,15 @@ describe('item meshes', () => {
     expect(carry({ velocity: { x: NaN, z: 1 } })).toEqual({ x: 0, z: 0 });
   });
 });
+
+describe('Rainbow Star glow (play-test: the kart looked muddy under the star)', () => {
+  it('both star shells blend additively, so the kart brightens instead of turning grey-brown', async () => {
+    const THREE = await import('three');
+    const { KartFx } = await import('../src/race/KartFx.js');
+    const fx = new KartFx(new THREE.Scene());
+    expect(fx.shellMat.blending).toBe(THREE.AdditiveBlending);
+    expect(fx.shellMat2.blending).toBe(THREE.AdditiveBlending);
+    expect(fx.shellMat.depthWrite).toBe(false);
+    fx.dispose?.();
+  });
+});

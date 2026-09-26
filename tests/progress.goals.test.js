@@ -257,3 +257,18 @@ describe('goal toasts', () => {
     expect(t.queued).toBe(0);
   });
 });
+
+describe('sticker toast placement', () => {
+  it('toasts live in the top-left corner (the reveal ribbon is top-right), never centred over the results / standings headline', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync('src/ui/goalToasts.css', 'utf8');
+    const rule = /\.skg-toasts \{([^}]*)\}/.exec(css)[1];
+    expect(rule).toMatch(/left:\s*1\.2em/);
+    expect(rule).not.toMatch(/right:/);
+    // the reveal ribbon lives in the top-right corner
+    expect(readFileSync('src/ui/screens/progress.css', 'utf8') + readFileSync('src/ui/ui.css', 'utf8')).toMatch(/\.skp-ribbon \{[^}]*right:/);
+    expect(rule).not.toMatch(/left:\s*50%/);
+    expect(rule).not.toMatch(/translateX\(-50%\)/);
+    expect(rule).toMatch(/max-width/);
+  });
+});

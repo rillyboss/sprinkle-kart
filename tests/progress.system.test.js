@@ -116,7 +116,7 @@ describe('progress-unlocks system', () => {
 
   it('track, cup-track and distinct-tracks rules unlock from real races', () => {
     const { race } = rig();
-    expect(ids(race(makeSummary({ trackId: 'starlight-galaxy', humans: [{ place: 3 }] })))).toContain('boo-berry');
+    expect(ids(race(makeSummary({ trackId: 'starlight-galaxy', humans: [{ place: 3 }] })))).toContain('peekaberry');
     expect(ids(race(makeSummary({ trackId: 'gumdrop-meadow', humans: [{ place: 2 }] })))).toContain('pumpkin-patch'); // top 3 on 2 tracks
     expect(ids(race(makeSummary({ trackId: 'pillow-fort', humans: [{ place: 8 }] })))).toContain('lulu');
     expect(ids(race(makeSummary({ trackId: 'teddy-toyland', humans: [{ place: 1 }] })))).toContain('jellybean-jungle'); // any Bubble Cup win

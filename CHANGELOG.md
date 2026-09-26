@@ -2,6 +2,27 @@
 
 What's new in Sprinkle Kart, newest first. Player-facing details live in the [README](README.md).
 
+## Unreleased
+
+### Racers
+- Pack A's shy blueberry ghost has her own original name now: **Peekaberry** 🫐. Saved unlocks,
+  per-racer tallies, paint, record holders and ghosts all carry over by themselves.
+- **Bruno Bananas** has a brand-new look: soft lavender fur, a waffle-cone party hat and a pink
+  sprinkle scarf that flips up and boops his nose when he boosts (it used to be a necktie).
+
+### Fixes
+- **Pick your racer** with 2–4 players: all 21 racers fit on screen in two wide rows, the P1–P4
+  tags are never cut off, and a scrolling grid shows a *More friends below!* hint.
+- A race always ends: when every CPU friend is home and someone is still driving, they hear
+  *Keep going, you can do it!* and the race wraps up 45 seconds later.
+- Unlock surprises cover the trophy ceremony and results fully (no see-through podium text),
+  count *Surprise 1 of 2* in a Grand Prix too, and come before the *Play again* buttons.
+- *New sticker* pop-ups moved to the top-left corner, so they no longer cover the headline;
+  the *Photo finish!* card is gone by the time the results show; podium names stay readable.
+- Race callouts no longer pile up over the race timer or on top of the *Mini-Turbo!* flash.
+- The Rainbow Star makes a kart glow brighter instead of looking muddy.
+- The title show's camera no longer parks right in front of the item boxes.
+
 ## v2.0.0 — The Big Sprinkle Update (2026-09-26)
 
 ### New ways to play
@@ -18,7 +39,7 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
 - **Race timers & Records 🏆**: race clock, lap times and splits, best laps and saved records per track.
 
 ### 12 new racers (21 in all)
-- **Pack A:** Bruno Bananas, Shelly Macaroon, Boo Berry, Twiggy Licorice, Captain Crumbs, Baby Bonbon.
+- **Pack A:** Bruno Bananas, Shelly Macaroon, Peekaberry, Twiggy Licorice, Captain Crumbs, Baby Bonbon.
 - **Pack B:** Luna Lollicorn, Bleep Bloop, Puff the Sprinkle Dragon, Prince Ribbit, Marina Seashell, Lulu Lamb.
 
 ### 16 new tracks in 4 new cups (20 in all)
