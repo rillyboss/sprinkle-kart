@@ -537,7 +537,7 @@ async function roomScenario(browser, sc, svc, r) {
     r.mode = await bootGame(host, urlFor(sc.path, svc), cfg);
     r.notes.push(`online flow: ${r.mode === 'integrated' ? 'the game (WS7)' : 'test stand-in over the real modules (WS7 not in this build)'}`);
     const { secret, link } = await hostOpensRoom(host);
-    await shot(host, `${prefix}hub`).catch(() => {});
+    await shot(host, `${prefix}room-open`);
     r.notes.push(`room ${secret.label}`);
 
     // ---- the guest finds the room
@@ -846,6 +846,7 @@ async function checkScenario(browser, sc, svc, r) {
   try {
     r.mode = await bootGame(p, urlFor(sc.path, svc), signalCfg(sc.path, svc));
     await titleToHub(p);
+    await shot(p, `${sc.path}-hub`);
     await p.page.evaluate(({ signalUrl, trackers }) => {
       class UdpBlockedPC {
         constructor(config = {}) { this.config = config; this.iceGatheringState = 'new'; this.l = { icecandidate: [], icegatheringstatechange: [] }; }
