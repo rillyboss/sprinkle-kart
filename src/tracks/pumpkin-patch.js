@@ -545,7 +545,9 @@ export function buildScenery(ctx) {
     group.add(wm);
     const lift = (f, lat) => (span + 1.5 - Math.abs(lat)) * 0.42;
     const roof = mergeGeometries([ribbon(fr, -span - 1.5, 0, 7.2, { lift }), ribbon(fr, 0, span + 1.5, 7.2, { lift })]);
-    group.add(new THREE.Mesh(roof, roofMat));
+    const rm = new THREE.Mesh(roof, roofMat);
+    rm.name = 'covered-bridge-roof';
+    group.add(rm);
     // posts and portal beams (cream trim)
     for (let k = 0; k < fr.length; k += 3) {
       const f = fr[k];

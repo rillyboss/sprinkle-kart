@@ -135,6 +135,15 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 | **Starlight Galaxy** | Stella's glowing star road floating in space, with planets, crystal islands and an observatory |
 | **Sundae Slopes** | Ice-cream mountains, waffle-cone towers, a chocolate river and sprinkle snow |
 
+### ☕ Cozy Cup
+
+| Track | What's there |
+|---|---|
+| **Pumpkin Pie Patch** 🔒 | A golden harvest farm: smiling pumpkins, hay-bale hops, a red covered bridge over Apple Juice Creek and spinning pie windmills round a big hairpin |
+| **Teacup Garden** 🔒 | A tea party on a gingham tablecloth road: a long swoop round a steaming polka-dot teapot, the spinning teacup ride, macaron towers and a hedge-maze wiggle |
+| **Peppermint Village** 🔒 | A candy-cane shaped road through a snowy gingerbread village at twilight, with twinkly lights, a village tree, snowmen and a skating pond |
+| **Pillow Fort Dreamland** 🔒 | Bedtime! A cloud-shaped pajama road over blanket hills, through a pillow-fort tunnel, past counting sheep and a sleepy crescent-moon night-light |
+
 ---
 
 ## For developers

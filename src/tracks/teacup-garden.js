@@ -452,9 +452,9 @@ export function buildScenery(ctx) {
     wing.translate(0.75, 0, 0);
     wing.rotateX(-Math.PI / 2);
     const flies = [];
-    for (let i = 0; i < 26; i++) {
-      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * (extent + 20);
-      flies.push({ cx: center.x + Math.cos(a) * r, cz: center.z + Math.sin(a) * r, y: 3 + rng() * 6, rad: 4 + rng() * 8, sp: 0.4 + rng() * 0.5, ph: rng() * 6 });
+    // each loop stays beside the road, never fluttering in front of a chase camera
+    for (const [cx, cz] of scatter(26, (x, z) => clearOfRoad(x, z, FENCE_OFFSET + 14), { pad: 20 })) {
+      flies.push({ cx, cz, y: 3 + rng() * 6, rad: 4 + rng() * 8, sp: 0.4 + rng() * 0.5, ph: rng() * 6 });
     }
     const wingMat = toon(0xffffff, { side: THREE.DoubleSide, emissive: 0x332233, emissiveIntensity: 0.3 });
     const wings = new THREE.InstancedMesh(wing, wingMat, flies.length * 2);
