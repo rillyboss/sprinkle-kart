@@ -393,6 +393,7 @@
   border: 0.18em solid #ffd1ec; box-shadow: 0 0.35em 0 rgba(217, 72, 156, 0.18), 0 0.6em 1.4em rgba(120, 60, 160, 0.18);
   font-weight: 700; font-size: clamp(15px, 2.8vmin, 30px); pointer-events: none;
 }
+.skh-coach[hidden], .skh-coach-k[hidden] { display: none !important; }
 .skh-coach.skh-pop { animation: sk-pop-in 0.4s cubic-bezier(0.2, 1.7, 0.4, 1) both; }
 .skh-coach-e { font-size: 2em; line-height: 1; filter: drop-shadow(0 0.08em 0 rgba(0, 0, 0, 0.12)); }
 .skh-coach-body { display: flex; align-items: center; gap: 0.5em; }
@@ -442,3 +443,42 @@
 .skh-check:not(.skh-check-got) .skh-check-e { filter: grayscale(1); opacity: 0.6; }
 .skh-check-t { flex: 1; }
 .skh-check-m { font-size: 1.3em; }
+/* ---------- Paint Shop ---------- */
+.skps-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 1.6em; width: min(100%, 72em); }
+.skps-preview {
+  flex: 0 0 22em; display: flex; flex-direction: column; align-items: center; gap: 0.3em; padding: 1em;
+  border-radius: 1.6em; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0.35em 0 rgba(160, 70, 150, 0.16);
+}
+.skps-stage {
+  position: relative; width: 18em; height: 14em; display: grid; place-items: center; border-radius: 1.2em;
+  background: radial-gradient(ellipse at 50% 80%, rgba(217, 72, 156, 0.18), transparent 60%), linear-gradient(180deg, #fff6fc, #f3e9ff);
+}
+.skps-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: opacity 0.2s ease; }
+.skps-img[hidden], .skps-wait[hidden] { display: none !important; }
+.skps-img.skps-stale { opacity: 0.45; }
+.skps-wait { position: absolute; font-size: 2.2em; animation: sk-pulse 0.9s ease-in-out infinite; }
+.skps-name { font-size: 1.35em; font-weight: 700; color: #6a2c8f; }
+.skps-paint { font-weight: 700; color: #c2408b; }
+.skps-side { display: flex; flex-direction: column; gap: 0.45em; min-width: 0; flex: 1; max-width: 40em; }
+.skps-label { font-weight: 700; color: #8a4fb0; }
+.skps-row { display: flex; flex-wrap: wrap; gap: 0.45em; padding: 0.45em; border-radius: 1.1em; background: rgba(255, 255, 255, 0.45); border: 0.15em dashed transparent; }
+.skps-row.skps-row-on { border-color: #ffb3dd; background: rgba(255, 255, 255, 0.75); }
+.skps-racer {
+  position: relative; width: 3.6em; height: 3.6em; padding: 0; border: 0; border-radius: 50%; background: #fff; cursor: pointer;
+  box-shadow: 0 0.15em 0 rgba(160, 70, 150, 0.18); transition: transform 0.15s ease;
+}
+.skps-racer .skps-portrait { width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
+.skps-racer .skps-dot { position: absolute; right: -0.1em; bottom: -0.1em; width: 1em; height: 1em; border-radius: 50%; background: var(--pc); border: 0.15em solid #fff; display: none; }
+.skps-racer.skps-painted .skps-dot { display: block; }
+.skps-racer.sk-sel { box-shadow: 0 0 0 0.18em #fff, 0 0 0 0.36em #d9c3ef; }
+.skps-racer.skps-focus { transform: scale(1.12); box-shadow: 0 0 0 0.18em #fff, 0 0 0 0.4em var(--sk-pink-deep); z-index: 2; }
+.skps-pot {
+  position: relative; width: 3.3em; height: 3.3em; padding: 0; border: 0; border-radius: 50%; background: #fff; cursor: pointer;
+  display: grid; place-items: center; box-shadow: 0 0.15em 0 rgba(160, 70, 150, 0.18); transition: transform 0.15s ease;
+}
+.skps-blob { width: 2.4em; height: 2.4em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.75) 0 18%, transparent 40%), var(--pc, #ccc); box-shadow: inset 0 -0.2em 0 rgba(0, 0, 0, 0.12); }
+.skps-blob-orig { background: conic-gradient(#ff7ac8, #ffdf4a, #55d99c, #62bdf5, #a274f2, #ff7ac8); }
+.skps-pot-e { position: absolute; right: -0.2em; bottom: -0.25em; font-size: 1em; filter: drop-shadow(0 0.08em 0 rgba(0, 0, 0, 0.15)); }
+.skps-pot.sk-sel { box-shadow: 0 0 0 0.18em #fff, 0 0 0 0.36em #d9c3ef; }
+.skps-pot.skps-focus { transform: scale(1.14); box-shadow: 0 0 0 0.18em #fff, 0 0 0 0.4em var(--sk-pink-deep); z-index: 2; }
+@media (max-aspect-ratio: 4/3) { .skps-body { flex-direction: column; } .skps-preview { flex-basis: auto; } }

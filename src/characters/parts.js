@@ -430,7 +430,7 @@ export function addMouth(kit, target, F, w, kind = 'smile') {
  */
 export function buildKartBase(kit, rig, k) {
   const W = k.width ?? 1.3;
-  const body = toon(k.body);
+  const body = toon(rig.paint ?? k.body); // rig.paint: Paint Shop colour (src/modes/paint.js)
   const trim = toon(k.trim);
   const seat = toon(k.seat);
   const C = rig.chassis;

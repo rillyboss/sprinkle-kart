@@ -960,6 +960,39 @@ async function tutorialTest(t) {
   checkErrors(t);
 }
 
+/** Paint Shop: open it from the title, repaint P1's racer, see the preview, then race in the new colour. */
+async function paintShopTest(t) {
+  const shot = (n) => t.shot(`paint-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-title'), null, T(60000), 'title screen');
+  await t.page.evaluate(() => { try { localStorage.removeItem('sprinkle-kart-paint-v1'); } catch { /* ignore */ } });
+  await waitMenusReady(t.page);
+  const idx = await t.page.evaluate(() => [...document.querySelectorAll('.sk-title-entry')].findIndex((b) => /Paint Shop/.test(b.textContent)));
+  t.check(idx >= 0, 'no Paint Shop button on the title');
+  await pressKey(t, 'KeyS');
+  for (let i = 0; i < idx; i++) await pressKey(t, 'KeyD');
+  await pressKey(t, 'Enter', onScreen('paint-shop', 'Paint Shop'));
+  await waitMenusReady(t.page);
+  await waitGame(t.page, () => { const i = document.querySelector('.skps-img'); return !!i && !i.hidden && i.naturalWidth > 0; }, null, T(60000), 'kart preview');
+  const racer = await t.page.evaluate(() => document.querySelector('.skps-name')?.textContent);
+  await pressKey(t, 'Enter');                                           // → paints row
+  for (let i = 0; i < 5; i++) await pressKey(t, 'KeyD');               // Minty Green
+  await waitGame(t.page, () => !document.querySelector('.skps-img')?.classList.contains('skps-stale'), null, T(60000), 'painted preview');
+  await waitFrames(t.page, 2);
+  await shot('1-shop');
+  const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-paint-v1') || '{}'));
+  const ids = Object.keys(saved.racers || {});
+  t.check(ids.length === 1 && saved.racers[ids[0]] === 'mint', `paint not saved ${JSON.stringify(saved)}`);
+  await pressKey(t, 'Enter', onScreen('title', 'back to the title'));
+  await t.page.goto(`${BASE}?quick=gumdrop-meadow&cpus=0`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race' && window.__game.race?.state === 'racing', null, T(60000), 'race in the new paint');
+  await waitFrames(t.page, 3);
+  await shot('2-race');
+  const who = await t.page.evaluate(() => window.__game.race.karts[0].characterId);
+  t.detail = `${racer} (${ids[0]}) → mint; racing as ${who}`;
+  checkErrors(t);
+}
+
 /**
  * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
  * To add one, append your function above and one line here — nothing else to edit.
@@ -978,6 +1011,7 @@ const FLOW_TESTS = {
   'modes-daily': dailyTest,
   'modes-my-cup': myCupTest,
   'modes-tutorial': tutorialTest,
+  'modes-paint': paintShopTest,
 };
 
 /* ---------------- runner ---------------- */

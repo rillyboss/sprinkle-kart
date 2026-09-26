@@ -91,6 +91,8 @@ export function buildKartModel(charDef) {
     anims: [],
     bounce: 1,
     headLag: 1,
+    // Paint Shop (src/modes/paint.js): a repainted kart body for every racer (null = own colours).
+    paint: Number.isInteger(def.paint) ? def.paint : null,
   };
 
   const kit = new Kit();
