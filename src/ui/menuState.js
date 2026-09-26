@@ -47,7 +47,7 @@ const reindex = (players) => players.map((p, i) => ({ ...p, playerIndex: i }));
  * Join rules:
  *  - confirm/start from a new device joins it as the next player (max 4).
  *  - confirm from P1, or start from any joined player, continues ('next') when >= 1 joined.
- *  - toggle (Y / Tab) flips that player's Easy Drive.
+ *  - toggle (Y / Tab) flips that player's Kid-Assist (easyDrive).
  *  - back from a joined player leaves (everyone behind them slides up a slot).
  *  - back from a non-joined device when nobody has joined goes back to the title.
  */
@@ -244,7 +244,7 @@ function lapsIndexFor(laps) {
  * @param {Array<{id:string, laps?:number}>} o.tracks
  * @param {{trackId?:string, speedClass?:string, laps?:number}|null} [o.previous]
  * @param {string|null} [o.controllerId] only this device may drive the screen (null = anyone)
- * @param {boolean} [o.easyDrive] someone has Magic Steering on: start on Cozy
+ * @param {boolean} [o.easyDrive] someone has Kid-Assist on: start on Cozy
  * @param {(track)=>boolean} [o.isLocked] true if this track is still locked (shown with a padlock, can't be raced)
  */
 export function createTrackSelectState({ tracks, previous = null, controllerId = null, easyDrive = false, isLocked = () => false }) {

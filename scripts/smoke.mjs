@@ -670,6 +670,8 @@ async function grandPrixTest(t) {
     else await pressThrough(t, () => !!document.querySelector('.sk-cer-podium'), 'trophy ceremony');
   }
   await waitGame(t.page, () => document.querySelectorAll('.sk-cer-podium .sk-trophy').length >= 3 || document.querySelectorAll('.sk-trophy').length >= 3, null, T(20000), 'trophies on the podium');
+  // the podium has finished rising once the ceremony's options show
+  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
   await waitFrames(t.page, 3);
   await shot('3-ceremony');
   const info = await t.page.evaluate(() => ({ ev: window.__gpEvents, gp: window.__game.lastGp, cer: !!document.querySelector('.sk-cer-podium'), cups: document.querySelectorAll('.sk-trophy').length }));

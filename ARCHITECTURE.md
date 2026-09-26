@@ -627,8 +627,13 @@ recordsSet`. `setUnlockAll(on)` is the parent switch; `isEarned(id)` ignores it.
 - **Hud**: `layout(rects)`, `update(race, path, { playerIndices, portraits })`, `flash(pi, text)`, `addWidget(def)`,
   `show/hide/reset/dispose`.
 - Debug URL params: `?quick=<trackId>&players=1..4&speed=…&autodrive=1&fastfinish=1&cpus=0..7&simspeed=1..8&laps=n`,
-  `?unlockreset=1`, `?democontent=1`. `window.__game` exposes `state, race, session, setup, fps, frames, errors,
-  lastResults (incl. summary, unlocks), bus, menus, hud, audio, input`.
+  `?unlockreset=1`, `?democontent=1`, `?mode=gp&cup=<cupId>` (straight into a Grand Prix), `?mode=tt&quick=<trackId>`
+  (Time Trial). `window.__game` exposes `state` (`'standings'` during Grand Prix standings), `race, session, setup, fps,
+  frames, errors, lastResults (incl. summary, unlocks), bus, menus, hud, audio, input, gp, lastGp, timeTrial`.
+- **Modes + timing** additions: `setup.cpuIds` (fixed Grand Prix CPU racers), `new Race({ ..., rules })` with
+  `race.rules` (items / CPUs / starting items) and `race.modeInfo`; `summary.records` (set on `race-end` by
+  `src/systems/timingRecords.js`); localStorage keys `sprinkle-kart-ghosts-v1` and `sprinkle-kart-record-holders-v1`.
+  A Time Trial emits `race-end` with `summary.mode === 'time-trial'`; progression counts it as `timeTrialsFinished`.
 
 ---
 

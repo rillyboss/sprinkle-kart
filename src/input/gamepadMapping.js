@@ -7,7 +7,7 @@
  *           RB (5) or X (2) = drift (hold)              LB (4) or Y (3) = use item
  *           right-stick click (11) or right stick pulled down = look back
  *           Start (9) = pause
- *   Menu:   left stick / d-pad = move, A = confirm, B = back, Y = toggle (Easy Drive), Start = start
+ *   Menu:   left stick / d-pad = move, A = confirm, B = back, Y = toggle (Kid-Assist), Start = start
  *
  * Non-standard pads (generic USB / DirectInput / some Switch adapters) use the same button
  * indices as a best guess, read triggers as digital or analog buttons 6/7, accept
