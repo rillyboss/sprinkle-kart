@@ -627,7 +627,7 @@ async function modesMenuTest(t) {
   await pressKey(t, 'Enter', onScreen('mode-select', 'mode select'));
   await waitMenusReady(t.page);
   const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-mode-card').length);
-  t.check(cards === 3, `expected 3 mode cards, got ${cards}`);
+  t.check(cards === 5, `expected 5 mode cards, got ${cards}`);
   await shot('1-select');
   await pressKey(t, 'KeyS');                                            // down → Records
   await pressKey(t, 'Enter', onScreen('records', 'Records'));
@@ -717,6 +717,101 @@ async function timeTrialTest(t) {
 }
 
 /**
+ * Bubble Pop Battle (showcase features): the arena select in the menus, then a whole
+ * 2-player battle (?mode=battle) — bubbles float over the karts, the battle HUD replaces the
+ * lap / place / timer, items pop bubbles and the battle ends on the battle results screen.
+ */
+async function battleTest(t) {
+  const shot = (n) => t.shot(`battle-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
+  await pressKey(t, 'Enter', onScreen('join', 'join screen'));
+  await pressKey(t, 'Enter', onScreen('mode-select', 'mode select'));
+  await waitMenusReady(t.page);
+  await pressKey(t, 'KeyA');                                            // wrap left → Bubble Battle (last card)
+  await waitGame(t.page, () => document.querySelector('.sk-mode-card.sk-sel')?.classList.contains('sk-mode-battle'), null, T(8000), 'Bubble Battle card focused');
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select (battle)'));
+  await pressKey(t, 'Enter', onScreen('arena-select', 'arena select'));
+  await waitMenusReady(t.page);
+  await shot('1-arenas');
+  const arenas = await t.page.evaluate(() => document.querySelectorAll('.skb-arena').length);
+  t.check(arenas >= 2, `expected 2+ arena cards, got ${arenas}`);
+  await t.page.goto(`${BASE}?mode=battle&arena=bubble-bath-bowl&players=2&autodrive=1&simspeed=8&speed=zoomy&unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race' && window.__game.race?.state === 'racing', null, T(60000), 'battle to start');
+  await driveFor(t.page, 4);
+  await waitFrames(t.page, 2);
+  await shot('2-arena');
+  const live = await t.page.evaluate(() => {
+    const g = window.__game;
+    const vis = (sel) => { const n = document.querySelector(sel); return !!n && !n.hidden && getComputedStyle(n).display !== 'none'; };
+    return {
+      mode: g.setup.mode,
+      track: g.race.trackDef.id,
+      karts: g.race.karts.length,
+      bubbles: g.race.karts.filter((k) => k.model?.group.getObjectByName(`battle-bubbles-${k.id}`)).length,
+      battle: !!g.race.modeInfo.battle,
+      hud: vis('.skb-hud'),
+      lap: vis('.sk-lap'),
+      timer: vis('.sk-timer'),
+      clock: document.querySelector('.skb-hud-clock')?.textContent,
+    };
+  });
+  t.check(live.mode === 'battle' && live.track === 'bubble-bath-bowl', `bad battle setup ${JSON.stringify(live)}`);
+  t.check(live.karts === 8 && live.bubbles === 8, `every kart should float bubbles (${live.bubbles}/${live.karts})`);
+  t.check(live.battle && live.hud && /^\d:\d\d$/.test(live.clock || ''), `battle HUD missing (${JSON.stringify(live)})`);
+  t.check(!live.lap && !live.timer, 'lap pill / race timer should hide in a battle');
+  await waitGame(t.page, () => window.__game?.state === 'results', null, T(400000), 'battle results');
+  await waitMenusReady(t.page);
+  await waitGame(t.page, () => !!document.querySelector('.sk-gp-opts.sk-show') || !!document.querySelector('.sk-unlock'), null, T(30000), 'battle results options');
+  await shot('3-results');
+  const res = await t.page.evaluate(() => ({ screen: window.__game.menus.screenId, battle: window.__game.lastResults?.summary?.battle, rows: document.querySelectorAll('.skb-row').length }));
+  t.check(res.screen === 'battle-results', `battle results screen not shown (${res.screen})`);
+  t.check(res.rows === 8 && res.battle?.ranking?.length === 8, `battle ranking missing (${res.rows} rows)`);
+  t.check(res.battle?.ranking?.[0]?.place === 1, 'battle ranking has no winner');
+  const popped = res.battle.ranking.reduce((a, r) => a + r.popped, 0);
+  t.check(popped > 0, 'nobody popped a bubble in a whole battle');
+  t.detail = `reason=${res.battle.reason} pops=${popped}`;
+  checkErrors(t);
+}
+
+/**
+ * Team Race (showcase features): a 2-player team race (?mode=team) shows the live team
+ * score, puts a team badge on every kart and ends on the team results screen.
+ */
+async function teamTest(t) {
+  const shot = (n) => t.shot(`team-${n}.png`);
+  await t.page.goto(`${BASE}?quick=gumdrop-meadow&mode=team&players=2&autodrive=1&fastfinish=1&simspeed=6&speed=zoomy&unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race' && window.__game.race?.state === 'racing', null, T(60000), 'team race to start');
+  await driveFor(t.page, 3);
+  await waitFrames(t.page, 2);
+  await shot('1-race');
+  const live = await t.page.evaluate(() => {
+    const g = window.__game;
+    const teams = g.race.karts.map((k) => k.team);
+    return {
+      mode: g.setup.mode,
+      home: teams.filter((x) => x === 'sprinkle').length,
+      humansHome: g.race.karts.filter((k) => !k.isCPU).every((k) => k.team === 'sprinkle'),
+      badges: g.race.karts.filter((k) => k.model?.group.getObjectByName(`team-badge-${k.id}`)).length,
+      hud: document.querySelector('.skt-hud:not([hidden])')?.textContent ?? '',
+    };
+  });
+  t.check(live.mode === 'team' && live.home === 4 && live.humansHome, `bad teams ${JSON.stringify(live)}`);
+  t.check(live.badges === 8, `every kart should wear a team badge (${live.badges})`);
+  t.check(/\d+\s*—\s*\d+/.test(live.hud), `team score HUD missing (${live.hud})`);
+  await waitGame(t.page, () => window.__game?.state === 'results', null, T(300000), 'team results');
+  await waitMenusReady(t.page);
+  await waitGame(t.page, () => !!document.querySelector('.sk-gp-opts.sk-show') || !!document.querySelector('.sk-unlock'), null, T(30000), 'team results options');
+  await shot('2-results');
+  const res = await t.page.evaluate(() => ({ screen: window.__game.menus.screenId, team: window.__game.lastResults?.summary?.team, sides: document.querySelectorAll('.skt-side').length }));
+  t.check(res.screen === 'team-results', `team results screen not shown (${res.screen})`);
+  t.check(res.sides === 2, `expected 2 team boards, got ${res.sides}`);
+  t.check(res.team && res.team.totals.sprinkle + res.team.totals.sparkle === 58, `team points should total 58 (${JSON.stringify(res.team?.totals)})`);
+  t.detail = `score=${res.team?.totals?.sprinkle}-${res.team?.totals?.sparkle}`;
+  checkErrors(t);
+}
+
+/**
  * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
  * To add one, append your function above and one line here — nothing else to edit.
  */
@@ -729,6 +824,8 @@ const FLOW_TESTS = {
   'modes-menu': modesMenuTest,
   'modes-grand-prix': grandPrixTest,
   'modes-time-trial': timeTrialTest,
+  'modes-battle': battleTest,
+  'modes-team': teamTest,
 };
 
 /* ---------------- runner ---------------- */
