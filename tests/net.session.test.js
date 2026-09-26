@@ -376,8 +376,8 @@ describe('lobby traffic, intents, emotes, leaving', () => {
     let st = guestReduce(createGuestState({ secret: SECRET }), { type: 'connect', now: 0 }).state;
     st = guestReduce(st, { type: 'tick', now: CONNECT_TIMEOUT_MS - 1 }).state;
     expect(st.phase).toBe('connecting');
-    const r = guestReduce(st, { type: 'tick', now: CONNECT_TIMEOUT_MS });
-    expect(r.state.end).toEqual({ reason: 'no-connect', text: TEXT.noConnect });
+    const r = guestReduce(guestReduce(st, { type: 'host-seen', now: 50 }).state, { type: 'tick', now: CONNECT_TIMEOUT_MS });
+    expect(r.state.end).toEqual({ reason: 'no-connect', text: TEXT.noConnect }); // (no host at all: not-found, net.session.liveness)
     let j = guestReduce(createGuestState({ secret: SECRET }), { type: 'connect', now: 0 }).state;
     j = guestReduce(j, { type: 'connected', peerId: 'h', now: 10 }).state;
     j = guestReduce(j, { type: 'heard', now: 5000 }).state;

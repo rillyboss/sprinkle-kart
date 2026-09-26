@@ -118,7 +118,7 @@ export function runNetRace({
   conditions = {}, perGuest = null, speedClass = 'zippy', maxSeconds = null, startAtMs = 1500, settleMs = 2500,
   pauses = [], stalls = [], hidden = [], outages = [], script = null, pilot = {}, clockOffsets = null,
   guestFrameJitterMs = 0, recordFrames = false, onGuestFrame = null, onHostTick = null, stopWhen = null,
-  hostOverride = null, drainMs = 3000, captureExtra = null,
+  hostOverride = null, drainMs = 3000, captureExtra = null, guestFrameMs = FRAME_MS, easyGuests = false,
 } = {}) {
   if (mode !== 'free') throw new Error(`runNetRace: mode ${mode} is a later milestone (M2/M3)`);
   const rnd = mulberry(seed * 7919 + 1);
@@ -133,7 +133,7 @@ export function runNetRace({
   for (let i = 0; i < hostPlayers; i++) { hostKarts.push(participants.length); participants.push({ characterId: ids[participants.length], playerIndex: pi++ }); }
   const houseKarts = houses.map(([n]) => {
     const karts = [];
-    for (let i = 0; i < n; i++) { karts.push(participants.length); participants.push({ characterId: ids[participants.length], playerIndex: pi++ }); }
+    for (let i = 0; i < n; i++) { karts.push(participants.length); participants.push({ characterId: ids[participants.length], playerIndex: pi++, easyDrive: !!easyGuests }); }
     return karts;
   });
 
@@ -257,7 +257,7 @@ export function runNetRace({
     ep.onMessage((peer, ch, bytes) => gdriver.onMessage(peer, ch, bytes));
     return {
       id: guestIds[gi], index: gi, replica, driver: gdriver, timeline, clock: clockSync, events, corrections, guestPresses, released,
-      offset, gnow, nextFrame: startAtMs * 0.2 + rnd() * FRAME_MS, frames: [], jumps: [], lastRender: new Map(),
+      offset, gnow, nextFrame: startAtMs * 0.2 + rnd() * FRAME_MS, lastFrameT: null, frames: [], jumps: [], lastRender: new Map(),
       timelineErr: [], leadLog: [], interpLog: [],
     };
   });
@@ -345,9 +345,11 @@ export function runNetRace({
     }
     for (const g of guests) {
       if (t < g.nextFrame) continue;
-      const dt = FRAME_MS / 1000;
+      // guests run at their own refresh rate (guestFrameMs: 60/120/144 Hz screens) with real frame gaps
+      const dt = g.lastFrameT === null ? guestFrameMs / 1000 : (t - g.lastFrameT) / 1000;
+      g.lastFrameT = t;
       const fr = g.driver.frame(dt);
-      g.nextFrame += FRAME_MS + (guestFrameJitterMs ? (rnd() - 0.5) * 2 * guestFrameJitterMs : 0);
+      g.nextFrame += guestFrameMs + (guestFrameJitterMs ? (rnd() - 0.5) * 2 * guestFrameJitterMs : 0);
       if (fr.T !== undefined && raceStarted) {
         const truth = hostTickAt(t);
         g.timelineErr.push({ t, err: fr.T - truth, paused: g.timeline.paused });

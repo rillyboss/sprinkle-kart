@@ -2,7 +2,7 @@
 // host places, host events mapped to kart objects, remote karts / items / boxes on R, models, resync.
 import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
-import { ReplicaRace } from '../src/net/guest/replicaRace.js';
+import { ReplicaRace, MAX_PREDICT_TICKS, MAX_FILL_TICKS } from '../src/net/guest/replicaRace.js';
 import { createReplicaItems } from '../src/net/guest/replicaItems.js';
 import { createSnapshotBuffer } from '../src/net/guest/interpolation.js';
 import { Race } from '../src/race/Race.js';
@@ -80,7 +80,13 @@ describe('ReplicaRace: countdown and GO on the prediction timeline', () => {
     const r = make();
     r.setStart({ startTick: 1, goTick: cd.goTick });
     const ticks = r.frame(1 / 60, idle, { P: 500, R: 480 });
-    expect(ticks).toHaveLength(12);
+    // the newest MAX_PREDICT_TICKS are predicted, the MAX_FILL_TICKS before them only get a recorded input
+    // (so the host never repeats a stale one), everything older is jumped over
+    expect(ticks).toHaveLength(MAX_PREDICT_TICKS + MAX_FILL_TICKS);
+    expect(ticks[0]).toBe(500 - MAX_PREDICT_TICKS - MAX_FILL_TICKS + 1);
+    expect(r.stats.predicted).toBe(MAX_PREDICT_TICKS);
+    expect(r.stats.filled).toBe(MAX_FILL_TICKS);
+    expect(r.history.get(ticks[0])).toBeTruthy();
     expect(r.predictedTick).toBe(500);
     r.rewind(450);
     expect(r.predictedTick).toBe(450);

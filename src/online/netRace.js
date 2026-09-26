@@ -25,6 +25,61 @@ export const SESSION_FIRST_BYTE = 0x7b;
 export const LOAD_TIMEOUT_MS = 20_000;
 /** Host shows results this long after race-complete (same as offline). */
 export const RESULTS_DELAY_S = 2.6;
+/** The host's tick grid sits half a tick before its start frame, so vsync frames land mid-tick (net review #3). */
+export const HOST_TICK_PHASE_MS = 1000 / 120;
+/** A kart that moved more than this in one tick (a respawn) is drawn where it is, never swept across. */
+export const PRESENT_TELEPORT_M = 8;
+
+/** Shortest signed turn from heading a to heading b (radians). */
+function angleDelta(a, b) {
+  let d = (b - a) % (2 * Math.PI);
+  if (d > Math.PI) d -= 2 * Math.PI;
+  else if (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+/**
+ * Render interpolation for the HOST's karts (net review #3). The Race moves karts only when a 60 Hz tick runs,
+ * so on a 120/144 Hz screen (or a 60 Hz one with a little callback jitter) the host's own kart froze for a
+ * frame and then double-stepped. `beforeTick()` remembers every kart's pose; `present(alpha)` draws each kart
+ * between that pose and the current one at the host clock's alpha (model + `kart.render` for the camera).
+ * @param {{ karts: object[] }} race
+ */
+export function createHostPresenter(race) {
+  const prev = new Map();
+  return {
+    /** Call right before each authoritative tick. */
+    beforeTick() {
+      for (const k of race.karts) {
+        if (!k?.position) continue;
+        let p = prev.get(k.id);
+        if (!p) { p = { x: 0, y: 0, z: 0, heading: 0 }; prev.set(k.id, p); }
+        p.x = k.position.x; p.y = k.position.y; p.z = k.position.z; p.heading = k.heading;
+      }
+    },
+    /** Draw every kart at `alpha` (0..1) between its previous and current tick pose. */
+    present(alpha) {
+      const a = Math.max(0, Math.min(1, Number.isFinite(alpha) ? alpha : 1));
+      for (const k of race.karts) {
+        if (!k?.position) continue;
+        const p = prev.get(k.id);
+        if (!k.render) k.render = { position: k.position.clone(), heading: k.heading };
+        let x = k.position.x; let y = k.position.y; let z = k.position.z; let h = k.heading;
+        if (p && Math.hypot(x - p.x, z - p.z) <= PRESENT_TELEPORT_M) {
+          x = p.x + (x - p.x) * a; y = p.y + (y - p.y) * a; z = p.z + (z - p.z) * a;
+          h = p.heading + angleDelta(p.heading, k.heading) * a;
+        }
+        k.render.position.set(x, y, z);
+        k.render.heading = h;
+        const g = k.model?.group;
+        if (g) {
+          g.position.set(x, y, z);
+          g.rotation.set(k.phys?.pitch ?? 0, h + (k.phys?.spinAngle ?? 0), k.phys?.roll ?? 0);
+        }
+      }
+    },
+  };
+}
 
 /** Is this a WS6 session message (JSON) rather than a netcode message? */
 export const isSessionBytes = (bytes) => bytes instanceof Uint8Array && bytes.length > 0 && bytes[0] === SESSION_FIRST_BYTE;
@@ -244,11 +299,14 @@ export function createSeatSampler(kartId) {
  * @param {() => number} [o.now]
  * @param {number} [o.loadTimeoutMs]
  */
-export function createHostNetRace({ stack, race, transport, setup, houses, localInputs, now = () => performance.now(), loadTimeoutMs = LOAD_TIMEOUT_MS }) {
+export function createHostNetRace({ stack, race, transport, setup, houses, localInputs, now = () => performance.now(), loadTimeoutMs = LOAD_TIMEOUT_MS, phaseMs = HOST_TICK_PHASE_MS }) {
   const timing = raceTiming(stack);
-  const clock = createHostClock({ now });
+  const clock = createHostClock({ now, phaseMs });
+  const presenter = createHostPresenter(race);
+  const baseTick = stack.tickRace ?? ((r, inputs) => { if (typeof r.tick === 'function') r.tick(inputs); else r.update(1 / 60, inputs); });
   const driver = createHostDriver({
-    race, transport, houses, localInputs, clock, wire: stack.wire, capture: stack.capture, tickRace: stack.tickRace, now,
+    race, transport, houses, localInputs, clock, wire: stack.wire, capture: stack.capture, now,
+    tickRace: (r, inputs) => { presenter.beforeTick(); baseTick(r, inputs); },
     raceId: setup.raceId >>> 0, onEvent: race.onEvent,
   });
   const waiting = new Set([...houses.values()].map((h) => h.peerId).filter((p) => !String(p).startsWith('gone-')));
@@ -286,9 +344,23 @@ export function createHostNetRace({ stack, race, transport, setup, houses, local
       return true;
     },
     setHouseRobo(houseId, on) { driver.setHouseRobo(houseId, on); },
+    /**
+     * A house came back on a new connection (§13.2): snapshots, events and inputs follow the new peer, it
+     * gets START + the current TIMEBASE again, Robo Driver hands the karts back and the input baseline resets.
+     */
+    reattach(houseId, peerId) {
+      waiting.delete(driver.housePeer(houseId));
+      if (!driver.setHousePeer(houseId, peerId)) return false;
+      driver.rebaseline(houseId);
+      driver.setHouseRobo(houseId, false);
+      if (started) driver.sendStartTo(peerId);
+      return true;
+    },
     /** A queued ctrl message for one peer (FRAG-paced while racing). */
     sendCtrl(peerId, bytes) { return driver.sendCtrl(peerId, bytes); },
     get alpha() { return lastAlpha; },
+    /** Draw the karts between their last two tick poses (call once per rAF frame after frame()). */
+    present(alpha = lastAlpha) { presenter.present(alpha); },
     stats() { return driver.stats(); },
     dispose() { driver.dispose(); },
   };

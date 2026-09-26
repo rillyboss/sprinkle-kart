@@ -59,9 +59,11 @@ export function createReplicaItems({ itemView = null, boxView = null } = {}) {
      * @param {{ bracket: (r: number) => { a, b, t } }} buffer
      * @param {number} renderTick
      */
-    update(buffer, renderTick) {
+    // `hidden`: gumdrop ids this machine's own kart already bonked into (drawn gone at once)
+    update(buffer, renderTick, hidden = null) {
       const { a, b, t } = buffer.bracket(renderTick);
       if (!a) return;
+      const shown = (list) => (hidden?.size ? list.filter((e) => !hidden.has(e.id)) : list);
       const lerpList = (la, lb, isRocket) => {
         if (!lb) return la.map((e) => ({ ...e }));
         const byId = new Map(lb.map((e) => [e.id, e]));
@@ -73,7 +75,7 @@ export function createReplicaItems({ itemView = null, boxView = null } = {}) {
           return out;
         });
       };
-      sync(gumdrops, lerpList(a.gumdrops || [], b?.gumdrops, false), v.spawnGumdrop, v.moveGumdrop, v.removeGumdrop, false);
+      sync(gumdrops, shown(lerpList(a.gumdrops || [], b?.gumdrops, false)), v.spawnGumdrop, v.moveGumdrop, v.removeGumdrop, false);
       sync(rockets, lerpList(a.rockets || [], b?.rockets, true), v.spawnRocket, v.moveRocket, v.removeRocket, true);
       const nb = a.boxes || [];
       for (let i = 0; i < nb.length; i++) if (boxes[i] !== nb[i]) v.setActive(i, nb[i]);

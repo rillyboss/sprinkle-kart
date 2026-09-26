@@ -178,27 +178,40 @@ describe('WebRtcTransport: channels and join', () => {
 });
 
 describe('WebRtcTransport: backpressure', () => {
-  it('skips a state send when bufferedAmount > max(1024, 2 × last state message) and counts stateSkips', async () => {
+  it('skips a state send when bufferedAmount > max(1024, 4 × the big state message) and counts stateSkips', async () => {
     const { host, guest, link } = await makePair();
     const { hpc } = await link();
     const st = hpc.channels.find((c) => c.id === 8);
-    // First message 700 B → limit becomes max(1024, 1400) = 1400.
+    // First message 700 B → limit becomes max(1024, 4 × 700) = 2800.
     expect(host.send(GUEST, 'state', new Uint8Array(700))).toBe(true);
-    st.bufferedAmount = 1400;
-    expect(host.send(GUEST, 'state', new Uint8Array(700))).toBe(true); // == limit is fine
-    st.bufferedAmount = 1401;
+    st.bufferedAmount = 2780;
+    expect(host.send(GUEST, 'state', new Uint8Array(700))).toBe(true); // under the limit is fine
+    st.bufferedAmount = 2801;
     expect(host.send(GUEST, 'state', new Uint8Array(700))).toBe(false);
     expect(host.send(GUEST, 'state', new Uint8Array(700))).toBe(false);
     expect(host.stats(GUEST).stateSkips).toBe(2);
-    // Small messages: the floor is 1024 B.
+    // a tiny PONG in between does NOT shrink the room (it used to: 2 × 27 B → the 1024 B floor)
+    st.bufferedAmount = 0;
+    expect(host.send(GUEST, 'state', new Uint8Array(27))).toBe(true);
+    st.bufferedAmount = 2000;
+    expect(host.send(GUEST, 'state', new Uint8Array(700))).toBe(true);
     expect(host.send(GUEST, 'state', new Uint8Array(0))).toBe(false); // empty never sent
+    expect(host.stats(GUEST).stateSkips).toBe(2);
+    host.close();
+    guest.close();
+  });
+
+  it('only small state messages: the floor is 1024 B', async () => {
+    const { host, guest, link } = await makePair();
+    const { hpc } = await link();
+    const st = hpc.channels.find((c) => c.id === 8);
     st.bufferedAmount = 0;
     expect(host.send(GUEST, 'state', new Uint8Array(100))).toBe(true);
     st.bufferedAmount = 1024;
     expect(host.send(GUEST, 'state', new Uint8Array(100))).toBe(true);
     st.bufferedAmount = 1025;
     expect(host.send(GUEST, 'state', new Uint8Array(100))).toBe(false);
-    expect(host.stats(GUEST).stateSkips).toBe(3);
+    expect(host.stats(GUEST).stateSkips).toBe(1);
     expect(host.stats(GUEST).bufferedState).toBe(1025);
     host.close();
     guest.close();

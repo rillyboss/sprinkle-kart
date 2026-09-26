@@ -97,6 +97,7 @@ function cleanUrl(u) {
 export function createDualSignaling({ transports, kinds, health = null, guestPublicDelayMs = GUEST_PUBLIC_DELAY_MS, timers = globalThis }) {
   const connL = createListeners();
   const leaveL = createListeners();
+  const refusedL = createListeners();
   const subs = kinds
     .filter((k) => transports[k])
     .map((kind) => ({
@@ -112,6 +113,7 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
   for (const s of subs) {
     unsubs.push(s.t.onPeerConnection((p) => connL.emit({ ...p, kind: s.kind, via: p.via })));
     unsubs.push(s.t.onPeerLeave((peerId, info) => leaveL.emit(peerId, { ...(info || {}), kind: s.kind })));
+    if (typeof s.t.onRefused === 'function') unsubs.push(s.t.onRefused((code) => refusedL.emit(code)));
   }
   let role = 'guest';
   let left = false;
@@ -213,6 +215,8 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
     },
     onPeerConnection: (fn) => connL.add(fn),
     onPeerLeave: (fn) => leaveL.add(fn),
+    /** Guest: a matchmaker heard the host refuse (its room is locked). */
+    onRefused: (fn) => refusedL.add(fn),
     drop(peerId) {
       for (const s of subs) if (s.state === 'joined') s.t.drop(peerId);
     },
@@ -250,6 +254,7 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
       for (const u of unsubs) u();
       connL.clear();
       leaveL.clear();
+      refusedL.clear();
     },
   };
   return api;

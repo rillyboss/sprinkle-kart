@@ -16,6 +16,7 @@ import { makeRoomSecret } from '../net/session/roomCode.js';
 import { buildIdentity } from '../net/session/wire.js';
 import { allPlayers, getHouse, lobbyAllReady } from '../net/session/lobby.js';
 import { currentPlatform } from '../net/platform.js';
+import { contentHash, buildId, knownCharacterIds } from '../net/version.js';
 import { isSessionBytes, decodeRaceCtrl, createPendingBytes } from './netRace.js';
 import { netStack } from './stack.js';
 
@@ -30,6 +31,9 @@ export const ONLINE_TEXT = Object.freeze({
   finishWait: 'Finish! ✨',
   pausedEveryone: 'Snack break for everyone in the room!',
   controllerNap: 'Controller took a nap 💤 Robo Driver is driving!',
+  // a guest's Start: a LOCAL overlay, the race goes on for everyone (§4, §10.4)
+  guestPauseTitle: 'Robo Driver has the wheel!',
+  guestPauseLine: 'Your friends keep racing. Robo Driver drives your kart until you come back!',
 });
 
 /** Host results options online (§10.4): the host decides for everyone. */
@@ -41,10 +45,34 @@ export const HOST_PAUSE_OPTIONS = Object.freeze([['resume', 'Keep racing!', '▶
 /** Guest Start = a local overlay; Robo Driver drives meanwhile (the race never stops for everyone). */
 export const GUEST_PAUSE_OPTIONS = Object.freeze([['resume', 'Keep racing!', '▶️'], ['leave', 'Leave the room', '👋']]);
 
+/**
+ * What a guest does with the host's CHOICE (§10.4). On the results it closes them (`resolve`); mid-race — the host
+ * picked "Back to the lobby" or "Start over" in its pause — it ends the race at once (`end`), so no guest is left
+ * in a frozen race until the silence timeout.
+ * @param {string} choice  'again' | 'next-track' | 'lobby' | 'restart'
+ * @param {boolean} resultsShown
+ * @returns {{ end: 'lobby'|'again'|'next-track'|null, resolve: string|null }}
+ */
+export function guestChoiceAction(choice, resultsShown) {
+  const outcome = choice === 'lobby' ? 'lobby' : choice === 'next-track' ? 'next-track' : 'again';
+  if (resultsShown) return { end: null, resolve: `host:${choice}` };
+  return { end: outcome, resolve: null };
+}
+
+/** A SETUP for a different race ends the guest's current one (the host started over / moved on). */
+export function setupEndsRace(current, next) {
+  return !!next && !!current && (next.raceId >>> 0) !== (current.raceId >>> 0);
+}
+
 /** How long the host waits for friends to finish picking before filling in racers (§10.4). */
 export const READY_TIMEOUT_MS = 30_000;
-/** Session housekeeping (LOBBY coalescing, approval timeouts, host-silence) runs this often. */
+/**
+ * Session housekeeping (KEEP heartbeat, LOBBY coalescing, approval timeouts, host silence, reconnects) runs
+ * this often — from a plain timer, never from rAF, so a hidden or busy tab keeps its room alive.
+ */
 export const SESSION_TICK_MS = 250;
+/** sessionStorage key of this tab's WELCOME ticket (a reload re-attaches its house, §13.2). */
+export const TICKET_KEY = 'sk-room-ticket';
 
 /** The lobby phase for the host's current menu screen (null = no change). */
 export function phaseForScreen(screenId) {
@@ -182,9 +210,65 @@ export function createRoomRouter({ transport, stack = netStack }) {
 
 /* ------------------------------------------------------------------ opening / joining */
 
-function identity() {
-  const build = typeof __SK_BUILD__ !== 'undefined' ? __SK_BUILD__ : 'dev'; // eslint-disable-line no-undef
-  return buildIdentity({ build });
+/**
+ * The WELCOME ticket store for guest sessions (§13.2), in sessionStorage: per tab, gone when the tab closes,
+ * never sent anywhere but back to the same room's host. Keyed by the room label + sweets so another room never
+ * sees it. Every storage call may throw (private windows, blocked storage): then there is simply no ticket.
+ * @param {Storage|null} [storage]
+ */
+export function sessionTicketStore(storage = (() => { try { return globalThis.sessionStorage ?? null; } catch { return null; } })()) {
+  const keyOf = (secret) => (secret ? `${secret.label}|${(secret.sweets ?? []).join('.')}` : '');
+  const read = () => { try { return JSON.parse(storage?.getItem(TICKET_KEY) ?? 'null'); } catch { return null; } };
+  return {
+    load(secret) {
+      const t = read();
+      return t && t.room === keyOf(secret) && typeof t.token === 'string' ? t.token : null;
+    },
+    save(secret, token) {
+      try { storage?.setItem(TICKET_KEY, JSON.stringify({ room: keyOf(secret), token })); } catch { /* no ticket */ }
+    },
+    clear(secret) {
+      try { if (read()?.room === keyOf(secret)) storage?.removeItem(TICKET_KEY); } catch { /* ignore */ }
+    },
+  };
+}
+
+/**
+ * A NetTransport whose real transport can be swapped (a guest's reconnect opens a fresh matchmaker +
+ * WebRtcTransport): the session, the router and the race subscribe once to the proxy and never notice.
+ */
+export function createTransportProxy() {
+  const msgFns = new Set();
+  const peerFns = new Set();
+  let target = null;
+  let offs = [];
+  return {
+    get target() { return target; },
+    get selfId() { return target?.selfId ?? null; },
+    get role() { return target?.role ?? null; },
+    /** Point at a new transport (null = none). The old one is only unsubscribed; its owner closes it. */
+    setTarget(t) {
+      for (const off of offs.splice(0)) { try { off?.(); } catch { /* ignore */ } }
+      target = t ?? null;
+      if (!target) return;
+      offs.push(target.onMessage((p, ch, b) => { for (const fn of [...msgFns]) fn(p, ch, b); }));
+      if (target.onPeer) offs.push(target.onPeer((ev) => { for (const fn of [...peerFns]) fn(ev); }));
+    },
+    peers: () => target?.peers?.() ?? [],
+    send: (peerId, ch, bytes) => target?.send?.(peerId, ch, bytes) ?? false,
+    broadcast: (ch, bytes, except) => target?.broadcast?.(ch, bytes, except),
+    onMessage(fn) { msgFns.add(fn); return () => msgFns.delete(fn); },
+    onPeer(fn) { peerFns.add(fn); return () => peerFns.delete(fn); },
+    stats: (peerId) => target?.stats?.(peerId) ?? {},
+    disconnect: (peerId, reason) => target?.disconnect?.(peerId, reason),
+    renewIceIfRelayed: () => target?.renewIceIfRelayed?.(),
+    close() { try { target?.close?.(); } catch { /* ignore */ } },
+  };
+}
+
+/** This bundle's HELLO / WELCOME identity: a real content hash, so an old tab gets "refresh the page" (§7.2). */
+export function identity() {
+  return buildIdentity({ build: buildId(), content: contentHash() });
 }
 
 /** Signaling config for this page (Worker iff VITE_SIGNAL_URL; dev overrides on localhost only). */
@@ -221,7 +305,11 @@ export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules 
     signaling = r.signaling;
   }
   const now = deps.now ?? (() => Date.now());
-  const session = createHostSession({ transport, signalings: signaling ? [signaling] : [], progress, now, secret, hostPlayers, mine: identity() });
+  const racers = knownCharacterIds();
+  const session = createHostSession({
+    transport, signalings: signaling ? [signaling] : [], progress, now, secret, hostPlayers, mine: identity(),
+    isCharacter: (id) => racers.has(id), // a pick from another version never reaches the Race
+  });
   session.dispatch({ type: 'open' });
   session.dispatch({ type: 'opened' });
   for (const peerId of transport.peers?.() ?? []) session.dispatch({ type: 'peer-join', peerId });
@@ -247,43 +335,99 @@ export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules 
 /**
  * Join a room as a guest. Resolves once the matchmaker found the host (or with the error the session turns
  * into a friendly sentence); the approval (match check) then runs inside the session.
+ *
+ * The session, router and race talk to a swappable transport proxy: when the session asks to reconnect
+ * (§13.2 — the link dropped), a fresh matchmaker + connection (new selfId, so the host never mistakes it for the
+ * old, dying one) replaces the old one, and HELLO with the WELCOME ticket re-attaches the same house.
+ * Signaling hints feed the session: a host that showed up (`host-seen`) turns a later timeout into the NAT
+ * sentence instead of "check the code", and a locked host's refusal becomes "closed".
  */
 export async function joinGuestRoom({ secret, localPlayers = 1, progress = null, signal = {}, deps = {} }) {
   const now = deps.now ?? (() => Date.now());
-  let transport = deps.transport ?? null;
-  let signaling = deps.signaling ?? null;
+  const proxy = createTransportProxy();
+  let signaling = null;
+  let link = null; // { transport, signaling, offs }
+  let gen = 0;
+  let closed = false;
+  let session = null;
+  const fixed = deps.transport ?? null;
+
+  const watch = (transport, sig) => {
+    const offs = [];
+    const seen = () => session?.dispatch({ type: 'host-seen' });
+    try { if (sig?.onPeerConnection) offs.push(sig.onPeerConnection(seen)); } catch { /* optional */ }
+    try { if (transport?.onFailure) offs.push(transport.onFailure(seen)); } catch { /* optional */ }
+    try { if (sig?.onRefused) offs.push(sig.onRefused((code) => session?.dispatch({ type: 'connect-failed', code }))); } catch { /* optional */ }
+    return offs;
+  };
+  const drop = (l) => {
+    if (!l) return;
+    for (const off of l.offs) { try { off?.(); } catch { /* ignore */ } }
+    if (l.transport === fixed) return; // a test's in-memory endpoint lives on
+    try { l.signaling?.leave?.(); } catch { /* ignore */ }
+    try { l.transport?.close?.(); } catch { /* ignore */ }
+  };
+  const openLink = async (attempt) => {
+    if (fixed) return { transport: fixed, signaling: deps.signaling ?? null };
+    const ids = await (deps.deriveRoomIds ?? netStack.deriveRoomIds)(secret);
+    const open = deps.openOnline ?? (await import('../net/signaling/index.js')).openOnline;
+    const selfId = (attempt === 0 && deps.selfId) || (deps.makePeerId ?? (await import('../net/signaling/types.js')).makePeerId)();
+    const relayOnly = !!progress?.getSettings?.()?.relayOnly;
+    return open({ role: 'guest', selfId, ids, relayOnly, signalUrl: signal.signalUrl ?? null, forced: signal.forced ?? null, relays: signal.relays ?? null });
+  };
+  const useLink = (r) => {
+    drop(link);
+    link = { transport: r.transport, signaling: r.signaling ?? null, offs: watch(r.transport, r.signaling) };
+    signaling = link.signaling;
+    proxy.setTarget(r.transport);
+  };
+
   let failure = null;
-  if (!transport) {
-    try {
-      const ids = await (deps.deriveRoomIds ?? netStack.deriveRoomIds)(secret);
-      const open = deps.openOnline ?? (await import('../net/signaling/index.js')).openOnline;
-      const selfId = deps.selfId ?? (await import('../net/signaling/types.js')).makePeerId();
-      const relayOnly = !!progress?.getSettings?.()?.relayOnly;
-      const r = await open({ role: 'guest', selfId, ids, relayOnly, signalUrl: signal.signalUrl ?? null, forced: signal.forced ?? null, relays: signal.relays ?? null });
-      transport = r.transport;
-      signaling = r.signaling;
-    } catch (err) {
-      failure = err?.code ?? 'unreachable';
-    }
-  }
-  const session = createGuestSession({ transport, signalings: signaling ? [signaling] : [], secret, localPlayers, now, mine: identity(), platform: deps.platform ?? currentPlatform() });
-  const router = transport ? createRoomRouter({ transport }) : null;
+  try { useLink(await openLink(0)); } catch (err) { failure = err?.code ?? 'unreachable'; }
+  const tokenStore = deps.tokenStore === undefined ? sessionTicketStore() : deps.tokenStore;
+  session = createGuestSession({
+    transport: proxy, signalings: signaling ? [signaling] : [], secret, localPlayers, now, mine: identity(), platform: deps.platform ?? currentPlatform(), tokenStore,
+  });
+  const router = failure ? null : createRoomRouter({ transport: proxy });
   session.dispatch({ type: 'connect' });
   if (failure) session.dispatch({ type: 'connect-failed', code: failure });
   else {
-    const peers = transport.peers?.() ?? [];
+    const peers = proxy.peers();
     if (peers.length && !session.state.hostPeerId) session.dispatch({ type: 'connected', peerId: peers[0] });
   }
+
+  // §13.2: a fresh matchmaker + connection for every reconnect attempt the session asks for
+  session.onEffect((e) => {
+    if (e.type !== 'reconnect' || closed) return;
+    const my = ++gen;
+    const old = link;
+    link = null;
+    proxy.setTarget(null);
+    drop(old);
+    openLink(e.attempt + 1).then((r) => {
+      if (closed || my !== gen) { drop({ ...r, offs: [] }); return; }
+      useLink(r);
+      const p = proxy.peers();
+      if (p.length) session.dispatch({ type: 'connected', peerId: p[0] });
+    }, (err) => {
+      if (!closed && my === gen) session.dispatch({ type: 'connect-failed', code: err?.code ?? 'unreachable' });
+    });
+  });
+
   const netCtx = createGuestNetContext(session);
   return {
-    role: 'guest', secret, transport, signaling, session, netCtx, router,
+    role: 'guest', secret, transport: proxy, get signaling() { return signaling; }, session, netCtx, router,
     hostId: () => session.state.hostPeerId,
     close() {
       try { session.dispatch({ type: 'leave' }); } catch { /* ignore */ }
+      closed = true;
       router?.dispose();
       session.dispose();
-      try { signaling?.leave?.(); } catch { /* ignore */ }
-      setTimeout(() => { try { transport?.close?.(); } catch { /* ignore */ } }, 300);
+      const l = link;
+      link = null;
+      for (const off of l?.offs ?? []) { try { off?.(); } catch { /* ignore */ } }
+      try { l?.signaling?.leave?.(); } catch { /* ignore */ }
+      setTimeout(() => { try { l?.transport?.close?.(); } catch { /* ignore */ } proxy.setTarget(null); }, 300); // let BYE go out
     },
   };
 }

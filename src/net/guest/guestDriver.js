@@ -46,6 +46,8 @@ export function createGuestDriver({
   let pings = 0;
   let renderTick = null;
   let lastSlack = null;
+  let frameTicks = 1; // EWMA of this machine's frame length in ticks (1 at 60 fps)
+  const frameAhead = () => Math.max(0, frameTicks - 1);
   const stats = { snapshots: 0, events: 0, timebases: 0, pauses: 0, pongs: 0, frags: 0, bad: 0, inputsSent: 0, ctrl: 0 };
   const sampleAll = (tick) => localSeats.map((s) => s.sample(tick));
 
@@ -59,7 +61,11 @@ export function createGuestDriver({
         if (m.tick > lastSlackTick) {
           lastSlackTick = m.tick;
           lastSlack = m.inputSlack;
-          lead.onSlack(m.inputSlack);
+          // while the host has our karts on Robo Driver its slack says nothing about our lead
+          const robo = replica.localKartIds?.length > 0 && replica.localKartIds.every((id) => m.karts?.[id]?.roboDriven);
+          // the frame-ahead part of P (a slow machine) is on purpose: never let the lead controller take it back
+          const ahead = Math.round(frameAhead());
+          lead.onSlack(m.inputSlack <= -128 || !ahead ? m.inputSlack : m.inputSlack - ahead, { robo });
         }
         lastSnapTick = Math.max(lastSnapTick, m.tick);
         replica.onSnapshot(m, t);
@@ -105,7 +111,10 @@ export function createGuestDriver({
       if (!started || !timeline.known) { replica.present(1, dt); return { ticks: [] }; }
       const T = timeline.tickAt(t);
       if (!timeline.paused) lead.update(dt * 60);
-      const P = T + lead.lead;
+      // A slow machine (a few fps) only gets to send inputs once per frame: predict one frame further, so the
+      // host has our input for every tick it simulates before our next frame (net review #14). 0 at 60 fps.
+      frameTicks += (Math.max(0, Math.min(60, dt * 60)) - frameTicks) * 0.2;
+      const P = T + lead.lead + frameAhead();
       // The remote timeline is a smooth clock: it advances with local time and slews ≤ 10 % toward its target,
       // so clock-offset / RTT estimate updates never make remote karts hop (a far-off target snaps).
       const desiredR = T - timeline.oneWayTicks() - replica.interpDelayMs / tickMs;
@@ -124,8 +133,9 @@ export function createGuestDriver({
         const b = sender.afterTick(tick, { slackTarget: lead.targetSlack, lastSnapTick });
         if (b) stats.inputsSent++;
       }
-      const alpha = P - Math.floor(P);
-      replica.present(ticks.length ? Math.min(1, alpha + 1e-9) : 1, dt);
+      // Always draw between the last two predicted poses at P's fraction — also on frames that predicted no tick
+      // (120/144 Hz screens): drawing the full current pose there made the own kart jump ahead and back.
+      replica.present(P - Math.floor(P), dt);
       return { ticks, P, R, T };
     },
     onMessage(peerId, ch, bytes) {
@@ -139,6 +149,8 @@ export function createGuestDriver({
         interpDelayMs: replica.interpDelayMs, epoch: timeline.epoch, paused: timeline.paused, sender: { ...sender.stats },
         reconcileP50: replica.reconciler.percentile(0.5), reconcileP99: replica.reconciler.percentile(0.99),
         lastEventSeq: replica.events.lastSeq, clock: { rttMs: clock.rttMs, jitterMs: clock.jitterMs, ready: clock.ready, offset: clock.offset ?? null },
+        localHits: replica.stats?.localHits ?? 0, localHitsConfirmed: replica.stats?.localHitsConfirmed ?? 0,
+        lossPct: replica.arrivals?.lossPct ?? null, snapshotIntervalMs: replica.arrivals?.intervalMs ?? null,
       };
     },
     get lead() { return lead; },

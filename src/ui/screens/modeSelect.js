@@ -18,6 +18,15 @@ const TAGS = {
   battle: () => '3 bubbles each · 2 arenas',
 };
 
+/**
+ * The menu-entry chips under the cards (Records, Daily Sprinkle …). In an online room there are none: those
+ * screens are local-only (Records would leave the friends waiting, and Daily's goal / twist are not part of an
+ * online Free Race), NETWORKING.md §10.1 / net review #16.
+ */
+export function modeSelectEntries(screens, net = null) {
+  return net ? [] : menuEntries(screens, 'mode-select');
+}
+
 /** @type {import('./index.js').ScreenDef} */
 export default {
   id: 'mode-select',
@@ -26,7 +35,7 @@ export default {
     const d = ctx.draft;
     restoreParty(d); // coming back here undoes a Time Trial's "P1 only"
     const players = d.joinState.players;
-    const entries = menuEntries(ctx.screens, 'mode-select');
+    const entries = modeSelectEntries(ctx.screens, ctx.net);
     const shown = modeCardsFor(ctx.net); // online: only ONLINE_MODES (NETWORKING.md §10.1)
     let state = createModeSelectState({ mode: d.mode, entryCount: entries.length, controllerId: players[0]?.deviceId ?? null, cards: ctx.net ? shown : null });
 

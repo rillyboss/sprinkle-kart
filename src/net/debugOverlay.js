@@ -59,7 +59,7 @@ const build = (b) => {
 /**
  * @param {object} info { role, transport, matchmakers[], hostAdvantageMs, self: { build, proto, content },
  *   peers: [{ label?, relayed, candidate, rttMs, jitterMs, lossPct, burstLen, snapshotHz, kbpsIn, kbpsOut,
- *   stateSkips, interpDelayMs, lead, slack, extrapolating, reconcileP50Cm, reconcileP99Cm, snaps,
+ *   stateSkips, interpDelayMs, lead, slack, extrapolating, reconcileP50Cm, reconcileP99Cm, snaps, localHits, localHitsConfirmed,
  *   eventsPerSec, lastEventSeq, bufferedCtrl, clockOffsetMs, clockSpreadMs, epoch, hostTick, localTick,
  *   build, proto, content }] }
  * @returns {{ title: string, rows: Array<[string, string]>, peers: Array<{ title: string, rows: Array<[string, string]> }> }}
@@ -87,6 +87,8 @@ export function formatNetDebug(info = {}) {
       ['extrapolating', yes(p.extrapolating)],
       ['reconcile p50 / p99', `${num(p.reconcileP50Cm, 0, ' cm')} / ${num(p.reconcileP99Cm, 0, ' cm')}`],
       ['snaps', num(p.snaps)],
+      // own-kart gumdrop bonks played locally at the gumdrop (§9.8) / of those, confirmed by the host
+      ['local bonks / confirmed', `${num(p.localHits)} / ${num(p.localHitsConfirmed)}`],
       ['events/s · last seq', `${num(p.eventsPerSec, 1)} · ${num(p.lastEventSeq)}`],
       ['ctrl buffered', num(p.bufferedCtrl, 0, ' B')],
       ['clock offset', `${num(p.clockOffsetMs, 1, ' ms')} ± ${num(p.clockSpreadMs, 1, ' ms')}`],

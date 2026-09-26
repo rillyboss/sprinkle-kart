@@ -47,7 +47,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import {
   resolveOnlineProfile, onlineTimeout, planOnlineScenarios, neededServices, gameUrl, pickWorkerNode, nvmCandidates,
-  workerDevCommand, pathWithNodeFirst, mockTurnAnswer, timingSummary, timingRow, standingsProblems, heapProblems,
+  workerDevCommand, pathWithNodeFirst, mockTurnAnswer, timingSummary, timingRow, standingsProblems, qualityProblems, heapProblems,
   missingScreenshots, isIgnorableOnlineError, chromeArgs, scenarioStatus, planCodeEntry, padButtonFor, PAD,
 } from './smoke-online-plan.mjs';
 import { startLocalTracker } from './dev/localTracker.mjs';
@@ -282,11 +282,8 @@ async function installOnlineGlue(cfg) {
       });
       session.dispatch({ type: 'open' });
       session.dispatch({ type: 'opened' });
-      // Heartbeat stand-in (WS7 sends PING/PONG on the state channel, §7.4): the guest session only needs to hear us.
-      live.timers.push(setInterval(() => {
-        try { for (const p of transport.peers()) transport.send(p, 'state', new Uint8Array([0])); } catch { /* ignore */ }
-        session.dispatch({ type: 'tick' });
-      }, 500));
+      // Session housekeeping only: the session's own KEEP heartbeat (§7.4) keeps the guests' link alive.
+      live.timers.push(setInterval(() => session.dispatch({ type: 'tick' }), 250));
       menus.net = hostS.createHostNetContext(session);
       note('hosting', { label: secret.label });
       menus.goto('online-lobby');
@@ -482,9 +479,20 @@ async function hostOpensRoom(host) {
 }
 
 /** Wait for the approval pair on both screens, check they match, optionally screenshot, approve. */
-async function approveWithMatchCheck(sc, host, guest, problems, { shots = null } = {}) {
+/** Wall-clock idle for the heartbeat steps: longer than the guest's 8 s host-silence limit (net review #1). */
+const IDLE_MS = 11000;
+const idle = (ms) => new Promise((res) => setTimeout(res, ms));
+
+async function approveWithMatchCheck(sc, host, guest, problems, { shots = null, idleMs = 0 } = {}) {
   await waitGame(guest, () => !!document.querySelector('.skn-waiting .skn-animals')?.textContent, null, T(30000), 'the guest match-check animals');
   await waitGame(host, () => !!window.__game?.menus?.net?.prompt?.() && !!document.querySelector('.skn-prompt .skn-animals'), null, T(30000), 'the host approval prompt');
+  if (idleMs) {
+    // a grown-up checking the animals over the phone: nobody presses anything for a while, nobody gets sent home
+    await idle(idleMs);
+    const g = await guest.page.evaluate(() => window.__game?.menus?.screenId);
+    if (g !== 'net-waiting') problems.push(`the guest left "waiting for approval" while the host thought for ${idleMs / 1000} s (screen ${g})`);
+    if (!(await netInfo(host))?.prompt) problems.push(`the host approval prompt disappeared after ${idleMs / 1000} s`);
+  }
   const guestAnimals = (await guest.page.textContent('.skn-waiting .skn-animals')).trim();
   const hostAnimals = (await host.page.textContent('.skn-prompt .skn-animals')).trim();
   const prompt = (await netInfo(host)).prompt;
@@ -570,10 +578,17 @@ async function roomScenario(browser, sc, svc, r) {
     }
 
     // ---- approval with the match check (host uses the same kind of device)
-    await approveWithMatchCheck(sc, host, guest, r.problems, { shots: prefix });
+    await approveWithMatchCheck(sc, host, guest, r.problems, { shots: prefix, idleMs: IDLE_MS });
     await onScreen(guest, 'online-lobby', T(30000));
-    r.timing = Date.now() - t0;
-    r.notes.push(`code entry → lobby ${(r.timing / 1000).toFixed(2)} s`);
+    r.timing = Date.now() - t0 - IDLE_MS;
+    r.notes.push(`code entry → lobby ${(r.timing / 1000).toFixed(2)} s (without the ${IDLE_MS / 1000} s approval idle)`);
+
+    // ---- a quiet lobby: nobody touches anything for longer than the host-silence limit (the KEEP heartbeat)
+    await idle(IDLE_MS);
+    const quietGuest = await guest.page.evaluate(() => window.__game?.menus?.screenId);
+    const quietHost = await netInfo(host);
+    if (quietGuest !== 'online-lobby') r.problems.push(`the guest left a quiet lobby after ${IDLE_MS / 1000} s (screen ${quietGuest})`);
+    if ((quietHost?.houses?.length ?? 0) < 2) r.problems.push(`the host lobby lost the guest house during ${IDLE_MS / 1000} s of quiet`);
 
     // ---- seats + racer picks. The stand-in knocks with 2 local players and sends the pick INTENTs itself;
     // the game (WS7) seats a house's players on "Who's playing at your house?" after "Let's pick!", so
@@ -711,6 +726,15 @@ async function raceSteps(sc, host, guest, r, prefix) {
   }
   await shot(host, `${prefix}race-host`);
   await shot(guest, `${prefix}race-guest`);
+  // netcode quality mid-race (asserted only with a real GPU: see qualityProblems)
+  await waitGame(guest, () => (window.__game?.race?.time ?? 0) > 8 || window.__game?.state === 'results', null, T(120000), 'the guest race 8 s in');
+  const sample = await guest.page.evaluate(() => {
+    const p = window.__game?.net?.debug?.peers?.[0];
+    return p ? { fps: window.__game?.fps ?? 0, reconcileP99Cm: p.reconcileP99Cm, snapshotHz: p.snapshotHz, lead: p.lead, stateSkips: p.stateSkips, lossPct: p.lossPct } : null;
+  });
+  const q = qualityProblems(sample);
+  r.notes.push(q.note);
+  r.problems.push(...q.problems);
   await waitGame(host, atResults, null, T(400000), 'the host results');
   await waitGame(guest, atResults, null, T(90000), 'the guest results');
   const standings = (p) => p.page.evaluate(() => {

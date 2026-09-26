@@ -17,7 +17,8 @@
  * Effects: { type: 'send', peerId, msg } · { type: 'disconnect', peerId } ·
  * { type: 'setLocked', locked } · { type: 'drop', peerId } · { type: 'join-signaling' } ·
  * { type: 'leave-signaling' } · { type: 'prompt', prompt } · { type: 'lobby', lobby } ·
- * { type: 'emote', globalPi, emote } · { type: 'error', text } · { type: 'phase', phase }.
+ * { type: 'emote', globalPi, emote } · { type: 'error', text } · { type: 'phase', phase } ·
+ * { type: 'reattach', houseId, peerId } (a house came back with its token: the race hands its karts back).
  *
  * Kid-safety rules enforced here: every new house needs approval (match check);
  * approvals queue while the host's players race; a locked room refuses new houses
@@ -29,14 +30,14 @@
  * OWNER: WS6 (session, lobby & screens).
  */
 import {
-  createLobby, lobbyReduce, lobbyForWire, seatsLeft, getHouse, hostHouse, houseOfPi, localCapacity, LOBBY_SEND_INTERVAL_MS,
+  createLobby, lobbyReduce, lobbyForWire, seatsLeft, getHouse, hostHouse, houseOfPi, localCapacity, activePlayers, LOBBY_SEND_INTERVAL_MS,
 } from './lobby.js';
 import { composeOnlineSetup, cpuCountFor } from './composeSetup.js';
 import { createApprovalQueue, approvalReduce, isMatch } from './approval.js';
 import { rejectText, signalingErrorText } from './texts.js';
 import {
   compatible as defaultCompatible, buildIdentity, jsonEncode, jsonDecode, randomToken, isToken,
-  INTENT_KINDS, EMOTE_COUNT, EMOTE_INTERVAL_MS, BYE, TICK_HZ,
+  INTENT_KINDS, EMOTE_COUNT, EMOTE_INTERVAL_MS, BYE, TICK_HZ, KEEPALIVE_MS,
 } from './wire.js';
 import { MAX_LOCAL_PLAYERS } from '../../config.js';
 
@@ -44,6 +45,15 @@ import { MAX_LOCAL_PLAYERS } from '../../config.js';
 export const RACING_PHASES = Object.freeze(['loading', 'race']);
 /** A peer that never says HELLO is let go after this long. */
 export const HELLO_TIMEOUT_MS = 15_000;
+/**
+ * A house whose connection dropped (no BYE) stays `asleep` this long, seats and globalPi kept, so its reload or
+ * its automatic reconnect re-attaches with the WELCOME token (§13.2). Mid-race Robo Driver has its karts; an
+ * asleep house never holds up "everyone ready" and gets no karts in a new race. After the window (and never
+ * during a race) it is removed.
+ */
+export const RECONNECT_WINDOW_MS = 60_000;
+/** A joined guest the host has not heard from for this long shows as `wobbly` 📶 in the lobby (§7.4). */
+export const GUEST_WOBBLY_MS = 3_000;
 
 /**
  * @param {{ secret: { label: string, sweets: number[] }, hostPlayers?: number|Array<{easyDrive?:boolean}>,
@@ -59,6 +69,8 @@ export function createHostState({ secret, hostPlayers = 1, approvalGate = false,
     approval: createApprovalQueue({ approvalGate }),
     peers: {},   // peerId → { stage: 'hello-wait'|'pending'|'joined'|'gone', since, houseId?, token?, localPlayers? }
     tokens: {},  // token → houseId (M2 reconnect)
+    asleep: {},  // houseId → { at, bye } houses whose connection went (removed after RECONNECT_WINDOW_MS / a BYE)
+    keep: {},    // peerId → last ctrl send ms (KEEP heartbeat)
     sent: {},    // peerId → { last, dirty } LOBBY coalescing
     emotes: {},  // globalPi → last emote ms
     now: 0,
@@ -72,7 +84,7 @@ const peerOfHouse = (st, houseId) => Object.keys(st.peers).find((p) => st.peers[
 /**
  * @param {{ makeToken?: () => string, compatible?: (mine, theirs) => { ok: boolean } }} [deps]
  */
-export function createHostReducer({ makeToken = randomToken, compatible = defaultCompatible } = {}) {
+export function createHostReducer({ makeToken = randomToken, compatible = defaultCompatible, isCharacter = null } = {}) {
   return function hostReduce(state, ev) {
     const effects = [];
     let st = { ...state, now: Number.isFinite(ev?.now) ? ev.now : state.now };
@@ -116,7 +128,7 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
       const token = makeToken();
       st = {
         ...st,
-        peers: { ...st.peers, [peerId]: { ...st.peers[peerId], stage: 'joined', houseId: house.houseId, token } },
+        peers: { ...st.peers, [peerId]: { ...st.peers[peerId], stage: 'joined', houseId: house.houseId, token, joinedAt: st.now } },
         tokens: { ...st.tokens, [token]: house.houseId },
         sent: { ...st.sent, [peerId]: { last: st.now, dirty: false } },
       };
@@ -124,6 +136,29 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         type: 'WELCOME', houseId: house.houseId, emoji: house.emoji, token, hostBuild: st.mine.build, tickHz: TICK_HZ, lobby: lobbyForWire(st.lobby),
       });
       if (racing(st)) send(peerId, { type: 'PHASE', phase: st.phase, screen: null, params: {} });
+    };
+    const dropTokens = (houseId) => {
+      st = { ...st, tokens: Object.fromEntries(Object.entries(st.tokens).filter(([, hid]) => hid !== houseId)) };
+    };
+    const forgetAsleep = (houseId) => {
+      if (!Object.hasOwn(st.asleep, houseId)) return;
+      const asleep = { ...st.asleep };
+      delete asleep[houseId];
+      st = { ...st, asleep };
+    };
+    const removeHouse = (houseId) => {
+      forgetAsleep(houseId);
+      dropTokens(houseId);
+      if (getHouse(st.lobby, houseId)) applyLobby({ type: 'house-leave', houseId });
+    };
+    /** Asleep houses whose BYE came mid-race or whose reconnect window ran out go (never during a race). */
+    const expireAsleep = () => {
+      if (racing(st)) return;
+      for (const [id, info] of Object.entries(st.asleep)) {
+        const houseId = Number(id);
+        if (peerOfHouse(st, houseId)) { forgetAsleep(houseId); continue; }
+        if (info.bye || st.now - info.at >= RECONNECT_WINDOW_MS) removeHouse(houseId);
+      }
     };
     const houseOfPeer = (peerId) => (st.peers[peerId]?.stage === 'joined' ? st.peers[peerId].houseId : null);
     const intentToLobby = (houseId, it) => {
@@ -133,7 +168,10 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         case 'seat-join': applyLobby({ type: 'seat-join', houseId, seat, easyDrive: !!it.easyDrive }); break;
         case 'seat-leave': if (seat !== null) applyLobby({ type: 'seat-leave', houseId, seat }); break;
         case 'pick':
-          if (seat !== null) applyLobby({ type: 'pick', houseId, seat, characterId: it.characterId ?? null, paintId: it.paintId, easyDrive: it.easyDrive });
+          // a racer this build doesn't know (an old tab) is never accepted into the roster
+          if (seat !== null && (it.characterId == null || !isCharacter || isCharacter(it.characterId))) {
+            applyLobby({ type: 'pick', houseId, seat, characterId: it.characterId ?? null, paintId: it.paintId, easyDrive: it.easyDrive });
+          }
           break;
         case 'ready': if (seat !== null) applyLobby({ type: 'ready', houseId, seat, ready: true }); break;
         case 'unready': if (seat !== null) applyLobby({ type: 'ready', houseId, seat, ready: false }); break;
@@ -191,13 +229,17 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
             const tokens = { ...st.tokens };
             delete tokens[h.token];
             tokens[token] = houseId;
+            const asleep = { ...st.asleep };
+            delete asleep[houseId];
             st = {
               ...st,
               tokens,
-              peers: { ...st.peers, [peerId]: { stage: 'joined', since: st.now, houseId, token } },
+              asleep,
+              peers: { ...st.peers, [peerId]: { stage: 'joined', since: st.now, houseId, token, joinedAt: st.now } },
               sent: { ...st.sent, [peerId]: { last: st.now, dirty: false } },
             };
             applyLobby({ type: 'net', houseId, net: 'ok', rttMs: house.rttMs });
+            effects.push({ type: 'reattach', houseId, peerId });
             send(peerId, { type: 'WELCOME', houseId, emoji: house.emoji, token, hostBuild: st.mine.build, tickHz: TICK_HZ, lobby: lobbyForWire(st.lobby) });
             if (st.phase !== 'lobby') send(peerId, { type: 'PHASE', phase: st.phase, screen: null, params: {} });
             break;
@@ -223,9 +265,17 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         st = { ...st, peers: { ...st.peers, [ev.peerId]: { ...peer, stage: 'gone' } } };
         if (was === 'pending') applyApproval({ type: 'cancel', peerId: ev.peerId });
         else if (was === 'joined') {
-          // Mid-race their karts stay with Robo Driver until the race ends (§13.1); otherwise the house leaves.
-          if (racing(st)) applyLobby({ type: 'net', houseId: peer.houseId, net: 'asleep', rttMs: 0 });
-          else applyLobby({ type: 'house-leave', houseId: peer.houseId });
+          const houseId = peer.houseId;
+          if (ev.bye && !racing(st)) {
+            // "Leave the room" in the lobby: the house goes at once, its seats are free.
+            removeHouse(houseId);
+          } else {
+            // A dropped connection (or a BYE mid-race): Robo Driver keeps its karts racing (§13.1) and the house
+            // stays asleep for the reconnect window (§13.2); a BYE house goes as soon as the race is over.
+            applyLobby({ type: 'net', houseId, net: 'asleep', rttMs: 0 });
+            st = { ...st, asleep: { ...st.asleep, [houseId]: { at: st.now, bye: !!ev.bye } } };
+            if (ev.bye) dropTokens(houseId);
+          }
         }
         break;
       }
@@ -251,8 +301,8 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
           send(peerId, { type: 'KICK', scope: 0, seat: 0 });
           st = { ...st, peers: { ...st.peers, [peerId]: { ...st.peers[peerId], stage: 'gone' } } };
         }
-        const tokens = Object.fromEntries(Object.entries(st.tokens).filter(([, hid]) => hid !== house.houseId));
-        st = { ...st, tokens };
+        dropTokens(house.houseId);
+        forgetAsleep(house.houseId);
         applyLobby({ type: 'house-remove', houseId: house.houseId, peerId });
         break;
       }
@@ -287,6 +337,7 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         if (r.effects.some((e) => e.type === 'refused')) break;
         st = { ...st, phase: ev.phase };
         applyApproval({ type: 'racing', on: racing(st), now: st.now });
+        expireAsleep();
         for (const p of joinedPeers(st)) send(p, { type: 'PHASE', phase: ev.phase, screen: ev.screen ?? null, params: ev.params ?? {} });
         effects.push({ type: 'phase', phase: ev.phase });
         break;
@@ -326,6 +377,25 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
             effects.push({ type: 'disconnect', peerId });
           }
         }
+        expireAsleep();
+        // §7.4 liveness from what the wrapper heard (any byte on any channel): wobbly after 3 s in the lobby.
+        if (ev.heard && !racing(st)) {
+          for (const peerId of joinedPeers(st)) {
+            const p = st.peers[peerId];
+            const house = getHouse(st.lobby, p.houseId);
+            if (!house || house.net === 'asleep') continue;
+            const last = Math.max(Number(ev.heard[peerId]) || 0, p.joinedAt ?? p.since ?? 0);
+            const want = st.now - last > GUEST_WOBBLY_MS ? 'wobbly' : 'ok';
+            if (house.net !== want) applyLobby({ type: 'net', houseId: p.houseId, net: want });
+          }
+        }
+        // KEEP heartbeat: every waiting or joined guest hears from us at least once a second (§7.4), so a quiet
+        // lobby, a slow "Let them in?" or a host lingering on the track screen never looks like a sleeping host.
+        for (const [peerId, p] of Object.entries(st.peers)) {
+          if ((p.stage === 'pending' || p.stage === 'joined') && !(st.now - (st.keep[peerId] ?? -Infinity) < KEEPALIVE_MS)) {
+            send(peerId, { type: 'KEEP' });
+          }
+        }
         break;
       }
 
@@ -361,6 +431,10 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
       st = { ...st, sent };
     }
 
+    let keep = null;
+    for (const e of effects) if (e.type === 'send') (keep ??= { ...st.keep })[e.peerId] = st.now;
+    if (keep) st = { ...st, keep };
+
     const prompt = currentPromptOf(st);
     if (JSON.stringify(prompt) !== prevPrompt) effects.push({ type: 'prompt', prompt });
     return { state: st, effects };
@@ -386,18 +460,20 @@ function currentPromptOf(st) {
  * @param {(msg) => Uint8Array} [o.encode] ctrl encoder (WS2 codec; default JSON stand-in)
  * @param {(bytes) => object|null} [o.decode]
  * @param {() => string} [o.makeToken]
+ * @param {(id: string) => boolean} [o.isCharacter]  racer ids this build knows (picks of others are ignored)
  */
 export function createHostSession({
   transport = null, signalings = [], progress = null, rng = null, now = () => Date.now(), secret,
-  hostPlayers = 1, mine = buildIdentity(), compatible, encode = jsonEncode, decode = jsonDecode, makeToken,
+  hostPlayers = 1, mine = buildIdentity(), compatible, encode = jsonEncode, decode = jsonDecode, makeToken, isCharacter = null,
 } = /** @type {any} */ ({})) {
   void rng;
   let approvalGate = false;
   try { approvalGate = !!progress?.getSettings?.()?.approvalGate; } catch { /* ignore */ }
-  const reduce = createHostReducer({ makeToken, compatible });
+  const reduce = createHostReducer({ makeToken, compatible, isCharacter });
   let state = createHostState({ secret, hostPlayers, approvalGate, mine });
   const listeners = new Set();
   const offs = [];
+  const heard = {}; // peerId → last ms any byte came from it (every channel; cheap, no dispatch per packet)
 
   const run = (e) => {
     try {
@@ -412,7 +488,7 @@ export function createHostSession({
   const session = {
     get state() { return state; },
     dispatch(ev) {
-      const r = reduce(state, { now: now(), ...ev });
+      const r = reduce(state, { now: now(), ...(ev?.type === 'tick' ? { heard: { ...heard } } : {}), ...ev });
       state = r.state;
       r.effects.forEach(run);
       return r.effects;
@@ -428,13 +504,14 @@ export function createHostSession({
   }
   if (transport?.onMessage) {
     offs.push(transport.onMessage((peerId, ch, bytes) => {
+      heard[peerId] = now();
       if (ch !== 'ctrl') return;
       const msg = decode(bytes);
       if (!msg) return;
       if (msg.type === 'HELLO') session.dispatch({ type: 'hello', peerId, hello: msg });
       else if (msg.type === 'INTENT') session.dispatch({ type: 'intent', peerId, intent: msg });
       else if (msg.type === 'EMOTE') session.dispatch({ type: 'emote', peerId, globalPi: msg.globalPi, emote: msg.emote });
-      else if (msg.type === 'BYE') session.dispatch({ type: 'peer-leave', peerId });
+      else if (msg.type === 'BYE') session.dispatch({ type: 'peer-leave', peerId, bye: true });
     }));
   }
   return session;
@@ -468,7 +545,7 @@ export function createHostNetContext(session, { makeSeed = () => cryptoU32(), pi
       for (const k of ['mode', 'trackId', 'cupId', 'arenaId', 'speedClass', 'laps', 'customTrackIds']) if (localSetup[k] !== undefined) patch[k] = localSetup[k];
       session.dispatch({ type: 'choice', patch });
       const lobby = session.lobby();
-      const humans = lobby.houses.reduce((n, h) => n + h.players.length, 0);
+      const humans = activePlayers(lobby).length;
       const cpuIds = pickCpus(cpuCountFor(humans, rules)) ?? [];
       raceId += 1;
       return composeOnlineSetup(lobby, lobby.hostChoice, { seed: makeSeed(), raceId, cpuIds, rules });

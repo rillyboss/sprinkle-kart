@@ -1,4 +1,15 @@
 import { defineConfig } from 'vite';
+import { execSync } from 'node:child_process';
+
+/** The deploy id every build announces online (NETWORKING.md §7.2): the commit, or 'dev'. */
+function skBuildId() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 12);
+  try {
+    return execSync('git rev-parse --short=12 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
 
 /**
  * Coverage quality gate (`npm run test:coverage`, run in CI). Thresholds apply to the
@@ -30,7 +41,13 @@ const LOGIC_THRESHOLDS = {
 export default defineConfig({
   base: './',
   server: { port: 5173 },
-  build: { chunkSizeWarningLimit: 1500 },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    // three.js in its own chunk: the game chunk stays under the warning limit (net review #21), and returning
+    // players keep the cached engine when only game code changed between deploys
+    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/ }] } } },
+  },
+  define: { __SK_BUILD__: JSON.stringify(skBuildId()) },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],

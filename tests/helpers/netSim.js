@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { stepKart, giveBoost, constrainToTrack } from '../../src/race/Kart.js';
 import { TUNING as T } from '../../src/race/tuning.js';
+import { predictGumdropHits } from '../../src/net/guest/localHits.js';
 
 const GUMDROP_COLORS = [0xff6fb5, 0x7ee07e, 0xffd35c, 0x8fb8ff, 0xc38bff];
 const ids = new WeakMap();
@@ -188,6 +189,8 @@ export function predictTick(localKarts, inputs, ctx) {
       if (lapNow > k.lap) k.lap = Math.min(lapNow, ctx.lapsTotal ?? lapNow);
     }
   }
+  // static gumdrops from the newest snapshot: bonk our own kart at the tick it really touches one (§9.8)
+  if (ctx.hazards) predictGumdropHits(localKarts, ctx.hazards, emit);
 }
 
 export { constrainToTrack };

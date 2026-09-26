@@ -79,6 +79,25 @@ describe('Grand Prix ceremony wiring', () => {
     expect(delay).toBeLessThan(intro);
     expect(src).toMatch(/'sk-show', state\.phase === 'choose' && !celebrations\?\.active\(\)/);
   });
+  it('the ceremony buttons show once the last reveal has faded out between frames (net review #18)', () => {
+    // the last reveal stops being "active" on its fade-out TIMER, between two frames: an update that compares
+    // active() before and after its own celebrations.update() never sees the change, so the Play again / Menu
+    // buttons never appeared (the offline smoke's modes-grand-prix timed out on them)
+    const q = celebrationQueue(fakeCtx(), document.createElement('div'), unlocks().slice(0, 1), { delay: 0.1 });
+    q.update(0.2);
+    q.update(5);
+    q.handle(confirm);
+    const before = q.active();
+    vi.advanceTimersByTime(460); // between frames
+    const startOfNextUpdate = q.active();
+    q.update(1 / 60);
+    const endOfNextUpdate = q.active();
+    expect([before, startOfNextUpdate, endOfNextUpdate]).toEqual([true, false, false]);
+    // so the screen compares with the PREVIOUS frame
+    expect(src).toMatch(/if \(before !== state\.phase \|\| busy !== lastBusy\) sync\(\);\n\s+lastBusy = busy;/);
+    expect(src).not.toMatch(/busy !== !!celebrations\?\.active\(\)/);
+  });
+
   it('the Free Race results screen covers its podium the same way', () => {
     expect(readFileSync('src/ui/screens/results.js', 'utf8')).toMatch(/classList\.toggle\('sk-celebrating'/);
   });

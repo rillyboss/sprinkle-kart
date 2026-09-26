@@ -31,6 +31,8 @@ export const COAST_MS = 250; // steer eases to 0 over this long after the hold
 export const ROBO_MS = 1500;
 export const STALE_PRESS_MS = 250;
 export const SLACK_MISSING = -128;
+/** A late input is reported as negative slack for this many ticks after it came (then silence is MISSING). */
+export const LATE_REPORT_TICKS = 6;
 const TICK_MS = 1000 / 60;
 
 /** @typedef {{ steer: number, accel: number, brake: number, drift: boolean, lookBack?: boolean, robo?: boolean,
@@ -134,6 +136,8 @@ export function createInputBuffer({
   const ring = new Array(size).fill(null);
   /** per-tick arrival slack for the snapshot's inputSlack (first arrival wins) */
   const slackRing = new Array(size).fill(null);
+  /** the newest late arrival: { tick, slack (< 0), at: lastConsumed when it came } */
+  const lastLate = { tick: -Infinity, slack: 0, at: -Infinity };
   const resolvers = [];
   let lastConsumed = 0; // newest tick taken
   let lastInput = null; // players[] of the newest input actually used (on-time)
@@ -166,6 +170,9 @@ export function createInputBuffer({
     if (!Array.isArray(perPlayer) || !perPlayer.length) return 'dup';
     newestSeen = Math.max(newestSeen, tick);
     if (tick <= lastConsumed) {
+      // remember how late it was: the guest's lead controller needs REAL negative slack (a lead that is too
+      // small), which it must never confuse with "nothing arrived at all" (an outage)
+      if (tick > lastLate.tick) { lastLate.tick = tick; lastLate.slack = tick - (lastConsumed + 1); lastLate.at = lastConsumed; }
       // Late: the analog part is useless now, but press-counter deltas are queued (a late press is late,
       // never lost). While Robo Driver has the wheel (or before a baseline) nothing is queued.
       stats.late++;
@@ -265,7 +272,10 @@ export function createInputBuffer({
     /** How many ticks early the input for `tick` arrived (SLACK_MISSING = never arrived in time). */
     slack(tick) {
       const s = slackRing[tick % size];
-      return s && s.tick === tick ? Math.max(-127, Math.min(127, s.slack)) : SLACK_MISSING;
+      if (s && s.tick === tick) return Math.max(-127, Math.min(127, s.slack));
+      // nothing on time for this tick: a recent LATE arrival is real negative slack, silence is SLACK_MISSING
+      if (lastConsumed - lastLate.at <= LATE_REPORT_TICKS) return Math.max(-127, Math.min(-1, lastLate.slack));
+      return SLACK_MISSING;
     },
     /**
      * Forget inputs stored for ticks not simulated yet. After a catch-up skip or a starved pump the guests'
@@ -286,6 +296,12 @@ export function createInputBuffer({
     },
     get lastConsumed() { return lastConsumed; },
     get newestSeen() { return newestSeen; },
+    /** Ticks since anything at all arrived from this house (0 until it has sent something). */
+    silentTicks(tick = lastConsumed) {
+      const heard = Math.max(lastInputTick, newestSeen);
+      if (firstTake === null || !Number.isFinite(heard)) return 0;
+      return Math.max(0, tick - heard);
+    },
     get robo() { return robo; },
     get lastInputTick() { return lastInputTick; },
     /** Pending queued presses per player. */

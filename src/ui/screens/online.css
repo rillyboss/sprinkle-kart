@@ -6,6 +6,7 @@
   background: #fff7d6; box-shadow: 0 0 0 0.15em #ffe08a; font-weight: 600; font-size: 1em;
 }
 .skn-msg:empty { display: none; }
+.skn-tips { margin: 0.2em auto 0.6em; padding: 0 0 0 1.2em; max-width: 34em; text-align: left; font-weight: 700; color: #7a4a8c; line-height: 1.5; }
 
 /* ---- big option cards (hub) ---- */
 .skn-cards { display: flex; gap: 1.2em; justify-content: center; flex-wrap: wrap; margin: 0.6em 0; width: 100%; }

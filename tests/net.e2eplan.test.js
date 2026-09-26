@@ -433,3 +433,27 @@ describe('the runner stays in sync with its plan', () => {
     expect(src).toContain('summary.json');
   });
 });
+
+describe('netcode quality in the online e2e (net review #14)', () => {
+  it('asserts reconcile / snapshot rate / lead / skips / loss only with a real GPU', async () => {
+    const { qualityProblems, QUALITY_BUDGET } = await import('../scripts/smoke-online-plan.mjs');
+    const good = { fps: 58, reconcileP99Cm: 12, snapshotHz: 30, lead: 4.5, stateSkips: 0, lossPct: 0 };
+    expect(qualityProblems(good)).toMatchObject({ asserted: true, problems: [] });
+    const bad = { fps: 58, reconcileP99Cm: 84, snapshotHz: 15, lead: 60, stateSkips: 130, lossPct: 13.5 };
+    const r = qualityProblems(bad);
+    expect(r.problems).toHaveLength(5);
+    expect(r.note).toMatch(/reconcile p99 84 cm/);
+    // swiftshader (1.7 fps): a note, never a failure
+    const slow = qualityProblems({ ...bad, fps: 1.7 });
+    expect(slow).toMatchObject({ asserted: false, problems: [] });
+    expect(slow.note).toMatch(/not asserted below 20 fps/);
+    expect(qualityProblems(null).problems).toEqual(['no netcode sample from the guest']);
+    expect(QUALITY_BUDGET.minFps).toBe(20);
+    const e2e = readFileSync(new URL('../scripts/smoke-online.mjs', import.meta.url), 'utf8');
+    expect(e2e).toMatch(/const q = qualityProblems\(sample\);/);
+    // the glue no longer fakes a heartbeat; the scenario idles past the host-silence limit (net review #1)
+    expect(e2e).not.toMatch(/new Uint8Array\(\[0\]\)/);
+    expect(e2e).toMatch(/const IDLE_MS = 11000;/);
+    expect(e2e).toMatch(/idleMs: IDLE_MS/);
+  });
+});

@@ -190,6 +190,27 @@ describe('PublicSignaling with a fake Trystero (importer injection)', () => {
     g2.t.close();
   });
 
+  it('a locked host tells the knocking guest "locked" (so it says closed, never the NAT tips) — review #19', async () => {
+    vi.useFakeTimers();
+    const { machine } = world();
+    const h = machine('host', HOST);
+    const g = machine('guest', G1);
+    const refused = [];
+    g.sig.onRefused((code) => refused.push(code));
+    await h.join();
+    h.sig.setLocked(true);
+    await g.join();
+    await flush();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(refused).toEqual(['locked']);
+    expect(h.t.peers()).toEqual([]);
+    expect(g.t.peers()).toEqual([]);
+    expect(parseRoleMessage({ v: 1, role: 'host', id: HOST, refused: 'locked' })).toEqual({ role: 'host', id: HOST, refused: 'locked' });
+    expect(parseRoleMessage({ v: 1, role: 'guest', id: G1, refused: 'locked' })).toEqual({ role: 'guest', id: G1 });
+    h.t.close();
+    g.t.close();
+  });
+
   it('a peer that never sends sk-role is closed after the role timeout', async () => {
     vi.useFakeTimers();
     const { fake, ids, machine } = world();

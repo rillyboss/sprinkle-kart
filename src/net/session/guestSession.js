@@ -3,25 +3,32 @@
  *
  *   idle → connecting (signaling, ICE ≤ 15 s) → handshake → waiting-approval (shows the match
  *   check) → joined → follows PHASE (lobby | net-waiting | characters | loading | race | results …)
- *   → ended: removed | host-gone | version | declined | locked | full | not-found | no-connect | left
+ *   joined → reconnecting (the link dropped / the host went quiet: "Reconnecting… 🔌", a fresh matchmaker +
+ *   connection, HELLO with the WELCOME token re-attaches the same house, §13.2) → joined
+ *   → ended: removed | host-gone | net-nap | version | declined | locked | full | not-found | no-connect | left
  *   → back to the Online hub with a friendly sentence.
+ *
+ * Heartbeat (§7.4): the guest sends KEEP whenever it sent nothing for KEEPALIVE_MS (waiting-approval and
+ * joined); any byte from the host on any channel counts as heard. "No host appeared on signaling at all"
+ * (wrong code / sweets) and "the host appeared but the connection never opened" (NAT) end differently.
  *
  * `guestReduce(state, ev) → { state, effects }` is pure; `createGuestSession()` wraps it
  * like createHostSession (same shape: { state, dispatch, onEffect, lobby }).
  *
- * Events: connect · connected · connect-failed · message · heard · host-leave · intent ·
- * emote · leave · tick.
+ * Events: connect · connected · connect-failed · host-seen · message · heard · host-leave · intent ·
+ * emote · leave · tick { online? }.
  * Effects: { type: 'send', msg } · { type: 'join-signaling', secret } · { type: 'leave-signaling' } ·
  * { type: 'screen', id, params } · { type: 'lobby', lobby } · { type: 'phase', phase, screen, params } ·
  * { type: 'token', token } · { type: 'seat-removed', seat } · { type: 'emote', globalPi, emote } ·
- * { type: 'choice', screen, choice } · { type: 'ended', reason, text }.
+ * { type: 'choice', screen, choice } · { type: 'ended', reason, text } ·
+ * { type: 'reconnect', attempt } (open a fresh matchmaker + connection) · { type: 'net-state', reconnecting, text }.
  *
  * OWNER: WS6 (session, lobby & screens).
  */
 import { drawMatch, matchEmoji, isMatch } from './approval.js';
 import { TEXT, rejectText, signalingErrorText } from './texts.js';
 import {
-  buildIdentity, jsonEncode, jsonDecode, isToken, REJECT_REASONS, EMOTE_COUNT, EMOTE_INTERVAL_MS, BYE,
+  buildIdentity, jsonEncode, jsonDecode, isToken, REJECT_REASONS, EMOTE_COUNT, EMOTE_INTERVAL_MS, BYE, KEEPALIVE_MS,
 } from './wire.js';
 import { canHost, currentPlatform } from '../platform.js';
 import { MAX_LOCAL_PLAYERS } from '../../config.js';
@@ -29,8 +36,19 @@ import { localCapacity } from './lobby.js';
 
 /** Signaling + ICE (15 s incl. one restart) + a little slack. */
 export const CONNECT_TIMEOUT_MS = 20_000;
-/** No packet from the host for this long = the host is gone (§7.4, §13.3). */
+/**
+ * No packet from the host for this long (it sends KEEP every second even in a quiet lobby) = the link is down:
+ * a joined house starts reconnecting, a house still waiting for approval goes back to the hub (§7.4, §13.3).
+ */
 export const HOST_SILENT_MS = 8_000;
+/**
+ * How long a joined house keeps trying to come back before giving up (§13.2). Longer than the transport's ICE
+ * failure grace (10 s) plus a fresh matchmaker round, so a Wi-Fi hiccup of 10–20 s costs nothing but a few
+ * seconds of Robo Driver.
+ */
+export const RECONNECT_GIVE_UP_MS = 30_000;
+/** When the reconnect attempts start (ms after the link dropped): a fresh matchmaker + connection each. */
+export const RECONNECT_ATTEMPTS_MS = Object.freeze([0, 3_000, 7_000, 12_000, 18_000, 24_000]);
 
 export function createGuestState({ secret, localPlayers = 1, mine = buildIdentity(), token = null, canHostFlag = true } = /** @type {any} */ ({})) {
   return {
@@ -41,6 +59,10 @@ export function createGuestState({ secret, localPlayers = 1, mine = buildIdentit
     canHost: !!canHostFlag,
     token: isToken(token) ? token : null,
     match: null,
+    seen: false,        // a host showed up on signaling during this attempt (NAT trouble vs a wrong code)
+    lastSent: 0,        // last ctrl send (KEEP heartbeat)
+    online: true,       // navigator.onLine as last reported by the wrapper
+    reconnect: null,    // { since, attempts } while reconnecting
     hostPeerId: null,
     houseId: null,
     emoji: null,
@@ -54,26 +76,45 @@ export function createGuestState({ secret, localPlayers = 1, mine = buildIdentit
   };
 }
 
-const LIVE = ['connecting', 'handshake', 'waiting-approval', 'joined'];
+const LIVE = ['connecting', 'handshake', 'waiting-approval', 'joined', 'reconnecting'];
 
 export function guestReduce(state, ev) {
   const effects = [];
   let st = { ...state, now: Number.isFinite(ev?.now) ? ev.now : state.now };
-  const send = (msg) => effects.push({ type: 'send', msg });
+  if (typeof ev?.online === 'boolean') st.online = ev.online;
+  const send = (msg) => { effects.push({ type: 'send', msg }); st = { ...st, lastSent: st.now }; };
   const end = (reason, text) => {
-    st = { ...st, phase: 'ended', end: { reason, text } };
+    const wasReconnecting = st.phase === 'reconnecting';
+    st = { ...st, phase: 'ended', end: { reason, text }, reconnect: null };
+    if (wasReconnecting) effects.push({ type: 'net-state', reconnecting: false, text: '' });
     effects.push(
       { type: 'leave-signaling' },
       { type: 'ended', reason, text },
-      { type: 'screen', id: 'online-hub', params: { message: text } },
+      { type: 'screen', id: 'online-hub', params: { message: text, ...(reason === 'no-connect' ? { tips: [...TEXT.noConnectTips] } : {}) } },
     );
+  };
+  /** The link to the host is gone: a house with a token tries to come back, anyone else goes home. */
+  const lost = () => {
+    const offline = st.online === false;
+    if (st.phase === 'joined' && st.token) {
+      const text = offline ? TEXT.netNap : TEXT.reconnecting;
+      st = { ...st, phase: 'reconnecting', hostPeerId: null, reconnect: { since: st.now, attempts: 1 } };
+      effects.push(
+        { type: 'reconnect', attempt: 0 },
+        { type: 'net-state', reconnecting: true, text },
+        { type: 'screen', id: 'net-waiting', params: { mode: 'connecting', text, label: st.secret?.label ?? '' } },
+      );
+      return;
+    }
+    if (offline) end('net-nap', TEXT.netNapEnd);
+    else end('host-gone', TEXT.hostGone);
   };
 
   switch (ev?.type) {
     case 'connect': {
       if (LIVE.includes(st.phase)) break;
       const match = isMatch(ev.match) ? [...ev.match] : drawMatch(); // fresh per attempt, never reused
-      st = { ...st, phase: 'connecting', match, since: st.now, lastHeard: st.now, end: null, hostPeerId: null, houseId: null, lobby: null };
+      st = { ...st, phase: 'connecting', match, since: st.now, lastHeard: st.now, end: null, hostPeerId: null, houseId: null, lobby: null, seen: false, reconnect: null };
       effects.push(
         { type: 'join-signaling', secret: st.secret },
         { type: 'screen', id: 'net-waiting', params: { mode: 'connecting', text: TEXT.knocking, label: st.secret?.label ?? '' } },
@@ -82,8 +123,18 @@ export function guestReduce(state, ev) {
     }
 
     case 'connected': {
+      if (st.phase === 'reconnecting') {
+        // a fresh connection to the host: knock again with our ticket (no approval, same house and seats)
+        if (st.hostPeerId) break;
+        st = { ...st, hostPeerId: ev.peerId ?? null, lastHeard: st.now, seen: true };
+        send({
+          type: 'HELLO', proto: st.mine.proto, build: st.mine.build, content: st.mine.content,
+          house: { localPlayers: st.localPlayers }, canHost: st.canHost, match: isMatch(st.match) ? [...st.match] : drawMatch(), token: st.token,
+        });
+        break;
+      }
       if (st.phase !== 'connecting') break;
-      st = { ...st, phase: 'waiting-approval', hostPeerId: ev.peerId ?? null, lastHeard: st.now, since: st.now };
+      st = { ...st, phase: 'waiting-approval', hostPeerId: ev.peerId ?? null, lastHeard: st.now, since: st.now, seen: true };
       const hello = {
         type: 'HELLO', proto: st.mine.proto, build: st.mine.build, content: st.mine.content,
         house: { localPlayers: st.localPlayers }, canHost: st.canHost, match: [...st.match],
@@ -96,9 +147,21 @@ export function guestReduce(state, ev) {
     }
 
     case 'connect-failed':
+      if (st.phase === 'reconnecting') {
+        // the host said no this time (locked / full) → home; a missing matchmaker just means "try again"
+        if (ev.code === 'locked' || ev.code === 'full') end(ev.code, signalingErrorText(ev.code));
+        else st = { ...st, hostPeerId: null };
+        break;
+      }
       if (!['connecting', 'handshake'].includes(st.phase)) break;
+      if (ev.code === 'locked' || ev.code === 'full') { end(ev.code, signalingErrorText(ev.code)); break; }
       end(ev.code === 'ice' ? 'no-connect' : ev.code === 'unreachable' ? 'unreachable' : 'not-found',
         ev.code === 'ice' ? TEXT.noConnect : signalingErrorText(ev.code));
+      break;
+
+    case 'host-seen':
+      // signaling surfaced the host (a connection is being made): a timeout now means NAT trouble, not a typo
+      if (st.phase === 'connecting' || st.phase === 'reconnecting') st = { ...st, seen: true };
       break;
 
     case 'heard':
@@ -110,19 +173,24 @@ export function guestReduce(state, ev) {
       if (!m || !LIVE.includes(st.phase)) break;
       st = { ...st, lastHeard: st.now };
       switch (m.type) {
-        case 'WELCOME':
-          if (st.phase !== 'waiting-approval') break;
+        case 'WELCOME': {
+          if (st.phase !== 'waiting-approval' && st.phase !== 'reconnecting') break;
+          const back = st.phase === 'reconnecting';
           st = {
-            ...st, phase: 'joined', houseId: m.houseId, emoji: m.emoji, token: isToken(m.token) ? m.token : st.token, lobby: m.lobby ?? null, hostPhase: m.lobby?.phase ?? 'lobby',
+            ...st, phase: 'joined', houseId: m.houseId, emoji: m.emoji, token: isToken(m.token) ? m.token : st.token, lobby: m.lobby ?? null, hostPhase: m.lobby?.phase ?? 'lobby', reconnect: null,
           };
           if (st.token) effects.push({ type: 'token', token: st.token });
+          if (back) effects.push({ type: 'net-state', reconnecting: false, text: '' }, { type: 'reattached', houseId: st.houseId });
           effects.push({ type: 'lobby', lobby: st.lobby }, { type: 'screen', id: 'online-lobby', params: { role: 'guest' } });
           break;
+        }
         case 'REJECT': {
           const reason = REJECT_REASONS.includes(m.reason) ? m.reason : 'declined';
           end(reason, rejectText(reason, m.detail ?? null));
           break;
         }
+        case 'KEEP':
+          break; // heard (above) is all a heartbeat does
         case 'LOBBY':
           if (st.phase !== 'joined' || !m.lobby) break;
           st = { ...st, lobby: m.lobby };
@@ -157,8 +225,9 @@ export function guestReduce(state, ev) {
     }
 
     case 'host-leave':
+      if (st.phase === 'reconnecting') { st = { ...st, hostPeerId: null }; break; } // the next attempt follows
       if (!LIVE.includes(st.phase) || st.phase === 'connecting') break;
-      end('host-gone', TEXT.hostGone);
+      lost();
       break;
 
     case 'intent':
@@ -188,8 +257,30 @@ export function guestReduce(state, ev) {
       break;
 
     case 'tick':
-      if (st.phase === 'connecting' && st.now - st.since >= CONNECT_TIMEOUT_MS) end('no-connect', TEXT.noConnect);
-      else if ((st.phase === 'joined' || st.phase === 'waiting-approval') && st.now - st.lastHeard >= HOST_SILENT_MS) end('host-gone', TEXT.hostGone);
+      if (st.phase === 'connecting' && st.now - st.since >= CONNECT_TIMEOUT_MS) {
+        // nobody ever answered on the matchmaker = a wrong code / sweets or no host (§13.5); a host that showed
+        // up but whose connection never opened = the NAT tips (§13.4)
+        if (st.seen) end('no-connect', TEXT.noConnect);
+        else end('not-found', TEXT.notFound);
+      } else if ((st.phase === 'joined' || st.phase === 'waiting-approval') && st.now - st.lastHeard >= HOST_SILENT_MS) {
+        lost();
+      } else if (st.phase === 'reconnecting') {
+        const r = st.reconnect;
+        if (st.now - r.since >= RECONNECT_GIVE_UP_MS) {
+          if (st.online === false) end('net-nap', TEXT.netNapEnd);
+          else end('host-gone', TEXT.hostGone);
+        } else if (!st.hostPeerId && r.attempts < RECONNECT_ATTEMPTS_MS.length && st.now - r.since >= RECONNECT_ATTEMPTS_MS[r.attempts]) {
+          st = { ...st, reconnect: { ...r, attempts: r.attempts + 1 } };
+          effects.push({ type: 'reconnect', attempt: r.attempts });
+        } else if (st.hostPeerId && st.now - st.lastHeard >= HOST_SILENT_MS) {
+          st = { ...st, hostPeerId: null }; // that attempt went nowhere: the next one opens a fresh connection
+        }
+        if (st.phase === 'reconnecting' && state.online !== st.online) {
+          effects.push({ type: 'net-state', reconnecting: true, text: st.online === false ? TEXT.netNap : TEXT.reconnecting });
+        }
+      }
+      // KEEP heartbeat: the host hears from us at least once a second while we wait or play (§7.4)
+      if ((st.phase === 'joined' || st.phase === 'waiting-approval') && st.now - st.lastSent >= KEEPALIVE_MS) send({ type: 'KEEP' });
       break;
 
     default:
@@ -231,20 +322,26 @@ export function createGuestNetContext(session) {
  * @param {number} o.localPlayers   1..4 players on this machine
  * @param {() => number} [o.now]
  * @param {object} [o.mine]         buildIdentity()
- * @param {string|null} [o.token]   reconnect token from sessionStorage (M2)
+ * @param {string|null} [o.token]   reconnect token (default: the one tokenStore remembers for this room)
  * @param {object} [o.platform]     { userAgent, platform, maxTouchPoints } for HELLO.canHost
+ * @param {{ load: (secret) => string|null, save: (secret, token) => void, clear: (secret) => void }|null} [o.tokenStore]
+ *   where the WELCOME ticket lives (sessionStorage in the game): a reload of this tab re-attaches its house
  */
 export function createGuestSession({
   transport = null, signalings = [], secret, localPlayers = 1, now = () => Date.now(), mine = buildIdentity(),
-  token = null, platform = currentPlatform(), encode = jsonEncode, decode = jsonDecode,
+  token = null, platform = currentPlatform(), encode = jsonEncode, decode = jsonDecode, tokenStore = null,
 } = /** @type {any} */ ({})) {
   void signalings;
-  let state = createGuestState({ secret, localPlayers, mine, token, canHostFlag: canHost(platform) });
+  let remembered = null;
+  try { remembered = token ?? tokenStore?.load?.(secret) ?? null; } catch { remembered = null; }
+  let state = createGuestState({ secret, localPlayers, mine, token: remembered, canHostFlag: canHost(platform) });
   const listeners = new Set();
   const offs = [];
   const run = (e) => {
     try {
       if (e.type === 'send' && state.hostPeerId) transport?.send?.(state.hostPeerId, 'ctrl', encode(e.msg));
+      if (e.type === 'token' && tokenStore) tokenStore.save(state.secret, e.token);
+      if (e.type === 'ended' && tokenStore && e.reason !== 'net-nap' && e.reason !== 'host-gone') tokenStore.clear(state.secret);
     } catch (err) { console.warn('[guest-session] effect', e.type, err); }
     for (const fn of listeners) { try { fn(e); } catch (err) { console.warn('[guest-session] listener', err); } }
   };

@@ -14,7 +14,13 @@
  */
 
 /** The session-level ctrl messages (§6.2). */
-export const SESSION_MESSAGES = Object.freeze(['HELLO', 'WELCOME', 'REJECT', 'BYE', 'LOBBY', 'INTENT', 'EMOTE', 'KICK', 'PHASE', 'CHOICE']);
+export const SESSION_MESSAGES = Object.freeze(['HELLO', 'WELCOME', 'REJECT', 'BYE', 'LOBBY', 'INTENT', 'EMOTE', 'KICK', 'PHASE', 'CHOICE', 'KEEP']);
+/**
+ * Session heartbeat (§7.4): while a room is open each side sends a tiny KEEP on ctrl whenever it has sent
+ * nothing else to that peer for this long, so a quiet lobby, a slow approval or a host lingering on the track
+ * screen never looks like a house that went to sleep.
+ */
+export const KEEPALIVE_MS = 1000;
 export const REJECT_REASONS = Object.freeze(['version', 'full', 'declined', 'locked', 'in-race-full', 'removed', 'host-leaving']);
 export const INTENT_KINDS = Object.freeze(['seat-join', 'seat-leave', 'pick', 'ready', 'unready']);
 /** BYE reasons (u8 on the wire). */

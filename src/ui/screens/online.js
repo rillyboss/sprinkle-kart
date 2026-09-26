@@ -8,7 +8,7 @@
  * `ctx.online` = { host(), join(secret), leave?() }; without it the hub still
  * works as a menu (Join / Check connection) and says hosting is almost ready.
  *
- * Params: { returnTo?, invite?: RoomSecret, message?: string, platform? }.
+ * Params: { returnTo?, invite?: RoomSecret, message?: string, tips?: string[], platform? }.
  * OWNER: WS6 (session, lobby & screens).
  */
 import './online.css';
@@ -54,6 +54,11 @@ export function hubAction(choice, { invite = null, platform = currentPlatform(),
   }
 }
 
+/** The hub's tip lines (params.tips: plain strings, at most 3; anything else is ignored). */
+export function hubTips(params = {}) {
+  return Array.isArray(params?.tips) ? params.tips.filter((t) => typeof t === 'string' && t).slice(0, 3) : [];
+}
+
 /** @type {import('./index.js').ScreenDef} */
 export default {
   id: 'online-hub',
@@ -66,6 +71,9 @@ export default {
     let state = S.createListState(options, 0);
     const platform = params.platform ?? currentPlatform();
     const msg = el('div.skn-msg', { role: 'status' }, params.message ? String(params.message) : '');
+    // "We couldn't connect your houses 🙈" comes with the three friendly tips (NETWORKING.md §13.4)
+    const tips = hubTips(params);
+    const tipList = tips.length ? el('ul.skn-tips', {}, tips.map((t) => el('li', {}, t))) : null;
 
     const cards = options.map((id, i) => {
       const [emoji, title, blurb] = CARDS[id];
@@ -84,6 +92,7 @@ export default {
         el('h1.sk-h1', { html: invite ? `${escapeHtml(TEXT.joinInvite(invite.label))}` : 'Play with friends <span class="sk-wiggle">🌐</span>' })),
       el('div.skn-lead', {}, invite ? 'A friend invited you to their room! 💌' : 'Race friends in other houses — only people with your secret room code can ask to join.'),
       msg,
+      ...(tipList ? [tipList] : []),
       el('div.skn-cards', {}, cards),
       hintsBar([
         `<span class="sk-hint"><span class="sk-g sk-g-dpad">✚</span>${kbd('Arrows')}<span class="sk-hint-t">Choose</span></span>`,
@@ -100,7 +109,7 @@ export default {
       sync();
       if (!res.go) return;
       const a = hubAction(res.go, { invite, platform, hasOnline: !!ctx.online });
-      if (a.message) { msg.textContent = a.message; return; }
+      if (a.message) { msg.textContent = a.message; tipList?.remove(); return; }
       if (a.call === 'host') ctx.online.host();
       else if (a.call === 'join') ctx.online.join(a.secret);
       else if (a.go === 'back') leave();

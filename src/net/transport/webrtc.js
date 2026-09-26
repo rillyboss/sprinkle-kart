@@ -8,8 +8,9 @@
  *   sk-ctrl   { negotiated: true, id: 9, ordered: true }                       everything else
  *
  * A peer is joined when BOTH are open. Latency-first backpressure on `state`: a send is
- * skipped (false, counted in `stateSkips`) when `bufferedAmount > max(1024, 2 × last state
- * message)`. `ctrl` queues above 64 KiB and drains on `bufferedamountlow` (threshold 16 KiB).
+ * skipped (false, counted in `stateSkips`) when `bufferedAmount > max(1024, 4 × the big state
+ * message)`, where "big" is a slowly decaying max of recent sizes (a snapshot), so a 27-byte PONG
+ * in between never shrinks the room to ~2 snapshots (net review #11). `ctrl` queues above 64 KiB and drains on `bufferedamountlow` (threshold 16 KiB).
  * `stats()` polls getStats every 5 s and keeps only the selected pair's candidate TYPE, whether
  * it is relayed, and the RTT: never an address or port (screens get shared).
  *
@@ -29,6 +30,10 @@ export const WIRE_OVERHEAD_TURN_BYTES = 97;
 export const STATE_CHANNEL = Object.freeze({ label: 'sk-state', init: Object.freeze({ negotiated: true, id: 8, ordered: false, maxRetransmits: 0 }) });
 export const CTRL_CHANNEL = Object.freeze({ label: 'sk-ctrl', init: Object.freeze({ negotiated: true, id: 9, ordered: true }) });
 export const STATE_BUFFER_MIN = 1024;
+/** Room on the state channel, in "big" state messages (snapshots), before a send is skipped. */
+export const STATE_BUFFER_MESSAGES = 4;
+/** Per state send, the remembered big message size decays by this factor (it follows a smaller snapshot). */
+export const STATE_BIG_DECAY = 0.995;
 export const CTRL_QUEUE_HIGH = 64 * 1024;
 export const CTRL_LOW_THRESHOLD = 16 * 1024;
 export const CTRL_QUEUE_MAX_BYTES = 1024 * 1024;
@@ -453,7 +458,8 @@ export function createWebRtcTransport({
             return false;
           }
           if (c.state.readyState !== 'open') return false;
-          const limit = Math.max(STATE_BUFFER_MIN, 2 * c.lastStateBytes);
+          c.bigStateBytes = Math.max(bytes.length, (c.bigStateBytes || 0) * STATE_BIG_DECAY);
+          const limit = Math.max(STATE_BUFFER_MIN, STATE_BUFFER_MESSAGES * c.bigStateBytes);
           if (c.state.bufferedAmount > limit) {
             c.s.stateSkips++;
             return false;

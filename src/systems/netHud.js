@@ -25,6 +25,7 @@ const TEXT = Object.freeze({
   roboBack: 'You have the wheel again! 🏎️',
   wobbly: 'A friend\'s connection is a bit wobbly… 📶',
   keepTab: "Keep this tab open, you're the host! 🏁",
+  reconnecting: 'Reconnecting… 🔌',
 });
 export const NET_HUD_TEXT = TEXT;
 
@@ -41,7 +42,8 @@ export function netHudModel({ kart, race, net }) {
   const crossed = predicted && Number.isFinite(L) && L > 0 && total > 0 && kart.distance >= total * L;
   const finishHold = !!(crossed && !kart.finished && race?.state === 'racing');
   let banner = null;
-  if (net.paused) banner = net.role === 'host' ? TEXT.snackHost : TEXT.snackGuest;
+  if (net.reconnecting) banner = net.reconnectText || TEXT.reconnecting;
+  else if (net.paused) banner = net.role === 'host' ? TEXT.snackHost : TEXT.snackGuest;
   return { finishHold, banner };
 }
 
