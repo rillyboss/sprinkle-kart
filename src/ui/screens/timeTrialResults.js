@@ -58,7 +58,7 @@ export default {
       '--i': s.lap,
       html: `<span>Lap ${s.lap}</span><b>${s.text}</b>${s.best && m.splits.length > 1 ? '<i>⭐</i>' : ''}`,
     }));
-    let state = createPhasedState(options.map((o) => o[0]), { introTime: 1 });
+    let state = createPhasedState(options.map((o) => o[0]), { introTime: 0.6 });
     const opts = optionButtons(options, (i) => handle({ deviceId: 'mouse', action: 'select', index: i }));
     const optHost = el('div.sk-gp-opts', {}, opts.node);
 

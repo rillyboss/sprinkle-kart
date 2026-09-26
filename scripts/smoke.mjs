@@ -180,7 +180,9 @@ async function menuFlowTest(browser) {
     await shot('1-title');
     await press('Enter', 1000);                // kb1 joins as P1 → join screen
     await shot('2-join');
-    await press('Enter', 1000);                // P1 continues → character select
+    await press('Enter', 1000);                // P1 continues → mode select
+    await shot('2b-modes');
+    await press('Enter', 1000);                // Free Race (the default card) → character select
     await shot('3-characters');
     await press('KeyD', 400);                  // move the cursor one step right
     await press('Enter', 2200);                // lock in → everyone ready → track select
@@ -235,7 +237,8 @@ async function menuScaleTest(browser) {
     await t.page.waitForTimeout(1200);
     await press('Enter', 1000);                // kb1 joins as P1
     await press('Slash', 800);                 // kb2 joins as P2
-    await press('Enter', 1000);                // → character select
+    await press('Enter', 1000);                // → mode select
+    await press('Enter', 1000);                // Free Race → character select
     const tiles = await t.page.evaluate(() => document.querySelectorAll('.sk-tile').length);
     if (tiles !== 21) fail(name, `expected 21 racer tiles, got ${tiles}`);
     const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
@@ -309,7 +312,8 @@ async function gamepadFlowTest(browser) {
     await tap(0);                              // A on title → pad joins as P1
     await tap(3);                              // Y toggles Easy Drive
     await shot('1-join');
-    await tap(0);                              // A → character select
+    await tap(0);                              // A → mode select
+    await tap(0);                              // A: Free Race → character select
     await tap(15, 500);                        // d-pad right (Lenny)
     await tap(0, 2400);                        // lock in → track select
     await tap(15, 500);                        // next track (Gumdrop Meadow)
@@ -390,6 +394,146 @@ async function resultsTest(browser) {
   }
 }
 
+/**
+ * Modes (modes + timing workstream): mode select → Grand Prix → cup select in
+ * the menus, a whole 4-race Grand Prix (?mode=gp&cup=...) through the standings
+ * and the trophy ceremony, and a Time Trial (?mode=tt&quick=...) twice so the
+ * second run races the saved ghost.
+ */
+async function modesMenuTest(browser) {
+  const name = 'modes-menu';
+  const n0 = failures.length;
+  const t = await newPage(browser, name);
+  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `modes-${n}.png`) });
+  const press = async (key, pause = 700) => { await t.page.keyboard.press(key); await t.page.waitForTimeout(pause); };
+  const screen = () => t.page.evaluate(() => window.__game.menus.screenId);
+  try {
+    await t.page.goto(`${BASE}?unlockreset=1`);
+    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, 60000, 'title screen');
+    await t.page.waitForTimeout(1000);
+    await press('Enter', 900);                 // P1 joins
+    await press('Enter', 1000);                // → mode select
+    if (await screen() !== 'mode-select') fail(name, `expected mode-select, got ${await screen()}`);
+    const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-mode-card').length);
+    if (cards !== 3) fail(name, `expected 3 mode cards, got ${cards}`);
+    await shot('1-select');
+    await press('KeyS', 500);                  // down → Records
+    await press('Enter', 900);
+    if (await screen() !== 'records') fail(name, `Records did not open (${await screen()})`);
+    await shot('2-records');
+    await press('Escape', 900);
+    if (await screen() !== 'mode-select') fail(name, 'B did not return from Records');
+    await press('KeyD', 500);                  // → Grand Prix
+    await press('Enter', 1000);
+    await press('Enter', 2400);                // pick a racer → cup select
+    if (await screen() !== 'cup-select') fail(name, `expected cup-select, got ${await screen()}`);
+    await shot('3-cups');
+    await press('Enter', 600);                 // Sprinkle Cup!
+    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'the cup to start');
+    const setup = await t.page.evaluate(() => window.__game.setup);
+    if (setup.mode !== 'grand-prix' || setup.cupId !== 'sprinkle-cup' || setup.trackId !== 'cotton-candy-castle') fail(name, `bad GP setup ${JSON.stringify(setup)}`);
+    const karts = await t.page.evaluate(() => window.__game.race.karts.length);
+    if (karts !== 8) fail(name, `expected 8 karts in a GP race, got ${karts}`);
+    checkErrors(t);
+    if (failures.length === n0) log(`${name}: ok`);
+  } catch (err) {
+    fail(name, err.message);
+    await shot('FAIL').catch(() => {});
+  } finally {
+    await t.ctx.close();
+  }
+}
+
+async function grandPrixTest(browser) {
+  const name = 'modes-grand-prix';
+  const n0 = failures.length;
+  const t = await newPage(browser, name);
+  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `gp-${n}.png`) });
+  try {
+    await t.page.goto(`${BASE}?mode=gp&cup=sprinkle-cup&players=2&autodrive=1&fastfinish=1&simspeed=8&speed=zoomy&unlockreset=1`);
+    const events = [];
+    await waitFor(t.page, () => window.__game?.state === 'race', null, 60000, 'GP race 1');
+    await t.page.evaluate(() => {
+      window.__gpEvents = [];
+      window.__game.bus.on('gp-race-end', (gp) => window.__gpEvents.push(['race', gp.raceIndex, gp.finished]));
+      window.__game.bus.on('gp-end', (gp) => window.__gpEvents.push(['end', gp.raceIndex, gp.standings.length]));
+    });
+    for (let r = 0; r < 4; r++) {
+      await waitFor(t.page, () => window.__game?.state === 'results', null, 240000, `GP race ${r + 1} results`);
+      await t.page.waitForTimeout(1200);
+      if (r === 0) await shot('1-results');
+      // continue (dismissing any unlock celebrations first)
+      for (let i = 0; i < 8 && await t.page.evaluate(() => window.__game.state === 'results'); i++) {
+        await t.page.keyboard.press('Enter');
+        await t.page.waitForTimeout(2600);
+      }
+      await waitFor(t.page, () => window.__game?.menus?.screenId === 'gp-standings', null, 20000, `standings after race ${r + 1}`);
+      await t.page.waitForTimeout(3600);
+      await shot(`2-standings-${r + 1}`);
+      await t.page.keyboard.press('Enter');
+      await t.page.waitForTimeout(r < 3 ? 1500 : 3500);
+    }
+    await shot('3-ceremony');
+    const info = await t.page.evaluate(() => ({ ev: window.__gpEvents, gp: window.__game.lastGp, cer: !!document.querySelector('.sk-cer-podium'), cups: document.querySelectorAll('.sk-trophy').length }));
+    events.push(...info.ev);
+    const want = JSON.stringify([['race', 0, false], ['race', 1, false], ['race', 2, false], ['race', 3, true], ['end', 3, 8]]);
+    if (JSON.stringify(events) !== want) fail(name, `GP events ${JSON.stringify(events)} != ${want}`);
+    if (!info.gp?.finished || info.gp.races.length !== 4) fail(name, `GP not finished after 4 races: ${JSON.stringify(info.gp?.raceIndex)}`);
+    if (!info.cer || info.cups !== 3) fail(name, `no trophy ceremony (podium ${info.cer}, cups ${info.cups})`);
+    const pts = info.gp?.standings?.reduce((a, r) => a + r.points, 0);
+    if (pts !== 4 * 58) fail(name, `points should total ${4 * 58}, got ${pts}`);
+    checkErrors(t);
+    if (failures.length === n0) log(`${name}: ok  winner=${info.gp.standings[0].characterId}`);
+  } catch (err) {
+    fail(name, err.message);
+    await shot('FAIL').catch(() => {});
+  } finally {
+    await t.ctx.close();
+  }
+}
+
+async function timeTrialTest(browser) {
+  const name = 'modes-time-trial';
+  const n0 = failures.length;
+  const t = await newPage(browser, name);
+  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `tt-${n}.png`) });
+  try {
+    await t.page.goto(`${BASE}?mode=tt&quick=gumdrop-meadow&players=3&autodrive=1&fastfinish=1&simspeed=6&speed=zoomy&unlockreset=1`);
+    await waitFor(t.page, () => window.__game?.state === 'race' && window.__game.race?.state === 'racing', null, 60000, 'time trial to start');
+    const race = await t.page.evaluate(() => ({ karts: window.__game.race.karts.length, item: window.__game.race.karts[0].item, charges: window.__game.race.karts[0].itemCharges, boxes: window.__game.race.itemBoxes.boxes.length }));
+    if (race.karts !== 1) fail(name, `a Time Trial is solo, got ${race.karts} karts`);
+    if (race.boxes !== 0) fail(name, `no item boxes in a Time Trial, got ${race.boxes}`);
+    if (race.item !== 'triple-sprinkle' || race.charges < 2) fail(name, `should start with 3 sprinkle boosts, got ${race.item} x${race.charges}`);
+    const timer = await t.page.evaluate(() => document.querySelector('.sk-timer-t')?.textContent);
+    if (!/^\d+:\d\d\.\d\d$/.test(timer || '')) fail(name, `race timer not showing (${timer})`);
+    await waitFor(t.page, () => window.__game?.state === 'results', null, 240000, 'time trial results');
+    await t.page.waitForTimeout(1500);
+    await shot('1-results');
+    if (await t.page.evaluate(() => window.__game.menus.screenId) !== 'time-trial-results') fail(name, 'time trial results screen not shown');
+    const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-ghosts-v1') || '{}'));
+    if (!saved['gumdrop-meadow']?.['1']?.data) fail(name, 'ghost not saved');
+    const rec = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}').records?.['gumdrop-meadow']);
+    if (!(rec?.bestLap > 0)) fail(name, `best lap not saved via submitRecord (${JSON.stringify(rec)})`);
+    await t.page.keyboard.press('Enter');      // Try again → races the ghost
+    await waitFor(t.page, () => window.__game?.state === 'race' && window.__game.race?.state === 'racing', null, 60000, 'second run');
+    await t.page.waitForTimeout(2500);
+    await shot('2-vs-ghost');
+    const tt = await t.page.evaluate(() => ({ tt: window.__game.timeTrial, gap: window.__game.race.modeInfo.ghostGap, ghost: !!window.__game.session.scene.getObjectByName('time-trial-ghost') }));
+    if (!tt.tt?.ghost || !tt.ghost) fail(name, 'second run has no ghost');
+    if (!Number.isFinite(tt.gap)) fail(name, `ghost gap not computed (${tt.gap})`);
+    await waitFor(t.page, () => window.__game?.state === 'results', null, 240000, 'second results');
+    await t.page.keyboard.press('Enter');
+    await t.page.waitForTimeout(400);
+    checkErrors(t);
+    if (failures.length === n0) log(`${name}: ok  gap=${tt.gap?.toFixed?.(2)}`);
+  } catch (err) {
+    fail(name, err.message);
+    await shot('FAIL').catch(() => {});
+  } finally {
+    await t.ctx.close();
+  }
+}
+
 /* ---------------- run ---------------- */
 
 let browser = null;
@@ -415,6 +559,9 @@ try {
   if (wanted('scale')) await menuScaleTest(browser);
   if (wanted('gamepad')) await gamepadFlowTest(browser);
   if (wanted('results')) await resultsTest(browser);
+  if (wanted('modes-menu')) await modesMenuTest(browser);
+  if (wanted('modes-grand-prix')) await grandPrixTest(browser);
+  if (wanted('modes-time-trial')) await timeTrialTest(browser);
 } catch (err) {
   fail('smoke', err.stack || err.message);
 } finally {
