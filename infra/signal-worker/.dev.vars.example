@@ -1,0 +1,5 @@
+# Local `npm run worker:dev` settings. scripts/worker.mjs copies this file to .dev.vars (gitignored) on first
+# run. The ':*' port wildcard works only for localhost and 127.0.0.1, so smoke tests on any port can connect.
+ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*
+# Without TURN_KEY_ID / TURN_KEY_API_TOKEN the local worker hands out STUN only (/health says "turn":false).
+# Never commit real TURN secrets; put them only in your own .dev.vars if you need to test the relay locally.

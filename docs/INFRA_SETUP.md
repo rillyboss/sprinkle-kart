@@ -23,12 +23,12 @@ Online play is still being built, so not every step works yet. What you can do t
 |---|---|---|
 | 1. GitHub Pages | ✅ **Done** | Pages is switched on (source: GitHub Actions) and `.github/workflows/pages.yml` deploys every push to `main`. The site already hosts the local split-screen game. |
 | 2. Cloudflare account | ✅ Do it now | Nothing in the repo is needed. |
-| 3. Log in with wrangler | ✅ Do it now | Needs **Node.js 22 or newer**. Today use `npx wrangler@4.141.0 login` (pinned version). Once the worker code lands, use `npm run worker:login` instead. Note your **Account ID**. |
+| 3. Log in with wrangler | ✅ Do it now | Needs **Node.js 22 or newer**. Run `npm run worker:login` (it installs the worker's pinned wrangler on first use). Note your **Account ID**. |
 | 4. TURN key | ✅ Do it now | Copy the **Turn Token ID** and **API Token** somewhere safe (a password manager); the API token is shown only once. Also set up the usage notification (step 4.4). |
-| 5–6. Deploy + worker secrets | ⏳ Waits for the online-play code | Needs `infra/signal-worker/`. The `worker:*` npm scripts already exist and say "not built yet" until then. |
-| 7. `VITE_SIGNAL_URL` variable | ⏳ After step 6 | The Pages workflow already passes this variable into the build. |
-| 8. In-game check | ⏳ Waits for the **Online** menu | |
-| Optional auto-deploy | ⏳ Waits for `.github/workflows/worker.yml` | You can already create the Cloudflare API token and add the two secrets. |
+| 5–6. Deploy + worker secrets | ✅ **Ready** | The worker code is in `infra/signal-worker/` and its tests pass (`npm run worker:test`). `npm run worker:deploy`, then `npm run worker:secret -- TURN_KEY_ID` and `npm run worker:secret -- TURN_KEY_API_TOKEN`. |
+| 7. `VITE_SIGNAL_URL` variable | ⏳ After step 6 | The Pages workflow already passes this variable into the build. Setting it early is harmless: the game starts using the worker once the **Online** menu lands. |
+| 8. In-game check | ⏳ Waits for the **Online** menu | Until then, check the worker with `curl …/health` (steps 5 and 6). |
+| Optional auto-deploy | ✅ **Ready** | `.github/workflows/worker.yml` deploys worker changes on `main` once the two Cloudflare secrets exist, and skips itself until then. |
 
 ---
 
@@ -67,8 +67,6 @@ Open a terminal in the repo folder:
 cd D:\dev\sprinkle-kart
 npm run worker:login
 ```
-
-(Before the worker code has landed, run `npx wrangler@4.141.0 login` instead.)
 
 A browser window opens. Click **Allow**. The terminal then says you're logged in.
 Check with `node scripts/worker.mjs whoami`, which shows your account name and **Account ID**. Copy the
@@ -192,10 +190,14 @@ Settings → Grown-ups hides your address from your friends' computers.
 
 ## Testing locally (for maintainers)
 
-- `npm run worker:dev` runs the worker on your computer with no Cloudflare account. It reads
+- `npm run worker:dev` runs the worker on your computer with no Cloudflare account, at
+  **http://localhost:8787** (another port: `npm run worker:dev -- --port 8792`). Try
+  `curl http://localhost:8787/health`; locally `"turn"` is `false` because there are no TURN secrets. It reads
   `infra/signal-worker/.dev.vars` (gitignored; created from `.dev.vars.example` on first run), which allows
   any `http://localhost:<port>` and `http://127.0.0.1:<port>` origin, so smoke tests on any port work. The
   deployed worker only uses `ALLOWED_ORIGINS` from `wrangler.toml`.
+- `npm run worker:test` runs the worker's own tests inside the real Workers runtime (Node 22+, no account,
+  a local stand-in for the TURN API). The pure room and limit rules are also tested by the normal `npx vitest run`.
 - Testing on an iPad or another computer on your Wi-Fi: `http://192.168.x.x:5173` is not a secure page, and
   the room secret and WebRTC need one. Use the GitHub Pages site, or an https tunnel (for example
   `cloudflared tunnel --url http://localhost:5173`).
@@ -206,7 +208,8 @@ Settings → Grown-ups hides your address from your friends' computers.
 
 | Thing | Location |
 |---|---|
-| Worker code | `infra/signal-worker/` (`wrangler.toml`, name `sprinkle-kart-signal`, Durable Object `SignalRoom`, migration `new_sqlite_classes`) |
+| Worker code | `infra/signal-worker/` (`wrangler.toml`, name `sprinkle-kart-signal`, Durable Object `SignalRoom`, migration `new_sqlite_classes`; rules in `src/room.js` and `src/guard.js`) |
+| Worker limits | 1 host + 7 guests per room · 12 guest joins/min per room · 30 room joins/min and 5 `/ice`/min per address · 500 relay passwords per day · rooms deleted 2 h after everyone leaves · addresses only ever stored as salted hashes |
 | Worker endpoints | `GET /health` · `GET /ice` (Check connection only; rate-limited, short-lived TURN creds) · `GET /room/:code` (WebSocket signaling; rooms get their TURN creds here) |
 | Worker secrets | `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` (set with `npm run worker:secret -- <name>`) |
 | Worker var | `ALLOWED_ORIGINS` (in `wrangler.toml`: `https://rillyboss.github.io,http://localhost:5173`); local dev override in the gitignored `infra/signal-worker/.dev.vars` |

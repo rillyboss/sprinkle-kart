@@ -1,0 +1,19 @@
+{
+  "name": "sprinkle-kart-signal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sprinkle Kart's own signaling server: a Cloudflare Worker with a SQLite-backed Durable Object (NETWORKING.md section 4.2).",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.2.8",
+    "vitest": "~4.1.11",
+    "wrangler": "~4.141.0"
+  }
+}

@@ -1,0 +1,68 @@
+name: Deploy signal worker
+
+# Optional auto-deploy of the Cloudflare signal worker (infra/signal-worker, NETWORKING.md §3,
+# docs/INFRA_SETUP.md "Optional: let GitHub deploy the worker automatically").
+# It only deploys when BOTH repository secrets exist: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+# Without them the deploy job is skipped (not failed). The TURN secrets are never handled here: a grown-up
+# stores them once inside Cloudflare with `npm run worker:secret -- TURN_KEY_ID` (and TURN_KEY_API_TOKEN).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/signal-worker/**'
+      - '.github/workflows/worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signal-worker-deploy
+  cancel-in-progress: false
+
+jobs:
+  # Secrets can't be read in a job-level `if:`, so this job mirrors "are both secrets set?" into env and
+  # an output (never the values themselves).
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      ready: ${{ steps.secrets.outputs.ready }}
+    env:
+      HAS_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      HAS_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - id: secrets
+        run: |
+          if [ "$HAS_CLOUDFLARE_API_TOKEN" = "true" ] && [ "$HAS_CLOUDFLARE_ACCOUNT_ID" = "true" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set: skipping the worker deploy (see docs/INFRA_SETUP.md)."
+          fi
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: infra/signal-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: infra/signal-worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # Never deploy a worker whose own tests fail.
+      - run: npm test
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infra/signal-worker
+          command: deploy
