@@ -13,7 +13,7 @@
 /* ---------- Menu micro-animations: a springy "boop" on every selection ---------- */
 body:not(.skx-gentle) .sk-menus .sk-listbtn.sk-sel,
 body:not(.skx-gentle) .sk-menus .sk-title-entry.sk-focus,
-body:not(.skx-gentle) .sk-menus .skp-set-row.sk-sel { animation: skx-boop 0.32s cubic-bezier(0.2, 1.9, 0.4, 1) both; }
+body:not(.skx-gentle) .sk-menus .skp-set-row.sk-sel { animation: skx-boop 0.32s cubic-bezier(0.2, 1.9, 0.4, 1); }
 @keyframes skx-boop {
   0% { transform: scale(0.96); }
   60% { transform: scale(1.08); }

@@ -717,6 +717,71 @@ async function timeTrialTest(t) {
 }
 
 /**
+ * Showcase presentation: the title show behind the logo, the Effects & comfort screen,
+ * a race with its intro card / weather / chatter, Photo mode from the pause menu
+ * (snaps a PNG download) and the dancing 3D podium on the results screen.
+ */
+async function showcaseTest(t) {
+  const shot = (n) => t.shot(`showcase-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-title'), null, T(60000), 'title screen');
+  await waitGame(t.page, () => !!window.__game?.attract?.()?.drawing, null, T(90000), 'the title show to draw');
+  await waitFrames(t.page, 3);
+  await shot('1-title-show');
+  const show = await t.page.evaluate(() => window.__game.attract());
+  t.check(show.racers >= 2 && show.time > 0, `title show not racing: ${JSON.stringify(show)}`);
+  // Effects & comfort: open from the title row, switch on colour-friendly shapes, back
+  await waitMenusReady(t.page);
+  const idx = await t.page.evaluate(() => [...document.querySelectorAll('.sk-title-entry')].findIndex((b) => /Effects/.test(b.textContent)));
+  t.check(idx >= 0, 'no Effects entry on the title screen');
+  await pressKey(t, 'KeyS');
+  for (let i = 0; i < idx; i++) await pressKey(t, 'KeyD');
+  await pressKey(t, 'Enter', onScreen('effects'));
+  for (let i = 0; i < 5; i++) await pressKey(t, 'KeyS'); // down to "Colour-friendly shapes"
+  await pressKey(t, 'Enter', { until: () => document.body.classList.contains('skx-cb'), what: 'colour-friendly shapes on' });
+  await shot('2-effects');
+  const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-presentation-v1') || '{}'));
+  t.check(saved.colorAssist === true, `effects pref not saved: ${JSON.stringify(saved)}`);
+  await pressKey(t, 'Escape', onScreen('title', 'back to the title'));
+  // a 2-player race: intro card, weather, then Photo mode from the pause menu
+  await t.page.goto(`${BASE}?quick=bubblegum-bay&players=2&autodrive=1&fastfinish=1&cpus=3&speed=zoomy`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race' && !!document.querySelector('.skx-intro'), null, T(60000), 'the track intro card');
+  await shot('3-intro-card');
+  t.check(await t.page.evaluate(() => window.__game.weather()?.kind === 'bubbles'), 'Bubblegum Bay should have bubbles');
+  t.check(await t.page.evaluate(() => document.querySelectorAll('.sk-vp[data-skx-p]').length === 2), 'player shape markers missing');
+  await waitRaceTime(t.page, 1);
+  await pressKey(t, 'Escape', { inRace: true, ...inState('paused', 'Esc to pause') });
+  await waitMenusReady(t.page);
+  const opts = await t.page.evaluate(() => [...document.querySelectorAll('.sk-pause .sk-listbtn')].map((b) => b.textContent));
+  const photoAt = opts.findIndex((o) => /Photo/.test(o));
+  t.check(photoAt >= 0, `no Photo mode in the pause menu: ${JSON.stringify(opts)}`);
+  for (let i = 0; i < photoAt; i++) await pressKey(t, 'KeyS');
+  await pressKey(t, 'Enter', onScreen('photo-mode'));
+  await pressKey(t, 'KeyD');
+  await pressKey(t, 'Tab'); // hearts frame
+  await waitFrames(t.page, 2);
+  await shot('4-photo-mode');
+  const download = t.page.waitForEvent('download', { timeout: T(30000) });
+  await pressKey(t, 'Enter');
+  const file = await download;
+  t.check(/^sprinkle-kart-bubblegum-bay-.*\.png$/.test(file.suggestedFilename()), `photo file name ${file.suggestedFilename()}`);
+  const photo = await t.page.evaluate(() => window.__game.lastPhoto);
+  t.check(photo?.bytes > 10000 && photo.width > 0, `photo not saved: ${JSON.stringify(photo)}`);
+  await pressKey(t, 'Escape', onScreen('pause', 'back to the pause menu'));
+  await pressKey(t, 'Escape', inState('race', 'Esc to resume'));
+  // the finish: 3D podium on the results screen
+  await waitGame(t.page, () => window.__game?.state === 'results' && !!window.__game.podium?.(), null, T(240000), 'results with the 3D podium');
+  await waitMenusReady(t.page);
+  await waitFrames(t.page, 3);
+  await shot('5-podium');
+  const podium = await t.page.evaluate(() => window.__game.podium());
+  t.check(podium.racers.length === 3 && podium.racers.every((r) => r.visible), `podium racers: ${JSON.stringify(podium)}`);
+  t.check(await t.page.evaluate(() => document.body.classList.contains('skx-podium3d')), 'podium class not on the page');
+  t.detail = `track=${show.trackId} podium=${podium.racers.map((r) => r.dance).join('/')}`;
+  checkErrors(t);
+}
+
+/**
  * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
  * To add one, append your function above and one line here — nothing else to edit.
  */
@@ -729,6 +794,7 @@ const FLOW_TESTS = {
   'modes-menu': modesMenuTest,
   'modes-grand-prix': grandPrixTest,
   'modes-time-trial': timeTrialTest,
+  showcase: showcaseTest,
 };
 
 /* ---------------- runner ---------------- */
