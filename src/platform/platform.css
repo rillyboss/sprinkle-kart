@@ -1,0 +1,138 @@
+/*
+ * Mobile & tablet platform CSS. OWNER: mobile platform.
+ * Loaded by src/systems/platformQuality.js. Only viewport / gesture plumbing + the platform's own small
+ * overlays live here — no menu or HUD styling (the phase-2 responsive UI builds on the variables below).
+ *
+ * Variables on :root (JS keeps --sk-app-* exact, see src/platform/web.js):
+ *   --sk-safe-top / --sk-safe-right / --sk-safe-bottom / --sk-safe-left   notch + home-indicator insets
+ *   --sk-app-height / --sk-app-width                                      visible viewport
+ * Opt-in helpers: add class `sk-scroll` (or attribute data-sk-scroll) to a list that must scroll by touch.
+ */
+:root {
+  --sk-safe-top: env(safe-area-inset-top, 0px);
+  --sk-safe-right: env(safe-area-inset-right, 0px);
+  --sk-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --sk-safe-left: env(safe-area-inset-left, 0px);
+  --sk-app-height: 100vh;
+  --sk-app-width: 100vw;
+}
+@supports (height: 100dvh) {
+  :root { --sk-app-height: 100dvh; --sk-app-width: 100dvw; }
+}
+
+html, body {
+  height: var(--sk-app-height);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+/* The canvas + UI layer follow the visible viewport (iOS 100vh includes the hidden toolbar). */
+#game, #ui { height: var(--sk-app-height); }
+#game { width: 100%; }
+
+/* Touch devices: no long-press callouts, no text selection, no double-tap zoom in the game. */
+html[data-sk-touch="1"], html[data-sk-touch="1"] body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+html[data-sk-touch="1"] input,
+html[data-sk-touch="1"] textarea,
+html[data-sk-touch="1"] [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: manipulation;
+}
+.sk-scroll, [data-sk-scroll] {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- rotate overlay (phones held upright) ---------- */
+.sk-rotate {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + var(--sk-safe-top)) calc(24px + var(--sk-safe-right)) calc(24px + var(--sk-safe-bottom)) calc(24px + var(--sk-safe-left));
+  font-family: 'Fredoka', 'Baloo 2', 'Nunito', 'Comic Sans MS', system-ui, sans-serif;
+  color: #6b3a7a;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.8) 0 8%, transparent 26%),
+    linear-gradient(160deg, #ffd6ec 0%, #f3d4ff 50%, #d5e9ff 100%);
+  text-align: center;
+  touch-action: none;
+}
+.sk-rotate[hidden] { display: none; }
+.sk-rotate-card { max-width: 340px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.sk-rotate-phone { font-size: 84px; line-height: 1; animation: sk-rotate-turn 2.4s ease-in-out infinite; }
+.sk-rotate-title { font-size: 30px; font-weight: 700; color: #fff; text-shadow: 0 3px 0 #ff5fb4, 0 6px 10px rgba(140, 60, 160, 0.3); }
+.sk-rotate-text { font-size: 18px; font-weight: 500; }
+.sk-rotate-skip {
+  margin-top: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #8a5a9a;
+  background: rgba(255, 255, 255, 0.7);
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 20px;
+  min-height: 44px;
+}
+@keyframes sk-rotate-turn {
+  0%, 20% { transform: rotate(0deg); }
+  50%, 80% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) { .sk-rotate-phone { animation: none; transform: rotate(-90deg); } }
+
+/* ---------- small bubbles: "New version — tap to update", install hints ---------- */
+.sk-pwa-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(14px + var(--sk-safe-bottom));
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(92vw, 520px);
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 0 rgba(160, 70, 150, 0.18), 0 10px 24px rgba(120, 50, 140, 0.18);
+  font-family: 'Fredoka', 'Baloo 2', 'Nunito', system-ui, sans-serif;
+  pointer-events: auto;
+  animation: sk-pwa-in 0.35s ease-out;
+}
+.sk-pwa-toast button { font: inherit; border: 0; background: none; color: #6b3a7a; cursor: pointer; min-height: 40px; }
+.sk-pwa-toast-main { flex: 1; padding: 6px 14px; font-size: 15px; font-weight: 600; text-align: left; }
+.sk-pwa-toast-main b { color: #e0449a; }
+.sk-pwa-toast-close { width: 40px; border-radius: 999px; font-size: 16px; opacity: 0.6; }
+.sk-pwa-update { top: calc(10px + var(--sk-safe-top)); bottom: auto; }
+/* never over the race HUD */
+html[data-sk-racing="1"] .sk-pwa-toast { display: none; }
+@keyframes sk-pwa-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---------- "taking a tiny nap" while the GPU context is lost ---------- */
+.sk-glnap {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 214, 236, 0.85);
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  color: #6b3a7a;
+}
+.sk-glnap[hidden] { display: none; }

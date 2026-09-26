@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
+// Mobile platform (PWA + offline): self-hosted fonts and the generated service worker (build/*.js).
+import { selfHostFonts } from './build/fonts.js';
+import { pwaServiceWorker } from './build/pwa.js';
 
 /** The deploy id every build announces online (NETWORKING.md §7.2): the commit, or 'dev'. */
 function skBuildId() {
@@ -41,6 +44,7 @@ const LOGIC_THRESHOLDS = {
 export default defineConfig({
   base: './',
   server: { port: 5173 },
+  plugins: [selfHostFonts(), pwaServiceWorker({ buildId: skBuildId })],
   build: {
     chunkSizeWarningLimit: 1500,
     // three.js in its own chunk: the game chunk stays under the warning limit (net review #21), and returning

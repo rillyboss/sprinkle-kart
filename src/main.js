@@ -42,7 +42,9 @@ import { InputManager } from './input/InputManager.js';
 import { AudioManager } from './audio/AudioManager.js';
 import { Menus } from './ui/Menus.js';
 import { Hud } from './ui/Hud.js';
-import { SplitScreen, pixelRatioFor } from './render/SplitScreen.js';
+import { SplitScreen } from './render/SplitScreen.js';
+// Phones & tablets (src/platform/): device + GPU detection, quality preset, dynamic resolution, web fixes, PWA.
+import { createPlatform } from './platform/index.js';
 import { CameraRig, SpectatorCam } from './render/CameraRig.js';
 import { hideOccluders, restoreKarts } from './render/occlusion.js';
 import { buildParticipants, pickCpuCharacters, parseDebugParams, quickSetup, nextTrackId, wantsQuickStart, menuPrevious } from './game/setup.js';
@@ -105,7 +107,8 @@ const canvas = document.getElementById('game');
 const uiRoot = document.getElementById('ui');
 const loadingEl = document.getElementById('loading');
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const platform = createPlatform();
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: platform.quality.antialias, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0xffd6ec, 1);
 
@@ -133,6 +136,7 @@ const game = {
   gp: null,          // the running Grand Prix (src/modes/grandPrix.js state) or null
   lastGp: null,      // GrandPrixResult of the last finished cup race
   timeTrial: null,   // { ghost, ghostTime, ghostSaved, samples } for the running Time Trial
+  platform,          // src/platform/index.js (quality preset, device caps, PWA state)
 };
 window.__game = game;
 
@@ -149,13 +153,14 @@ function resize() {
   const w = Math.max(1, window.innerWidth);
   const h = Math.max(1, window.innerHeight);
   const players = activeSession ? activeSession.humans.length : 1;
-  renderer.setPixelRatio(pixelRatioFor(players, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(platform.pixelRatio(players, window.devicePixelRatio || 1));
   renderer.setSize(w, h, false);
   split.resize(w, h);
   if (activeSession) activeSession.layout();
 }
 window.addEventListener('resize', resize);
 resize();
+platform.attach({ renderer, canvas, audio, onResize: resize });
 
 /* ------------------------------------------------------------------ */
 /* Main loop                                                           */
@@ -167,6 +172,7 @@ let fpsFrames = 0;
 let loggedLoopError = false;
 
 function frame(now) {
+  if (!platform.frameGate(now, { online: !!online })) return; // frame cap (weak devices) + dynamic resolution
   const rawDt = Math.max(0, (now - lastT) / 1000);
   lastT = now;
   const dt = Math.min(rawDt, 0.1);
@@ -574,6 +580,7 @@ function startRace(setup, done, opts = {}) {
     outcome: null,
     get paused() { return paused; },
     get resultsShown() { return resultsShown; },
+    requestPause: (label) => openPause(label), // src/systems/platformQuality.js: tab hidden / GPU nap
     layout() {
       hud.layout(split.hudRects(playerIndices));
       rigs.forEach((r, i) => r.setAspect(split.aspect(i)));

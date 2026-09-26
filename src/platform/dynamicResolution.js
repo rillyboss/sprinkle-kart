@@ -6,8 +6,10 @@
  *
  * Holds the frame rate by trading pixels, with hysteresis so it never "breathes":
  *   - the frame time is smoothed (EWMA, alpha 0.1) and compared with the budget 1000 / targetFps;
- *   - slower than budget × 1.2 for `downAfter` s → scale down one `step` (fast reaction, the game stutters);
- *   - faster than budget × 0.8 for `upAfter` s → scale up half a step (slow and careful);
+ *   - slower than budget × 1.25 for `downAfter` s → scale down one `step` (fast reaction, the game stutters);
+ *   - on budget (≤ × 1.1) for `upAfter` s → PROBE half a step up. The display's vsync hides spare time
+ *     (a fast frame still waits for the next refresh), so going up is a careful probe: if the game turns slow
+ *     right after it, the wait before the next probe doubles (up to `maxUpAfter` s) — no ping-pong;
  *   - after any change: `cooldown` s where nothing changes (the new size needs a few frames to settle);
  *   - between the two thresholds nothing accumulates (the dead band);
  *   - frames longer than `spikeMs` (tab switch, GC, shader compile) are ignored entirely.
@@ -18,10 +20,10 @@
 
 /**
  * @param {{ min?: number, max?: number, targetFps?: number, step?: number, downAfter?: number,
- *   upAfter?: number, cooldown?: number, spikeMs?: number, start?: number }} [opts]
+ *   upAfter?: number, maxUpAfter?: number, cooldown?: number, spikeMs?: number, start?: number }} [opts]
  */
 export function createDynamicResolution({
-  min = 0.6, max = 1, targetFps = 60, step = 0.1, downAfter = 0.5, upAfter = 3, cooldown = 1, spikeMs = 250, start,
+  min = 0.6, max = 1, targetFps = 60, step = 0.1, downAfter = 0.5, upAfter = 3, maxUpAfter = 32, cooldown = 1, spikeMs = 250, start,
 } = {}) {
   const lo = Math.max(0.25, Math.min(min, max));
   const hi = Math.max(lo, max);
@@ -31,48 +33,56 @@ export function createDynamicResolution({
   let scale = clamp(start ?? hi);
   let avg = budget;
   let slowFor = 0;
-  let fastFor = 0;
+  let goodFor = 0;
   let calm = 0;
   let changes = 0;
+  let upWait = upAfter;
+  let sinceUp = Infinity; // seconds since the last step UP (a probe)
 
   const api = {
     get scale() { return scale; },
     get average() { return avg; },
     get budget() { return budget; },
     get changes() { return changes; },
+    get upWait() { return upWait; },
     get enabled() { return hi > lo; },
     min: lo,
     max: hi,
     /**
-     * Feed one frame time (ms). Returns true when `scale` changed.
+     * Feed one frame time (ms between rendered frames). Returns true when `scale` changed.
      * @param {number} frameMs
      */
     sample(frameMs) {
       if (!(hi > lo) || !Number.isFinite(frameMs) || frameMs <= 0 || frameMs > spikeMs) return false;
       const sec = frameMs / 1000;
       avg += (frameMs - avg) * 0.1;
+      sinceUp += sec;
       if (calm > 0) { calm -= sec; return false; }
-      if (avg > budget * 1.2) { slowFor += sec; fastFor = 0; } else if (avg < budget * 0.8) { fastFor += sec; slowFor = 0; } else { slowFor = 0; fastFor = 0; }
+      if (avg > budget * 1.25) { slowFor += sec; goodFor = 0; } else if (avg <= budget * 1.1) { goodFor += sec; slowFor = 0; } else { slowFor = 0; goodFor = 0; }
       let next = scale;
+      let up = false;
       if (slowFor >= downAfter) next = clamp(round(scale - step));
-      else if (fastFor >= upAfter) next = clamp(round(scale + step / 2));
+      else if (goodFor >= upWait) { next = clamp(round(scale + step / 2)); up = true; }
       if (next === scale) {
         if (slowFor >= downAfter) slowFor = 0; // pinned at a bound: start counting again
-        if (fastFor >= upAfter) fastFor = 0;
+        if (goodFor >= upWait) goodFor = 0;
         return false;
       }
+      // Too slow right after a probe up: that size is too much, wait longer before the next probe.
+      if (!up && sinceUp < upWait + cooldown + downAfter + 1) upWait = Math.min(maxUpAfter, upWait * 2);
+      sinceUp = up ? 0 : Infinity;
       scale = next;
       slowFor = 0;
-      fastFor = 0;
+      goodFor = 0;
       calm = cooldown;
       avg = budget; // judge the new size on its own frames
       changes++;
       return true;
     },
     /** New target (e.g. the frame cap changed); keeps the scale. */
-    setTarget(fps) { budget = 1000 / Math.max(1, fps); avg = budget; slowFor = 0; fastFor = 0; },
+    setTarget(fps) { budget = 1000 / Math.max(1, fps); avg = budget; slowFor = 0; goodFor = 0; },
     /** Back to full size (a new race, a new preset). */
-    reset(to = hi) { scale = clamp(to); avg = budget; slowFor = 0; fastFor = 0; calm = 0; },
+    reset(to = hi) { scale = clamp(to); avg = budget; slowFor = 0; goodFor = 0; calm = 0; upWait = upAfter; sinceUp = Infinity; },
   };
   return api;
 }
