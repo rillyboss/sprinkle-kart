@@ -2,6 +2,12 @@
 
 What's new in Sprinkle Kart, newest first. Player-facing details live in the [README](README.md).
 
+## Unreleased
+
+### Racers
+- Pack A's shy blueberry ghost has her own original name now: **Peekaberry** 🫐. Saved unlocks,
+  per-racer tallies, paint, record holders and ghosts all carry over by themselves.
+
 ## v2.0.0 — The Big Sprinkle Update (2026-09-26)
 
 ### New ways to play
@@ -18,7 +24,7 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
 - **Race timers & Records 🏆**: race clock, lap times and splits, best laps and saved records per track.
 
 ### 12 new racers (21 in all)
-- **Pack A:** Bruno Bananas, Shelly Macaroon, Boo Berry, Twiggy Licorice, Captain Crumbs, Baby Bonbon.
+- **Pack A:** Bruno Bananas, Shelly Macaroon, Peekaberry, Twiggy Licorice, Captain Crumbs, Baby Bonbon.
 - **Pack B:** Luna Lollicorn, Bleep Bloop, Puff the Sprinkle Dragon, Prince Ribbit, Marina Seashell, Lulu Lamb.
 
 ### 16 new tracks in 4 new cups (20 in all)

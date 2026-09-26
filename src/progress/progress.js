@@ -7,6 +7,7 @@
  * character / track” for every other module.
  */
 import { emptyProgress, mergeProgress, defaultSettings } from './schema.js';
+import { ID_ALIASES } from '../content/idAliases.js';
 import { applyRaceSummary, applyGrandPrix, evaluateUnlocks, lineupEntries } from './engine.js';
 
 export const PROGRESS_KEY = 'sprinkle-kart-progress-v1';
@@ -27,7 +28,11 @@ export function loadProgress() {
   if (ls) {
     try {
       const raw = ls.getItem(KEY);
-      if (raw) memory = mergeProgress(JSON.parse(raw));
+      if (raw) {
+        memory = mergeProgress(JSON.parse(raw));
+        // a renamed racer/track id (content/idAliases.js) was migrated: write the new ids back once
+        if (Object.keys(ID_ALIASES).some((old) => raw.includes(`"${old}"`))) save();
+      }
     } catch { /* ignore corrupt / blocked storage */ }
   }
   return memory;

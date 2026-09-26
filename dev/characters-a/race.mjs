@@ -3,7 +3,7 @@
 // usage: node dev/characters-a/race.mjs [ids...]   (server: npx vite --port 5251)
 import { chromium } from 'playwright';
 
-const PACK_A = ['bruno', 'shelly', 'boo-berry', 'twiggy', 'captain-crumbs', 'baby-bonbon'];
+const PACK_A = ['bruno', 'shelly', 'peekaberry', 'twiggy', 'captain-crumbs', 'baby-bonbon'];
 const ids = process.argv.slice(2).length ? process.argv.slice(2) : PACK_A;
 const BASE = 'http://localhost:5251/';
 const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
