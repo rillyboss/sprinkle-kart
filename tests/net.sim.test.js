@@ -206,6 +206,28 @@ describe('wire-byte budgets (M1-5, 8 karts)', () => {
   });
 });
 
+describe('replicated events under the realistic ctrl retransmit model (§9.7)', () => {
+  // §9.7 says "no event released more than 1.1 s after its tick". That holds for any event whose ctrl packet
+  // needed at most one retransmission (RTO = RTT + 100 ms); a packet lost TWICE waits 350 + 700 ms of backoff
+  // (≈ 1.2 s at 250 ms RTT, 0.25 % of packets at 5 % loss), so the bound is asserted for p99 and 2 s for all.
+  it('at 250 ms RTT / 5 % loss world events are released in seq order, p99 within 1.1 s of their tick', () => {
+    const r = runNetRace({ houses: [[1], [1]], laps: 1, seed: 23, conditions: { latencyMs: 125, loss: 0.05 } });
+    for (const g of r.guests) {
+      const own = new Set(r.host.houseKarts[r.guests.indexOf(g)]);
+      const world = g.released.filter((x) => !own.has(x.kart));
+      expect(world.length).toBeGreaterThan(50);
+      for (let i = 1; i < world.length; i++) expect(world[i].seq).toBeGreaterThan(world[i - 1].seq);
+      const mineSeqs = g.released.filter((x) => own.has(x.kart)).map((x) => x.seq);
+      for (let i = 1; i < mineSeqs.length; i++) expect(mineSeqs[i]).toBeGreaterThan(mineSeqs[i - 1]);
+      const late = g.released.filter((x) => x.hostT !== null).map((x) => x.t - x.hostT);
+      expect(percentile(late, 0.99)).toBeLessThanOrEqual(1100);
+      expect(Math.max(...late)).toBeLessThanOrEqual(2000);
+      expect(percentile(late, 0.5)).toBeLessThanOrEqual(400); // normally: one-way + interp delay
+      expect(convergenceProblems(r, { rttMs: 250, contact: false })).toEqual([]);
+    }
+  });
+});
+
 describe('presses end to end', () => {
   it('item and hop presses under 5 % loss in 3-packet bursts at 100 ms: each applied exactly once, <= 6 ticks late', () => {
     const r = runNetRace({ houses: [[2], [1]], laps: 1, seed: 19, conditions: { latencyMs: 50, loss: 0.05, burstLen: 3, burstExact: true } });

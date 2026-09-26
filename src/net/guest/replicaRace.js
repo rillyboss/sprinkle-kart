@@ -422,6 +422,7 @@ export class ReplicaRace {
   }
 
   _releaseEvent(e) {
+    this.onReleased?.(e);
     this.appliedSeqs.push(e.seq);
     if (this.appliedSeqs.length > 100000) this.appliedSeqs.splice(0, 50000);
     this.itemsReplica.onEvent(e);

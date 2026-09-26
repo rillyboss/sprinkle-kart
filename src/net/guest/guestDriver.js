@@ -138,7 +138,7 @@ export function createGuestDriver({
         ...stats, lead: lead.lead, targetSlack: lead.targetSlack, lastSlack, leadJumps: { ...lead.stats },
         interpDelayMs: replica.interpDelayMs, epoch: timeline.epoch, paused: timeline.paused, sender: { ...sender.stats },
         reconcileP50: replica.reconciler.percentile(0.5), reconcileP99: replica.reconciler.percentile(0.99),
-        lastEventSeq: replica.events.lastSeq, clock: { rttMs: clock.rttMs, jitterMs: clock.jitterMs, ready: clock.ready },
+        lastEventSeq: replica.events.lastSeq, clock: { rttMs: clock.rttMs, jitterMs: clock.jitterMs, ready: clock.ready, offset: clock.offset ?? null },
       };
     },
     get lead() { return lead; },

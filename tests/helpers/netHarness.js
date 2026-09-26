@@ -210,6 +210,7 @@ export function runNetRace({
 
   // host truth per snapshot tick (for the final-state check) and host tick at a time
   const hostTruth = new Map();
+  const tickTime = new Map(); // host tick → fake time it was simulated
   const hostTickAt = (ms) => {
     const s = clock.state();
     if (!s.started) return 0;
@@ -230,6 +231,8 @@ export function runNetRace({
       predictTick, quantize: wire.quantizeInput, countdownAfter: countdown.after,
     });
     replica.onCorrection = (snap, errs) => { for (const x of errs) corrections.push({ tick: snap.tick, P: replica.predictedTick, ...x }); };
+    const released = [];
+    replica.onReleased = (e) => released.push({ seq: e.seq, tick: e.tick, type: e.type, kart: e.kart, t });
     const pilots = houseKarts[gi].map((_, seat) => makePilot(seed * 1000 + gi * 10 + seat, pilot));
     const guestPresses = houseKarts[gi].map(() => ({ item: [], hop: [] }));
     const lastCounts = houseKarts[gi].map(() => ({ item: 0, hop: 0 }));
@@ -253,7 +256,7 @@ export function runNetRace({
     const gdriver = createGuestDriver({ replica, transport: ep, clock: clockSync, timeline, localSeats, wire, hostId: () => 'host', now: gnow });
     ep.onMessage((peer, ch, bytes) => gdriver.onMessage(peer, ch, bytes));
     return {
-      id: guestIds[gi], index: gi, replica, driver: gdriver, timeline, clock: clockSync, events, corrections, guestPresses,
+      id: guestIds[gi], index: gi, replica, driver: gdriver, timeline, clock: clockSync, events, corrections, guestPresses, released,
       offset, gnow, nextFrame: startAtMs * 0.2 + rnd() * FRAME_MS, frames: [], jumps: [], lastRender: new Map(),
       timelineErr: [], leadLog: [], interpLog: [],
     };
@@ -283,6 +286,7 @@ export function runNetRace({
     for (let tk = before + 1; tk <= driver.tick; tk++) {
       if (tk % 2 === 0) hostTruth.set(tk, race.karts.map((k) => [k.position.x, k.position.y, k.position.z]));
       if (hostTruth.size > 400) hostTruth.delete(hostTruth.keys().next().value);
+      tickTime.set(tk, t);
       onHostTick?.({ tick: tk, race, driver, t });
     }
     race.present?.(0, FRAME_MS / 1000);
@@ -437,6 +441,7 @@ export function runNetRace({
     }
     return {
       id: g.id, replica, driver: g.driver, events: g.events, results: gres, resultMsg: g.driver.lastResult?.summary ?? null,
+      released: g.released.map((x) => ({ ...x, hostT: tickTime.get(x.tick) ?? null })),
       finalErr, acceptedSeqs: replica.acceptedSeqs.slice(),
       presses: g.guestPresses,
       metrics: {
