@@ -168,3 +168,46 @@ export const DAILY_WIDGET = {
     };
   },
 };
+
+/** @returns {null | { emoji, text, key, index, total, cheering, done, learned, sig }} the How to Play coach bubble */
+export function tutorialHudModel(kart, race) {
+  const v = race?.modeInfo?.tutorial;
+  if (!v || (kart && kart.playerIndex !== 0 && kart.playerIndex !== undefined)) return null;
+  return v;
+}
+
+export const TUTORIAL_WIDGET = {
+  id: 'tutorial-hud',
+  anchor: 'top-center',
+  order: 24,
+  create(node) {
+    if (!canDom() || !node?.appendChild) return noop;
+    const root = mk('div', 'skh-coach', node);
+    root.hidden = true;
+    const face = mk('span', 'skh-coach-e', root);
+    const body = mk('div', 'skh-coach-body', root);
+    const text = mk('span', 'skh-coach-t', body);
+    const key = mk('b', 'skh-coach-k', body);
+    const dots = mk('div', 'skh-coach-dots', root);
+    let sig = null;
+    return {
+      update(kart, race) {
+        const m = tutorialHudModel(kart, race);
+        root.hidden = !m;
+        if (!m || m.sig === sig) return;
+        sig = m.sig;
+        face.textContent = m.emoji;
+        text.textContent = m.text;
+        key.textContent = m.key;
+        key.hidden = !m.key;
+        root.classList.toggle('skh-cheer', m.cheering);
+        root.classList.toggle('skh-done', m.done && !m.cheering);
+        root.classList.remove('skh-pop'); void root.offsetWidth; root.classList.add('skh-pop');
+        dots.innerHTML = '';
+        for (let i = 0; i < m.total; i++) mk('i', i < m.index ? 'skh-dot-on' : i === m.index ? 'skh-dot-now' : null, dots);
+      },
+      reset() { sig = null; root.hidden = true; },
+      destroy() { root.remove(); },
+    };
+  },
+};

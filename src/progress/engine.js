@@ -89,7 +89,8 @@ export function applyRaceSummary(p, summary, { tallies = null } = {}) {
   }
 
   // Bubble Pop Battle is not a race (no finish line): only the per-action counters count.
-  if (summary.mode === 'battle') return p;
+  // A How to Play practice race (solo, no CPUs) is not a real race either.
+  if (summary.mode === 'battle' || summary.mode === 'tutorial') return p;
 
   if (summary.mode === 'time-trial') {
     if (finishers.length) {

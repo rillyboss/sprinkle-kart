@@ -60,6 +60,8 @@ import { dailyChallenge, dailyRules } from './modes/daily.js';
 import { createDailySession } from './modes/dailySession.js';
 import { todayString } from './progress/goals.js';
 import { MY_CUP_ID, myCupDef } from './modes/myCup.js';
+import { tutorialTrackId, TUTORIAL_LAPS, TUTORIAL_SPEED } from './modes/tutorial.js';
+import { createTutorialSession } from './modes/tutorialSession.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -255,6 +257,7 @@ async function flow() {
     else if (mode === 'battle') previous = await runBattle(setup);
     else if (mode === 'team') previous = await runTeamRaces(setup);
     else if (mode === 'daily') previous = await runDaily(setup);
+    else if (mode === 'tutorial') previous = await runTutorial(setup);
     else previous = await runFreeRaces(setup);
     // 'menu' / 'quit' → back to the join screen with everyone still there.
     previous = menuPrevious(previous);
@@ -322,6 +325,26 @@ async function runDaily(setup) {
       rules: dailyRules(challenge),
       controller: (ctx) => createDailySession({ ...ctx, challenge }),
       resultOptions: [['again', 'Try again', '🔁'], ['menu', 'Menu', '🏠']],
+    });
+  } while (outcome === 'again' || outcome === 'restart' || outcome === 'next-track');
+  return setup;
+}
+
+/**
+ * How to Play (src/modes/tutorial.js): P1 alone on a friendly track, a coach
+ * bubble teaches one trick at a time. Practice again / menu.
+ */
+async function runTutorial(setup) {
+  const trackId = setup.trackId && findTrack(setup.trackId) ? setup.trackId : tutorialTrackId(availableTracks().map((t) => t.id));
+  const p1 = setup.players[0];
+  setup = { ...setup, mode: 'tutorial', players: [p1], trackId, laps: params.laps ?? setup.laps ?? TUTORIAL_LAPS, speedClass: setup.speedClass ?? TUTORIAL_SPEED };
+  let device = p1?.deviceId ?? null;
+  try { device = input.getDevice?.(p1.deviceId) ?? device; } catch { /* ignore */ }
+  let outcome;
+  do {
+    outcome = await playRace(setup, {
+      controller: (ctx) => createTutorialSession({ ...ctx, device }),
+      resultOptions: [['again', 'Practice again', '🔁'], ['menu', 'Menu', '🏠']],
     });
   } while (outcome === 'again' || outcome === 'restart' || outcome === 'next-track');
   return setup;

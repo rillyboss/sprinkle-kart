@@ -35,6 +35,7 @@ export const GOAL_COUNTERS = Object.freeze([
   'teamWins',       // Team Races won by Team Sprinkle
   'dailyDone',      // Daily Sprinkle challenges completed
   'cleanWins',      // wins without getting bonked once
+  'tutorialsDone',  // How to Play lessons with every trick learned
 ]);
 
 const G = (id, emoji, name, hint, rule, group) => Object.freeze({ id, emoji, name, hint, rule: Object.freeze(rule), group });
@@ -66,6 +67,7 @@ export const GOALS = Object.freeze([
   G('team-spirit', '🤝', 'Team Spirit', 'Win a Team Race', { type: 'counter', counter: 'teamWins', count: 1 }, 'modes'),
   G('dream-team', '🎉', 'Dream Team', 'Win 5 Team Races', { type: 'counter', counter: 'teamWins', count: 5 }, 'modes'),
   G('daily-sprinkler', '☀️', 'Daily Sprinkler', 'Complete 3 Daily Sprinkles', { type: 'counter', counter: 'dailyDone', count: 3 }, 'modes'),
+  G('sprinkle-scholar', '🎓', 'Sprinkle Scholar', 'Learn every trick in How to Play', { type: 'counter', counter: 'tutorialsDone', count: 1 }, 'modes'),
   G('family-fun', '👨‍👩‍👧', 'Family Fun', 'Race 10 times with 2 or more players', { type: 'stat', stat: 'multiplayerRaces', count: 10 }, 'family'),
   G('teddy-helper', '🧸', 'Teddy Helper', 'Finish 5 races with Kid-Assist on', { type: 'stat', stat: 'kidAssistFinishes', count: 5 }, 'family'),
   G('sticker-superstar', '📒', 'Sticker Superstar', 'Unlock every racer and track', { type: 'full-book' }, 'family'),
@@ -176,7 +178,8 @@ export function applyGoalCounters(p, summary) {
     if (summary.team.winner === (summary.team.homeTeam ?? 'sprinkle')) c.teamWins += 1;
   }
   if (summary.daily?.counted) c.dailyDone += 1;
-  if (summary.mode !== 'battle' && summary.mode !== 'time-trial') {
+  if (summary.mode === 'tutorial' && summary.tutorial?.done) c.tutorialsDone += 1;
+  if (summary.mode !== 'battle' && summary.mode !== 'time-trial' && summary.mode !== 'tutorial') {
     const clean = humans.some((h) => h.finished && !h.estimated && h.place === 1 && h.stats && num(h.stats.bonked) === 0);
     if (clean) c.cleanWins += 1;
   }

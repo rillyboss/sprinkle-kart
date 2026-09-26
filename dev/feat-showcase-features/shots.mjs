@@ -84,6 +84,15 @@ const scenarios = {
     await wait((t1) => (window.__game.race?.time ?? 0) > t1, 6);
     await shot('daily-2-race');
   },
+  async book() {
+    await page.goto(`${BASE}?unlockreset=1`);
+    await wait(() => window.__game?.state === 'menu' && window.__game.menus?.screenId === 'title');
+    await page.waitForTimeout(800);
+    await page.evaluate(() => window.__game.menus.goto('collection', { tab: 3 }));
+    await wait(() => window.__game.menus.screenId === 'collection');
+    await page.waitForTimeout(1200);
+    await shot('book-goals');
+  },
   async mycup() {
     await page.goto(`${BASE}?unlockreset=1`);
     await wait(() => window.__game?.state === 'menu' && window.__game.menus?.screenId === 'title');

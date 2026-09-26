@@ -56,6 +56,7 @@ const MODE_ALIASES = {
   battle: 'battle', bubble: 'battle', 'bubble-battle': 'battle',
   team: 'team', 'team-race': 'team', teams: 'team',
   daily: 'daily', 'daily-sprinkle': 'daily',
+  tutorial: 'tutorial', 'how-to-play': 'tutorial', howto: 'tutorial', practice: 'tutorial',
 };
 
 /** ?mode=gp|tt|free|battle|team (and long names) -> 'grand-prix' | 'time-trial' | 'free' | 'battle' | 'team' | null. */
@@ -64,9 +65,9 @@ export function modeParam(v) {
   return MODE_ALIASES[String(v).trim().toLowerCase()] ?? null;
 }
 
-/** True when the URL asks to skip the menus (?quick=..., ?mode=gp&cup=..., ?mode=battle or ?mode=daily). */
+/** True when the URL asks to skip the menus (?quick=..., ?mode=gp&cup=..., ?mode=battle, ?mode=daily or ?mode=tutorial). */
 export function wantsQuickStart(params) {
-  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup) || params.mode === 'battle' || params.mode === 'daily';
+  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup) || params.mode === 'battle' || params.mode === 'daily' || params.mode === 'tutorial';
 }
 
 /** Fisher–Yates shuffle (returns a new array). */
@@ -170,6 +171,12 @@ export function quickSetup(params, input, characters, tracks, { cups = [] } = {}
   };
   if (mode !== 'free') setup.mode = mode;
   if (mode === 'battle' && params.arena) setup.arenaId = params.arena;
+  if (mode === 'tutorial') {
+    // How to Play: P1 alone; main.js picks the friendly practice track + laps unless the URL names them.
+    setup.players = players.slice(0, 1);
+    setup.laps = params.laps ?? null;
+    if (!params.quick || params.quick === 'default') setup.trackId = null;
+  }
   if (cup) {
     setup.cupId = cup.id;
     setup.laps = params.laps ?? null; // each cup race uses its track's own laps

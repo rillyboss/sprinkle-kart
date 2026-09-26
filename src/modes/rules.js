@@ -12,7 +12,7 @@
  * OWNER: modes + timing workstream.
  */
 /** Same list as MODES in src/game/summary.js (kept import-free so Race.js stays light). */
-const MODE_IDS = ['free', 'grand-prix', 'time-trial', 'team', 'battle', 'daily'];
+const MODE_IDS = ['free', 'grand-prix', 'time-trial', 'team', 'battle', 'daily', 'tutorial'];
 
 /** Sprinkle boosts a Time Trial starts with. */
 export const TIME_TRIAL_BOOSTS = 3;
@@ -49,6 +49,8 @@ export function rulesForMode(mode) {
     return normalizeRules({ items: false, cpus: false, startItem: 'triple-sprinkle', startItemCharges: TIME_TRIAL_BOOSTS });
   }
   if (mode === 'battle') return normalizeRules({ items: true, cpus: true, battle: true });
+  // How to Play (modes/tutorial.js): a calm solo practice race, surprise boxes on.
+  if (mode === 'tutorial') return normalizeRules({ items: true, cpus: false });
   return normalizeRules(DEFAULT_RULES);
 }
 
