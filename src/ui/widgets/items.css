@@ -79,6 +79,8 @@
 
 /* ---------- item-callout: rocket warning + friendly callouts ---------- */
 .ski-callouts { display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
+/* an older callout with no room left under the timer / flashes waits hidden (fitCallouts) */
+.ski-callout.ski-squeezed { display: none; }
 .ski-callout, .ski-threat {
   display: flex;
   align-items: center;

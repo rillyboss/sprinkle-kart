@@ -29,6 +29,9 @@ import './widgets/items.css';
 import { itemSlotView } from './widgets/itemHudLogic.js';
 import { ITEM_CATALOG } from '../race/itemCatalog.js';
 
+/** Flashes ("Mini-Turbo!", "Lap 2!") shown at once per player; a newer one retires the oldest. */
+export const MAX_FLASHES = 2;
+
 /**
  * Item slot glyph. One big readable icon per item; Triple Sprinkle shows a
  * "×N" charge badge (pass `pips` = { total, left }).
@@ -253,10 +256,13 @@ export class Hud {
   flash(playerIndex, text) {
     const vp = this.vps.get(playerIndex);
     if (!vp) return;
+    const box = vp.refs.flashes;
+    // at most MAX_FLASHES at once (the oldest goes early), so the lane never grows into the callouts
+    while (box.childElementCount >= MAX_FLASHES) box.firstElementChild?.remove();
+    [...box.children].forEach((c, i) => c.style.setProperty('--k', i));
     const f = el('div.sk-flash', {}, String(text));
-    const n = vp.refs.flashes.childElementCount;
-    f.style.setProperty('--k', n);
-    vp.refs.flashes.appendChild(f);
+    f.style.setProperty('--k', box.childElementCount);
+    box.appendChild(f);
     setTimeout(() => f.remove(), 1400);
   }
 

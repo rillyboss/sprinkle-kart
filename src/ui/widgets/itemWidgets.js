@@ -20,6 +20,45 @@ import {
 const RING_C = 2 * Math.PI * 16; // svg circle r=16
 /** Callouts end this far down the viewport (0..1): just above the chase-cam kart. */
 export const CALLOUT_BOTTOM = 0.4;
+/** Pixels kept free between the callout stack and whatever sits above it. */
+export const CALLOUT_GAP = 6;
+
+/**
+ * Which callouts fit (pure): the stack grows UP from just above the kart and
+ * may use `room` px. The newest (last) always shows; older ones that would
+ * poke above the room (over the race timer or the Mini-Turbo / Lap flashes)
+ * are hidden until there is space again.
+ * @param {number[]} heights  callout heights, oldest first
+ * @param {number} room  px available above the kart
+ * @param {number} [reserved] px already used (the pinned rocket warning)
+ * @returns {boolean[]} hidden flags, same order
+ */
+export function fitCallouts(heights, room, reserved = 0, gap = CALLOUT_GAP) {
+  const hidden = heights.map(() => false);
+  let used = reserved;
+  for (let i = heights.length - 1; i >= 0; i--) {
+    const h = (heights[i] || 0) + gap;
+    if (i < heights.length - 1 && used + h > room) hidden[i] = true;
+    else used += h;
+  }
+  return hidden;
+}
+
+/**
+ * How far down the viewport the HUD above the callouts reaches (px from the
+ * viewport top): the top-center zone (race timer + lap splits) and the
+ * flashes lane ("Mini-Turbo!", "Lap 2!") while any flash is showing.
+ */
+export function calloutCeiling(vpNode) {
+  let y = 0;
+  try {
+    const top = vpNode?.querySelector?.('.sk-wzone-top-center');
+    if (top && top.offsetHeight) y = Math.max(y, top.offsetTop + top.offsetHeight);
+    const fl = vpNode?.querySelector?.('.sk-flashes');
+    if (fl) for (const f of fl.children) y = Math.max(y, fl.offsetTop + f.offsetTop + f.offsetHeight);
+  } catch { /* measuring is best effort */ }
+  return y;
+}
 
 function div(cls, html = '') {
   const n = document.createElement('div');
@@ -109,7 +148,20 @@ export function itemCalloutWidget(state) {
       const list = div('ski-callouts');
       node.append(list, threat);
       node.classList.add('ski-callout-box');
-      const cache = { ids: '', threat: '', h: -1, measuredAt: -9 };
+      const cache = { ids: '', threat: '', h: -1, measuredAt: -9, fitAt: -9, fitIds: '' };
+      // keep the stack out of the timer / flash lane: hide older callouts that don't fit
+      const fit = (now) => {
+        if (cache.fitIds === cache.ids && Math.abs(now - cache.fitAt) < 0.2) return;
+        cache.fitAt = now;
+        cache.fitIds = cache.ids;
+        const kids = [...list.children];
+        const h = vpNode?.clientHeight || 0;
+        if (!kids.length || !h) return;
+        for (const k of kids) k.classList.remove('ski-squeezed');
+        const room = CALLOUT_BOTTOM * h - calloutCeiling(vpNode) - CALLOUT_GAP;
+        const hidden = fitCallouts(kids.map((k) => k.offsetHeight), room, threat.hidden ? 0 : threat.offsetHeight + CALLOUT_GAP);
+        kids.forEach((k, i) => k.classList.toggle('ski-squeezed', hidden[i]));
+      };
       // The callout zone starts at 50% of the viewport, right on top of the
       // player's kart. Lift the stack so its bottom edge sits just above the
       // kart (CALLOUT_BOTTOM of the viewport height) and it grows upward.
@@ -155,6 +207,7 @@ export function itemCalloutWidget(state) {
               list.appendChild(c);
             }
           }
+          fit(now);
         },
         reset() { list.innerHTML = ''; threat.hidden = true; cache.ids = ''; cache.threat = ''; },
         destroy() { threat.remove(); list.remove(); },

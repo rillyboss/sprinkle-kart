@@ -187,6 +187,13 @@ body.skx-gentle .skx-photo-snapflash.skx-go { animation-duration: 0.2s; }
 body.skx-podium3d .sk-menus.sk-mode-results { background: transparent !important; }
 body.skx-podium3d .sk-results .sk-step-portrait { visibility: hidden; animation: none; }
 body.skx-podium3d .sk-results .sk-crown { top: -2.1em; }
+/* names under the dancing 3D racers: a soft white halo + a little room below the kart, so a
+   big kart (Luna's horn, Twiggy's hat) never makes the winner's name hard to read */
+body.skx-podium3d .sk-results .sk-step-name,
+body.skx-podium3d .sk-cer .sk-cer-name {
+  position: relative; z-index: 3; margin-top: 0.7em;
+  text-shadow: 0 0 0.3em #fff, 0 0 0.18em #fff, 0 0 0.08em #fff, 0 0.06em 0 #fff;
+}
 /* the Grand Prix trophy ceremony gets the same dancing racers */
 body.skx-podium3d .sk-cer .sk-cer-portrait { visibility: hidden; animation: none; }
 /* with real 3D racers the trophy moves down beside the kart ("look what I won!"), so it

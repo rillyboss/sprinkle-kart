@@ -703,7 +703,21 @@ async function grandPrixTest(t) {
   }
   await waitGame(t.page, () => document.querySelectorAll('.sk-cer-podium .sk-trophy').length >= 3 || document.querySelectorAll('.sk-trophy').length >= 3, null, T(20000), 'trophies on the podium');
   // the podium has finished rising once the ceremony's options show
-  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
+  // the podium has risen and any unlock reveals (which come first, covering the ceremony) are dismissed
+  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium .sk-trophy'), null, T(20000), 'ceremony podium');
+  const covered = await t.page.evaluate(() => new Promise((resolve) => {
+    // while a reveal is up, nothing of the ceremony may show through it
+    const t0 = performance.now();
+    const tick = () => {
+      const u = document.querySelector('.sk-gp .sk-unlock, .sk-unlock');
+      if (u) { resolve(!!u.parentElement?.classList.contains('sk-celebrating')); return; }
+      if (document.querySelector('.sk-gp-opts.sk-show') || performance.now() - t0 > 8000) { resolve(null); return; }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }));
+  if (covered !== null) t.check(covered, 'the unlock reveal does not cover the trophy ceremony underneath');
+  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options');
   await waitFrames(t.page, 3);
   await shot('3-ceremony');
   const info = await t.page.evaluate(() => ({ ev: window.__gpEvents, gp: window.__game.lastGp, cer: !!document.querySelector('.sk-cer-podium'), cups: document.querySelectorAll('.sk-trophy').length }));
@@ -1007,7 +1021,7 @@ async function myCupTest(t) {
     if (r === 0) await pressThrough(t, () => window.__game?.state === 'race', 'My Cup race 2 to start');
     else await pressThrough(t, () => !!document.querySelector('.sk-cer-podium'), 'trophy ceremony');
   }
-  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
+  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options');
   await waitFrames(t.page, 3);
   await shot('4-ceremony');
   const end = await t.page.evaluate(() => ({ gp: window.__game.lastGp, kicker: document.querySelector('.sk-gp-kicker')?.textContent }));

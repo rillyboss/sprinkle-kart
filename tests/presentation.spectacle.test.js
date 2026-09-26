@@ -426,3 +426,23 @@ describe('race-spectacle system', () => {
     expect(s.summary).toBeTruthy();
   });
 });
+
+describe('photo-finish card vs the results screen', () => {
+  it('the "Photo finish!" polaroid is removed when the race ends, so it never covers the results title', async () => {
+    const { installFakeDom } = await import('./helpers/fakeDom.js');
+    const doc = installFakeDom();
+    doc.getElementById = () => null; // falls back to document.body
+    const r = rig();
+    r.race.state = 'racing';
+    r.cpu.finishTime = 30;
+    r.app.bus.emit('race:finish', { type: 'finish', kart: r.cpu, place: 1 }, r.session);
+    r.me.finishTime = 30.1;
+    r.app.bus.emit('race:finish', { type: 'finish', kart: r.me, place: 2 }, r.session);
+    expect(doc.body.querySelectorAll('.skx-photo-flash')).toHaveLength(1);
+    r.app.bus.emit('race-end', {}, r.session);
+    expect(doc.body.querySelectorAll('.skx-photo-flash')).toHaveLength(0);
+    r.app.bus.emit('race-exit', {}, r.session);
+    r.uninstall();
+    vi.unstubAllGlobals();
+  });
+});

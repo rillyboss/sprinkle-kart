@@ -68,6 +68,7 @@ export default {
       n.classList.add('skx-out');
       setTimeout(() => n.remove(), 650);
     };
+    const photoFlashes = new Set();
     const flashPhoto = () => {
       const root = uiRoot();
       if (!root) return;
@@ -75,8 +76,11 @@ export default {
       f.className = 'skx-photo-flash';
       f.innerHTML = '<div class="skx-photo-card">📸 Photo finish!</div>';
       root.appendChild(f);
-      setTimeout(() => f.remove(), 1900);
+      photoFlashes.add(f);
+      setTimeout(() => { f.remove(); photoFlashes.delete(f); }, 1900);
     };
+    // the race is over: the polaroid card must not sit on top of the results title
+    const clearPhotoFlashes = () => { for (const f of photoFlashes) f.remove(); photoFlashes.clear(); };
 
     const pState = (pi) => {
       let p = race.players.get(pi);
@@ -226,7 +230,9 @@ export default {
         });
       }),
 
+      bus.on('race-end', () => clearPhotoFlashes()),
       bus.on('race-exit', () => {
+        clearPhotoFlashes();
         if (!race) return;
         removeIntro(race);
         try { race.confetti?.dispose(); } catch { /* ignore */ }

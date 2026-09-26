@@ -106,12 +106,13 @@ export default {
       const winner = gp?.standings?.[0];
       const def = winner && ctx.char(winner.characterId);
       if (def) { try { ctx.audio?.voice?.(def, 'win'); } catch { /* ignore */ } }
-      celebrations = celebrationQueue(ctx, node, unlocks, { delay: 2.6 });
+      // reveals come BEFORE the Play again / Menu buttons (introTime 2.4), and the buttons wait for them
+      celebrations = celebrationQueue(ctx, node, unlocks, { delay: 1.6 });
       sync();
     }
 
     const sync = () => {
-      optHost.classList.toggle('sk-show', state.phase === 'choose');
+      optHost.classList.toggle('sk-show', state.phase === 'choose' && !celebrations?.active());
       opts.sync(state.index);
     };
 
@@ -150,8 +151,9 @@ export default {
         t += dt;
         const before = state.phase;
         state = phasedTick(state, dt);
-        if (before !== state.phase) sync();
+        const busy = !!celebrations?.active();
         celebrations?.update(dt);
+        if (before !== state.phase || busy !== !!celebrations?.active()) sync();
         if (phaseName !== 'standings' || slid) return;
         const k = t - TALLY_DELAY;
         if (k > 0) {

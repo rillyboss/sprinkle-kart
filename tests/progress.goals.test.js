@@ -257,3 +257,15 @@ describe('goal toasts', () => {
     expect(t.queued).toBe(0);
   });
 });
+
+describe('sticker toast placement', () => {
+  it('toasts live in the top-right corner, never centred over the results / standings headline', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync('src/ui/goalToasts.css', 'utf8');
+    const rule = /\.skg-toasts \{([^}]*)\}/.exec(css)[1];
+    expect(rule).toMatch(/right:\s*1\.2em/);
+    expect(rule).not.toMatch(/left:\s*50%/);
+    expect(rule).not.toMatch(/translateX\(-50%\)/);
+    expect(rule).toMatch(/max-width/);
+  });
+});

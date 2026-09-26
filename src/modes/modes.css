@@ -324,3 +324,7 @@
   box-shadow: 0 0 0 0.2em #ff5fb4, 0 0.18em 0 rgba(160, 70, 150, 0.25);
   transform: scale(1.08);
 }
+
+/* Unlock reveals (celebrationQueue / results): hide the screen underneath while a reveal
+   fades in, shows or fades out, so the podium text never shows through it. */
+.sk-celebrating > :not(.sk-unlock) { visibility: hidden !important; }
