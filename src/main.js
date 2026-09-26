@@ -69,9 +69,33 @@ import { createRaceStats } from './game/raceStats.js';
 import { raceStartInfo, buildRaceSummary } from './game/summary.js';
 import { installSystems } from './systems/index.js';
 import { demoContent } from './game/demoContent.js';
+// Online (WS7, NETWORKING.md §10): only tiny pure helpers are imported up front; the network code itself
+// (matchmakers, WebRTC, netcode) loads with import('./online/index.js') once Online is opened.
+import { startupInvite, createInviteMemory } from './net/session/inviteLink.js';
+import { setLabelContext, clearLabelContext } from './net/session/playerLabel.js';
+import { createJoinState } from './ui/menuState.js';
+import { paintStore, paintFor } from './modes/paint.js';
 
 const params = parseDebugParams(typeof location !== 'undefined' ? location.search : '');
 if (params.unlockReset) progress.resetProgress();
+
+// `#join=` invite links (NETWORKING.md §10.1): read ONCE at start-up and cleared from the address bar right
+// away, so a reload or a screenshot never keeps it. Online on → the Online hub asks "Join 🏡 …?"; online
+// off → the "ask a grown-up" screen (never a way around the parent gate). The secret stays in memory only.
+const startInvite = readStartupInvite();
+const inviteMemory = createInviteMemory();
+if (startInvite?.screen === 'invite-gate') inviteMemory.remember(startInvite.secret);
+
+function readStartupInvite() {
+  if (typeof location === 'undefined') return null;
+  let onlineEnabled = false;
+  try { onlineEnabled = !!progress.getSettings().onlineEnabled; } catch { /* storage off: online off */ }
+  const r = startupInvite({ hash: location.hash, pathname: location.pathname, search: location.search, onlineEnabled });
+  for (const e of r.effects) {
+    if (e.type === 'replaceState') { try { history.replaceState(history.state, '', e.url); } catch { /* ignore */ } }
+  }
+  return r.screen ? r : null;
+}
 
 /* ------------------------------------------------------------------ */
 /* Core objects                                                        */
@@ -157,6 +181,7 @@ function frame(now) {
   try {
     input.update();
     if (menus) menus.update(dt);
+    if (online) onlineTick(now);
     if (activeSession) activeSession.tick(dt);
     else {
       renderer.setScissorTest(false);
@@ -209,6 +234,7 @@ async function boot() {
   // ?democontent=1 pads the menus with locked placeholders for the whole v2 lineup (UI checks).
   const menuContent = params.demoContent ? demoContent(CHARACTERS, TRACKS) : { characters: CHARACTERS, tracks: TRACKS };
   menus = new Menus(uiRoot, { input, audio, portraits, characters: menuContent.characters, tracks: menuContent.tracks, progress });
+  installOnlineActions(menus);
   hud = new Hud(uiRoot, { characters: CHARACTERS });
   game.menus = menus;
   game.hud = hud;
@@ -240,8 +266,10 @@ async function flow() {
   let previous = null;
   let skipTitle = false;
   let setup = null;
+  // a screen to open right after the menus start (an invite link, or back to the Online hub after a room)
+  let startAt = startInvite ? { id: startInvite.screen, params: startInvite.params } : null;
 
-  if (wantsQuickStart(params)) {
+  if (wantsQuickStart(params) && !startAt) {
     setup = quickSetup(params, input, CHARACTERS, TRACKS, { cups: CUPS });
   }
 
@@ -250,7 +278,21 @@ async function flow() {
       game.state = 'menu';
       audio.playMusic('menu');
       bus.emit('menu-enter', { skipTitle, previous });
-      setup = finalizeSetup(await menus.run({ skipTitle, previous }), menus.draft);
+      // Online hub → "Host a game" / "Join!" leaves the local menus for the room (runOnline).
+      const request = deferred();
+      onlineRequest = request;
+      const run = menus.run({ skipTitle, previous });
+      if (startAt) { menus.goto(startAt.id, startAt.params); startAt = null; }
+      const raw = await Promise.race([run, request.promise.then((r) => ({ __online: r }))]);
+      onlineRequest = null;
+      if (raw?.__online) {
+        const after = await runOnline(raw.__online);
+        startAt = { id: 'online-hub', params: after?.message ? { message: after.message } : {} };
+        previous = null;
+        skipTitle = false;
+        continue;
+      }
+      setup = finalizeSetup(raw, menus.draft);
     }
     const mode = modeId(setup.mode);
     if (mode === 'grand-prix') previous = await runGrandPrix(setup);
@@ -458,6 +500,7 @@ function playRace(setup, opts = {}) {
  *   trackDef, humans, hud, menus, audio, bus).
  */
 function startRace(setup, done, opts = {}) {
+  if (opts.net) return startNetRace(setup, done, opts); // online (WS7): see the online section below
   const trackDef = opts.trackDef ?? getTrack(setup.trackId);
   const mode = modeId(setup.mode);
   const rules = opts.rules ?? rulesForMode(mode);
@@ -758,6 +801,695 @@ function createTrialSession(scene, setup, trackDef, player, laps) {
 
 function withoutEdges(inputs) {
   return inputs.map((i) => (i ? { ...i, useItem: false } : i));
+}
+
+/* ------------------------------------------------------------------ */
+/* Online play (WS7, NETWORKING.md §9–§13)                             */
+/* ------------------------------------------------------------------ */
+//
+//   Online hub → Host a game → runOnlineHost: open a room, lobby (approve / remove / lock), "Let's pick!"
+//     → this machine's menus (join → mode → racers → track) with ctx.net → wait for friends' picks →
+//     NetRaceSetup → startNetRace (Race + host driver) → results (host decides again / next / lobby)
+//   Online hub → Join → runOnlineGuest: knock (match check) → lobby → PHASE-driven picking (join + racers)
+//     → SETUP → startNetRace (ReplicaRace + guest driver) → RESULT (localized) → the host's CHOICE
+//
+// Offline play never enters this section: `online` stays null and startRace() is untouched. Online races
+// ignore ?simspeed, ?autodrive and quick-start (the host's clock and inputs are the truth).
+
+let online = null;        // the open room while this machine is online (see runOnline)
+let onlineMod = null;     // the lazily loaded online chunk
+let onlineRequest = null; // resolves the pending menus.run() when the family opens a room
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+function onlineEnabledNow() {
+  try { return !!progress.getSettings().onlineEnabled; } catch { return false; }
+}
+
+/** menus.online (the Online hub / lobby / net-waiting screens call these). */
+function installOnlineActions(m) {
+  m.online = {
+    host: () => { if (!online && onlineEnabledNow()) onlineRequest?.resolve({ role: 'host' }); },
+    join: (secret) => { if (!online && onlineEnabledNow()) onlineRequest?.resolve({ role: 'guest', secret }); },
+    pick: () => online?.onPick?.(),
+    leave: () => { if (online) online.leave(); else m.goto('online-hub'); },
+  };
+  // After a grown-up turned online on, the Online hub offers a remembered invite once (§10.1).
+  const baseGoto = m.goto.bind(m);
+  m.goto = (id, p = {}) => {
+    if (id === 'online-hub' && !p?.invite && onlineEnabledNow() && inviteMemory.peek()) return baseGoto(id, { ...p, invite: inviteMemory.take() });
+    return baseGoto(id, p);
+  };
+}
+
+async function loadOnline() {
+  onlineMod ??= await import('./online/index.js');
+  return onlineMod;
+}
+
+function signalConfig(mod) {
+  let env = {};
+  try { env = import.meta.env ?? {}; } catch { /* not a Vite build */ }
+  return mod.signalConfigFor({ env, location, resolve: mod.resolveSignalConfig });
+}
+
+/** CPU racers for an online race: the HOST's unlocked racers the humans did not pick (§12). */
+function onlineCpus(count, lobbyPicks = []) {
+  const selectable = getSelectableCharacters((id) => progress.isUnlocked(id));
+  return pickCpuCharacters(lobbyPicks, selectable, count, Math.random);
+}
+
+function localDeviceIds() {
+  const players = [...(menus?.draft?.joinState?.players ?? [])].sort((a, b) => a.playerIndex - b.playerIndex);
+  if (players.length) return players.map((p) => p.deviceId);
+  const first = (() => { try { return input.getDevices()[0]?.id; } catch { return null; } })();
+  return [first ?? 'kb1'];
+}
+
+/** Make sure the local draft has at least one player (a guest who joined straight into the racer screen). */
+function ensureLocalPlayers() {
+  const d = menus?.draft;
+  if (!d) return;
+  if (!d.joinState?.players?.length) d.joinState = createJoinState([{ deviceId: localDeviceIds()[0] }]);
+}
+
+async function runOnline(req) {
+  let mod;
+  try { mod = await loadOnline(); } catch (err) {
+    console.error('[online] could not load', err);
+    return { message: "Couldn't reach the matchmaker 🙈" };
+  }
+  return req.role === 'host' ? runOnlineHost(mod) : runOnlineGuest(mod, req.secret);
+}
+
+/** Shared per-room state + the per-frame housekeeping (onlineTick). */
+function createOnlineState(mod, room) {
+  const left = deferred();
+  const state = {
+    mod,
+    room,
+    role: room.role,
+    racing: false,
+    phase: null,
+    left: left.promise,
+    lobbyAction: null,
+    backToLobby: null,
+    raceHooks: null,     // { choice(c), ended(text) } while a guest race / results screen is open
+    lastTick: 0,
+    overlay: null,
+    lastOverlay: 0,
+    leave() { left.resolve('leave'); state.lobbyAction?.resolve('leave'); state.raceHooks?.leave?.(); },
+    onPick() { state.lobbyAction?.resolve('pick'); },
+    houseId: () => (room.role === 'host' ? 0 : room.session.state.houseId),
+    localPis() {
+      const l = room.session.lobby();
+      return l ? mod.housePis(l, state.houseId()) : [];
+    },
+  };
+  state.draftSync = mod.createDraftSync({
+    houseId: state.houseId,
+    lobby: () => room.session.lobby(),
+    send: (intent) => room.session.dispatch(room.role === 'host' ? { type: 'host-intent', intent } : { type: 'intent', intent }),
+    paintOf: (() => { let map = {}; try { map = paintStore().load(); } catch { /* own colours */ } return (id) => paintFor(map, id); })(),
+  });
+  room.session.onEffect((e) => {
+    if (e.type === 'emote') bus.emit('net-emote', { globalPi: e.globalPi, emote: e.emote, local: state.localPis().includes(e.globalPi) });
+  });
+  const search = typeof location !== 'undefined' ? location.search : '';
+  let showInfo = false;
+  try { showInfo = !!progress.getSettings().showNetworkInfo; } catch { /* ignore */ }
+  if (mod.shouldShowNetDebug({ search, showNetworkInfo: showInfo })) state.overlay = mod.createDebugOverlay({});
+  return state;
+}
+
+/** Every frame while a room is open: session housekeeping, lobby ⇄ menus, labels, window.__game.net. */
+function onlineTick(now) {
+  const o = online;
+  const { room, mod } = o;
+  if (now - o.lastTick >= mod.SESSION_TICK_MS) {
+    o.lastTick = now;
+    try { room.session.dispatch({ type: 'tick' }); } catch (err) { console.warn('[online] tick', err); }
+  }
+  const lobby = room.session.lobby();
+  if (lobby) setLabelContext({ localPis: o.localPis(), lobby, characters: CHARACTERS });
+  if (!o.racing && menus?.active) {
+    // the menus can wander back to the title (B on the join screen): in a room that means "back to the lobby"
+    if (menus.screenId === 'title') {
+      if (o.backToLobby) o.backToLobby.resolve('lobby');
+      else menus.goto('online-lobby');
+    }
+    if (menus.draft) o.draftSync.update(menus.draft);
+    if (o.role === 'host') {
+      const phase = mod.phaseForScreen(menus.screenId);
+      if (phase && phase !== o.phase) { o.phase = phase; room.session.dispatch({ type: 'phase', phase }); }
+    }
+  }
+  game.net = netInfo(o);
+  if (o.overlay && now - o.lastOverlay > 500) { o.lastOverlay = now; o.overlay.update(game.net.debug); }
+}
+
+/** window.__game.net: the numbers smoke / e2e tests and the debug overlay read (never IP addresses). */
+function netInfo(o) {
+  const race = o.race;
+  const st = race?.stats?.() ?? null;
+  const lobby = o.room.session.lobby();
+  const info = {
+    role: o.role,
+    label: lobby?.label ?? o.room.secret?.label ?? null,
+    phase: o.room.role === 'host' ? o.room.session.state.phase : o.room.session.state.hostPhase ?? o.room.session.state.phase,
+    houses: lobby?.houses?.length ?? 0,
+    humans: lobby ? lobby.houses.reduce((n, h) => n + h.players.length, 0) : 0,
+    locked: !!lobby?.locked,
+    racing: o.racing,
+    tick: o.role === 'host' ? st?.tick ?? 0 : race?.driver?.stats?.()?.lastEventSeq ?? 0,
+    paused: !!race?.paused,
+    stats: st,
+  };
+  info.debug = {
+    role: o.role,
+    transport: o.room.signaling?.kind === 'worker' ? 'worker' : 'public-torrent',
+    self: { build: 'dev', proto: 1, content: 0 },
+    peers: (o.room.transport?.peers?.() ?? []).map((peerId) => {
+      const s = o.room.transport.stats?.(peerId) ?? {};
+      return {
+        relayed: s.relayed ?? null, candidate: s.candidateType ?? null, rttMs: s.rttMs ?? null, stateSkips: s.stateSkips ?? 0,
+        interpDelayMs: st?.interpDelayMs, lead: st?.lead, slack: st?.lastSlack, epoch: st?.epoch, lastEventSeq: st?.lastEventSeq,
+        reconcileP50Cm: st?.reconcileP50 != null ? st.reconcileP50 * 100 : null, reconcileP99Cm: st?.reconcileP99 != null ? st.reconcileP99 * 100 : null,
+        bufferedCtrl: s.bufferedCtrl ?? 0, hostTick: o.role === 'host' ? st?.tick : null,
+      };
+    }),
+  };
+  return info;
+}
+
+function closeOnline(o) {
+  try { o.room.close(); } catch (err) { console.warn('[online] close', err); }
+  try { o.overlay?.destroy(); } catch { /* ignore */ }
+  if (menus) menus.net = null;
+  online = null;
+  clearLabelContext();
+  game.net = null;
+  bus.emit('net-room', { role: o.role, phase: null, label: null });
+}
+
+/** Host: open a room, run the lobby / picking / races until the host ends the room. */
+async function runOnlineHost(mod) {
+  menus.goto('net-waiting', { mode: 'connecting', text: mod.ONLINE_TEXT.opening });
+  let room;
+  try {
+    room = await mod.openHostRoom({
+      progress, hostPlayers: 1, rules: rulesForMode('free'), signal: signalConfig(mod),
+      pickCpus: (n) => onlineCpus(n, (room?.session?.lobby() ? room.session.lobby().houses.flatMap((h) => h.players.map((p) => p.characterId)) : []).filter(Boolean)),
+    });
+  } catch (err) {
+    console.warn('[online] could not open a room', err);
+    return { message: mod.signalingErrorText(err?.code) };
+  }
+  const o = createOnlineState(mod, room);
+  online = o;
+  bus.emit('net-room', { role: 'host', phase: 'lobby', label: room.secret.label });
+  // The host's menus compose the NetRaceSetup only after everyone picked (see below).
+  menus.net = { ...room.netCtx, composeSetup: (local) => ({ __local: local }) };
+  let previousLocal = null;
+  try {
+    for (;;) {
+      o.phase = 'lobby';
+      room.session.dispatch({ type: 'phase', phase: 'lobby' });
+      try { room.transport.renewIceIfRelayed?.(); } catch { /* only between races */ }
+      menus.goto('online-lobby');
+      o.lobbyAction = deferred();
+      const act = await Promise.race([o.lobbyAction.promise, o.left]);
+      o.lobbyAction = null;
+      if (act === 'leave') return {};
+      // This machine's picking flow (join → mode → racers → track); guests pick their racers meanwhile.
+      o.backToLobby = deferred();
+      const run = menus.run({ skipTitle: true, previous: previousLocal });
+      const got = await Promise.race([run, o.left, o.backToLobby.promise]);
+      o.backToLobby = null;
+      if (got === 'leave') return {};
+      if (got === 'lobby' || !got?.__local) continue;
+      const local = got.__local;
+      previousLocal = { players: [...(menus.draft?.joinState?.players ?? [])], trackId: local.trackId, speedClass: local.speedClass, laps: local.laps, mode: 'free' };
+      const deviceIds = localDeviceIds();
+      menus.goto('net-waiting', { mode: 'waiting', text: mod.ONLINE_TEXT.friendsPicking });
+      const ready = await waitForFriends(o, mod);
+      if (ready === 'leave') return {};
+      const trackDef = getTrack(local.trackId);
+      const choice = { mode: 'free', trackId: trackDef.id, speedClass: local.speedClass ?? 'zippy', laps: params.fastFinish ? 1 : (local.laps || trackDef.laps || DEFAULT_LAPS) };
+      const compose = () => mod.fillMissingPicks(room.netCtx.composeSetup(choice), getSelectableCharacters((id) => progress.isUnlocked(id)).map((c) => c.id));
+      let setup = compose();
+      let outcome;
+      do {
+        outcome = await playRace(setup, { net: { mod, room, role: 'host', deviceIds } });
+        if (outcome === 'next-track') choice.trackId = nextTrackId(choice.trackId, availableTracks());
+        if (outcome === 'again' || outcome === 'next-track' || outcome === 'restart') setup = compose();
+      } while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart');
+      if (outcome === 'leave') return {};
+    }
+  } finally {
+    closeOnline(o);
+  }
+}
+
+/** Host: wait until every friend picked a racer and pressed ready (≤ READY_TIMEOUT_MS). */
+function waitForFriends(o, mod) {
+  return new Promise((resolve) => {
+    const started = performance.now();
+    const check = () => {
+      if (!online || online !== o) return resolve('leave');
+      const l = o.room.session.lobby();
+      if (mod.everyoneReady(l) || performance.now() - started > mod.READY_TIMEOUT_MS) return resolve('go');
+      setTimeout(check, 100);
+    };
+    o.left.then(() => resolve('leave'));
+    check();
+  });
+}
+
+/** Guest: knock, wait for approval, then follow the host (PHASE / SETUP / RESULT / CHOICE). */
+async function runOnlineGuest(mod, secret) {
+  menus.goto('net-waiting', { mode: 'connecting', text: mod.TEXT.knocking, label: secret?.label ?? '' });
+  const room = await mod.joinGuestRoom({ secret, localPlayers: Math.max(1, menus?.draft?.joinState?.players?.length || 1), progress, signal: signalConfig(mod) });
+  const o = createOnlineState(mod, room);
+  online = o;
+  menus.net = room.netCtx;
+  const queue = mod.createEventQueue();
+  let picking = false;
+  room.session.onEffect((e) => {
+    switch (e.type) {
+      case 'screen':
+        if (e.id === 'online-hub') break; // 'ended' carries the sentence
+        if (!o.racing) menus.goto(e.id, e.params);
+        break;
+      case 'phase': queue.push({ type: 'phase', phase: e.phase }); break;
+      case 'choice': if (o.raceHooks) o.raceHooks.choice(e.choice); break;
+      case 'ended':
+        if (o.raceHooks) o.raceHooks.ended(e.text);
+        queue.push({ type: 'ended', text: e.text });
+        break;
+      default: break;
+    }
+  });
+  room.router?.on('setup', (rc) => { room.router.expectRace(); queue.push({ type: 'setup', setup: rc.setup }); });
+  o.left.then(() => queue.push({ type: 'leave' }));
+  // whatever the session already decided before we listened
+  const st0 = room.session.state;
+  if (st0.phase === 'ended') { closeOnline(o); return { message: st0.end?.text ?? '' }; }
+  if (st0.phase === 'waiting-approval') menus.goto('net-waiting', { mode: 'approval', animals: matchText(st0.match), text: mod.TEXT.showHost(matchText(st0.match)), label: secret.label });
+  bus.emit('net-room', { role: 'guest', phase: 'connecting', label: secret?.label ?? null });
+  let guestPrev = null;
+  try {
+    for (;;) {
+      const ev = await queue.next();
+      if (ev.type === 'leave') return {};
+      if (ev.type === 'ended') return { message: ev.text };
+      if (ev.type === 'phase') {
+        if (o.racing) continue;
+        if (ev.phase === 'lobby') { picking = false; menus.goto('online-lobby'); }
+        else if (ev.phase === 'mode' || ev.phase === 'characters') {
+          if (!picking) { picking = true; menus.run({ skipTitle: true, previous: guestPrev }); }
+          if (ev.phase === 'characters' && menus.screenId !== 'character-select' && !menus.draft?.charState) {
+            ensureLocalPlayers();
+            menus.goto('character-select');
+          }
+        }
+        continue;
+      }
+      if (ev.type === 'setup') {
+        guestPrev = { players: [...(menus.draft?.joinState?.players ?? [])], trackId: ev.setup.trackId, speedClass: ev.setup.speedClass, laps: ev.setup.laps, mode: 'free' };
+        const deviceIds = localDeviceIds();
+        menus.hide();
+        const outcome = await playRace(ev.setup, { net: { mod, room, role: 'guest', deviceIds } });
+        picking = false;
+        if (outcome === 'leave') return {};
+        if (outcome && typeof outcome === 'object' && outcome.ended) return { message: outcome.ended };
+        // 'again' / 'next-track': the next SETUP comes; 'lobby': the host's PHASE lobby follows
+        const queuedSetup = queue.take((x) => x.type === 'setup');
+        if (queuedSetup) queue.push(queuedSetup);
+        else if (outcome === 'lobby') menus.goto('online-lobby');
+        else menus.goto('net-waiting', { mode: 'waiting', text: mod.ONLINE_TEXT.loading });
+      }
+    }
+  } finally {
+    closeOnline(o);
+  }
+}
+
+function matchText(match) {
+  // the session keeps indices; WS6's matchEmoji is in the online chunk, net-waiting takes the text
+  try { return onlineMod?.matchEmoji?.(match) ?? ''; } catch { return ''; }
+}
+
+/**
+ * One online race on this machine (NETWORKING.md §9, §10.4–§10.6, §12). The host runs the real Race on the
+ * host clock (rAF when visible, the tick pump when hidden); a guest runs a ReplicaRace (own karts predicted,
+ * everything else interpolated). Resolves (through `done`) with 'again' | 'next-track' | 'restart' | 'lobby'
+ * | 'leave' | { ended: text }.
+ */
+function startNetRace(setup, done, { net }) {
+  const { mod, room, role, deviceIds } = net;
+  const stack = mod.netStack;
+  const host = role === 'host';
+  const trackDef = getTrack(setup.trackId);
+  const theme = trackDef.theme || {};
+  const houseId = host ? 0 : room.session.state.houseId;
+  const humans = mod.localHumans(setup, houseId, deviceIds);
+  const allHumans = mod.allSetupHumans(setup, humans);
+  const playerIndices = humans.map((p) => p.playerIndex);
+  const laps = setup.laps;
+  const timing = mod.raceTiming(stack);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(theme.skyBottom ?? 0xffd6ec);
+  if (theme.fogColor !== undefined) scene.fog = new THREE.Fog(theme.fogColor, theme.fogNear ?? 120, theme.fogFar ?? 700);
+  const path = new TrackPath(trackDef.controlPoints, trackDef.width);
+  const built = buildTrack(trackDef, path);
+  scene.add(built.group);
+
+  let completeAt = null;
+  let resultsShown = false;
+  let finished = false;
+  let pauseOpen = false;
+  let pendingResult = null;
+  let pendingChoice = null;
+  let lastSnaps = 0;
+  let lastSnapAt = 0;
+  const unplugged = new Set();
+  const offs = [];
+  const stats = createRaceStats();
+  const helpers = createSessionHelpers({ humans, allHumans, audio, input, hud, getCharacter });
+  let session = null;
+  const onEvent = (e) => {
+    stats.onEvent(e);
+    if (e.type === 'race-complete') completeAt = race.clock;
+    bus.emit(`race:${e.type}`, e, session);
+  };
+  const participants = mod.raceParticipants(setup);
+  const buildModel = mod.netKartBuilder(buildKartModel, participants);
+
+  let race;
+  let link;
+  let latch = null;
+  let seats = null;
+  let pump = null;
+  let boxView = null;
+  let itemView = null;
+  if (host) {
+    race = new Race({
+      scene, trackDef, path, builtTrack: built, participants, speedClass: SPEED_CLASSES[setup.speedClass] ? setup.speedClass : 'zippy',
+      buildKartModel: buildModel, onEvent, laps, rules: rulesForMode('free'), seed: setup.seed,
+    });
+    latch = mod.createInputLatch();
+    link = mod.createHostNetRace({
+      stack, race, transport: room.transport, setup, houses: mod.driverHouses(setup, 0, (h) => room.peerOf(h)), localInputs: () => latch.forTick(),
+    });
+    offs.push(room.router.on('loaded', (rc, peerId) => link.loaded(peerId)));
+    offs.push(room.transport.onPeer((ev) => {
+      if (ev.type !== 'leave') return;
+      link.loaded(ev.peerId); // a house that left never holds the start
+      for (const [hid, h] of mod.driverHouses(setup, 0, () => null)) if (room.peerOf(hid) === null) link.setHouseRobo(hid, true);
+      void h;
+    }));
+    room.router.setRace(link);
+    room.session.dispatch({ type: 'phase', phase: 'loading' });
+    room.transport.broadcast('ctrl', mod.encodeSetup(stack, setup));
+    room.session.dispatch({ type: 'phase', phase: 'race' });
+    // Hidden tab / starved rAF: the Worker pump drives the same host clock (§9.9).
+    pump = mod.createTickPump({ onTick: (t) => { if (!finished) link.frame(t, 'pump'); } });
+    pump.start();
+    const onVis = () => {
+      const hidden = document.visibilityState === 'hidden';
+      link.clock.usePump(hidden);
+      if (session) session.net.hostHidden = hidden;
+    };
+    document.addEventListener('visibilitychange', onVis);
+    offs.push(() => document.removeEventListener('visibilitychange', onVis));
+  } else {
+    itemView = mod.createItemView({ scene });
+    boxView = mod.createBoxView({ scene, slots: built.itemBoxSlots ?? [] });
+    race = new mod.ReplicaRace({
+      scene, trackDef, path, builtTrack: built,
+      setup: { ...setup, participants, startTick: timing.startTick, goTick: timing.goTick },
+      localKartIds: humans.map((h) => h.kartId), buildKartModel: buildModel, onEvent,
+      predictTick: stack.predictTick, quantize: stack.wire.quantizeInput, countdownAfter: timing.countdownAfter, itemView, boxView,
+    });
+    seats = humans.map((h) => mod.createSeatSampler(h.kartId));
+    link = mod.createGuestNetRace({ stack, replica: race, transport: room.transport, hostId: room.hostId, localSeats: seats });
+    offs.push(room.router.on('result', (rc) => { if (rc.raceId === (setup.raceId >>> 0)) pendingResult = rc.summary; }));
+    room.router.setRace(link);
+    room.transport.send(room.hostId(), 'ctrl', mod.encodeLoaded(stack, setup.raceId));
+  }
+  online.race = link;
+  online.racing = true;
+
+  const rigs = humans.map(() => new CameraRig());
+  const spectator = new SpectatorCam(path);
+  // guests draw their karts at the smoothed render pose (prediction corrections decay, remotes interpolate)
+  const camKarts = new Map();
+  const camKart = (k) => {
+    if (host || !k?.render) return k;
+    let v = camKarts.get(k);
+    if (!v) {
+      v = Object.create(k, { position: { get: () => k.render.position }, heading: { get: () => k.render.heading } });
+      camKarts.set(k, v);
+    }
+    return v;
+  };
+  const hiddenForView = [];
+  const viewHooks = {
+    beforeView(slot, cam) {
+      if (slot === 'spectator') return;
+      const own = race.getPlayerKart(playerIndices[slot]);
+      hiddenForView.push(...hideOccluders(race.karts, own, cam));
+    },
+    afterView() { restoreKarts(hiddenForView); },
+  };
+  split.setPlayerCount(humans.length);
+  hud.reset?.();
+  hud.show();
+
+  session = {
+    ...helpers,
+    race, humans, scene, built, path, rigs, spectator, setup, trackDef, laps, stats,
+    mode: 'free', audio, input, hud, params, outcome: null,
+    net: { role, paused: false, wobbly: false, hostHidden: false, raceId: setup.raceId },
+    get paused() { return pauseOpen; },
+    get resultsShown() { return resultsShown; },
+    layout() {
+      hud.layout(split.hudRects(playerIndices));
+      rigs.forEach((r, i) => r.setAspect(split.aspect(i)));
+      if (split.spectator) spectator.setAspect(split.aspect('spectator'));
+    },
+    tick,
+    dispose,
+  };
+  game.modeController = null;
+  audio.setMusicTempo?.(1);
+  audio.playMusic(theme.music || 'castle');
+  game.state = 'race';
+  bus.emit('race-start', raceStartInfo({ setup, trackDef, humans, cpuIds: setup.cpuIds ?? [], laps }), session);
+  try {
+    const k0 = race.getPlayerKart(playerIndices[0]) || race.karts[0];
+    rigs[0]?.snap(camKart(k0));
+    renderer.compile(scene, rigs[0]?.camera || spectator.camera);
+  } catch { /* compile is only an optimisation */ }
+
+  // Online a controller that naps hands its kart to Robo Driver on this machine — never a pause for everyone.
+  offs.push(input.onDeviceChange?.((ev) => {
+    const who = humans.find((p) => p.deviceId === ev.deviceId);
+    if (!who) return;
+    if (ev.type === 'disconnected') {
+      unplugged.add(who.playerIndex);
+      const k = race.getPlayerKart(who.playerIndex);
+      if (k) helpers.flash(k, mod.ONLINE_TEXT.controllerNap);
+    } else if (ev.type === 'connected') unplugged.delete(who.playerIndex);
+  }) || (() => {}));
+
+  if (!host) {
+    online.raceHooks = {
+      choice(c) { pendingChoice = c; },
+      ended(text) { end({ ended: text }); },
+      leave() { end('leave'); },
+    };
+  } else {
+    online.raceHooks = { leave() { end('leave'); } };
+  }
+
+  function openNetPause(p) {
+    if (pauseOpen || resultsShown) return;
+    pauseOpen = true;
+    helpers.sfx('confirm');
+    if (host) {
+      // "Pause everyone 🍪": every machine freezes until the host keeps racing
+      link.pauseAll(true);
+      bus.emit('race-pause', { label: 'everyone' }, session);
+      menus.showPause(mod.TEXT.snackBreak, { options: mod.HOST_PAUSE_OPTIONS }).then((choice) => {
+        pauseOpen = false;
+        link.pauseAll(false);
+        bus.emit('race-resume', { choice }, session);
+        input.clearMenuEvents?.();
+        if (choice === 'restart') end('restart');
+        else if (choice === 'lobby') { broadcastChoice('lobby'); end('lobby'); }
+      });
+    } else {
+      // a guest's pause is local: Robo Driver drives meanwhile, the race goes on for everyone
+      bus.emit('race-pause', { label: `P${humans.indexOf(p) + 1}` }, session);
+      menus.showPause(`P${humans.indexOf(p) + 1}`, { options: mod.GUEST_PAUSE_OPTIONS }).then((choice) => {
+        pauseOpen = false;
+        bus.emit('race-resume', { choice }, session);
+        input.clearMenuEvents?.();
+        if (choice === 'leave') { online?.leave(); end('leave'); }
+      });
+    }
+  }
+
+  function broadcastChoice(choice) {
+    try { room.transport.broadcast('ctrl', mod.jsonEncode({ type: 'CHOICE', screen: 'results', choice })); } catch { /* ignore */ }
+  }
+
+  function driveInputs() {
+    const out = [];
+    for (const p of humans) {
+      if (unplugged.has(p.playerIndex)) { out[p.playerIndex] = null; continue; }
+      out[p.playerIndex] = input.getDriveInput(p.deviceId);
+    }
+    return out;
+  }
+
+  function resultStandings(hostSummary) {
+    return hostSummary.standings.map((r, i) => ({ ...r, finishPlace: r.place, name: getCharacter(r.characterId)?.name, id: i }));
+  }
+
+  function showResults(hostSummary, options, onChoice) {
+    resultsShown = true;
+    game.state = 'results';
+    session.net.paused = false;
+    const summary = mod.localRaceSummary(hostSummary, playerIndices, humans);
+    bus.emit('race-end', summary, session);
+    const unlocks = summary.unlocks
+      .map((u) => ({ ...u, def: u.kind === 'track' ? findTrack(u.id) : getCharacter(u.id) }))
+      .filter((u) => u.def);
+    const standings = resultStandings(hostSummary);
+    const humanWinner = hostSummary.winner ?? null;
+    game.lastResults = {
+      trackId: trackDef.id, mode: 'free', online: true, humanWinner,
+      unlocks: summary.unlocks.map((u) => ({ kind: u.kind, id: u.id })),
+      standings: standings.map((k) => ({ characterId: k.characterId, playerIndex: k.playerIndex, place: k.place })),
+      summary, hostSummary,
+    };
+    audio.setMusicTempo?.(1);
+    audio.playMusic('victory');
+    hud.hide();
+    const open = (u) => menus.showResults({ standings, trackDef, humanWinner, unlocks: u, summary, options }).then(onChoice);
+    open(unlocks);
+    return open;
+  }
+
+  function showHostResults() {
+    const hostSummary = mod.buildHostRaceSummary({ setup, trackDef, standings: race.getStandings(), stats, laps, raceTime: race.time, local: humans });
+    room.session.dispatch({ type: 'phase', phase: 'results' });
+    const bytes = mod.encodeResult(stack, setup.raceId, hostSummary);
+    for (const [peerId, p] of Object.entries(room.session.state.peers)) if (p.stage === 'joined') room.transport.send(peerId, 'ctrl', bytes);
+    showResults(hostSummary, mod.HOST_RESULT_OPTIONS, (choice) => {
+      bus.emit('results-choice', { choice }, session);
+      broadcastChoice(choice);
+      end(choice);
+    });
+  }
+
+  let reopen = null;
+  function showGuestResults(hostSummary) {
+    reopen = showResults(hostSummary, mod.GUEST_RESULT_OPTIONS, onGuestChoice);
+  }
+  function onGuestChoice(choice) {
+    if (finished) return;
+    if (typeof choice === 'string' && choice.startsWith('host:')) {
+      const c = choice.slice(5);
+      bus.emit('results-choice', { choice: c }, session);
+      end(c === 'lobby' ? 'lobby' : c === 'next-track' ? 'next-track' : 'again');
+      return;
+    }
+    if (choice === 'leave') { online?.leave(); end('leave'); return; }
+    reopen?.([]); // "Waiting for the host…" was picked: stay on the results (no repeat celebrations)
+  }
+
+  function end(outcome) {
+    if (finished) return;
+    finished = true;
+    session.outcome = typeof outcome === 'string' ? outcome : 'leave';
+    done(outcome);
+  }
+
+  function tick(dt) {
+    if (finished) return;
+    if (!pauseOpen && !resultsShown) {
+      for (const p of humans) {
+        if (input.isPausePressed(p.deviceId)) { openNetPause(p); break; }
+      }
+    }
+    const inputs = driveInputs();
+    if (host) {
+      for (const p of humans) {
+        if (!inputs[p.playerIndex]) {
+          const k = race.getPlayerKart(p.playerIndex);
+          inputs[p.playerIndex] = k ? aiDriveInput(race, k, 1 / 60) : null; // controller asleep: Robo Driver
+        }
+      }
+      latch.setFrame(inputs);
+      link.frame(performance.now(), 'raf');
+      session.net.paused = link.paused;
+      const houses = link.started ? Object.values(link.stats().houses ?? {}) : [];
+      session.net.wobbly = houses.some((h) => h.robo);
+      if (completeAt !== null && !resultsShown && race.clock - completeAt >= mod.RESULTS_DELAY_S) showHostResults();
+    } else {
+      humans.forEach((p, i) => seats[i].setFrame(inputs[p.playerIndex], { robo: pauseOpen || unplugged.has(p.playerIndex) }));
+      link.frame(dt);
+      itemView.update(dt);
+      boxView.update(dt);
+      session.net.paused = link.paused;
+      const snaps = link.stats().snapshots;
+      const t = performance.now();
+      if (snaps !== lastSnaps) { lastSnaps = snaps; lastSnapAt = t; }
+      session.net.wobbly = snaps > 0 && !link.paused && !resultsShown && t - lastSnapAt > 3000;
+      if (pendingResult && !resultsShown) showGuestResults(pendingResult);
+      if (pendingChoice && resultsShown) { const c = pendingChoice; pendingChoice = null; menus.resolveCurrent(`host:${c}`); }
+    }
+    if (finished) return;
+    built.update(dt, race.clock);
+    const frozen = session.net.paused;
+    const countdown = race.state === 'countdown' ? race.countdown : null;
+    humans.forEach((p, i) => {
+      const kart = race.getPlayerKart(p.playerIndex);
+      rigs[i].update(frozen ? 0 : dt, camKart(kart), { lookBack: !!inputs[p.playerIndex]?.lookBack && !resultsShown, countdown });
+    });
+    if (split.spectator) spectator.update(frozen ? 0 : dt, race);
+    if (!resultsShown) hud.update(race, path, { playerIndices, portraits: game.portraits });
+    bus.emit('race-frame', dt, session);
+    split.render(scene, rigs.map((r) => r.camera), spectator.camera, viewHooks);
+  }
+
+  function dispose() {
+    bus.emit('race-exit', { outcome: session.outcome }, session);
+    offs.splice(0).forEach((off) => { try { off?.(); } catch { /* ignore */ } });
+    try { pump?.dispose(); } catch { /* ignore */ }
+    try { room.router.setRace(null); } catch { /* ignore */ }
+    if (online) { online.race = null; online.racing = false; online.raceHooks = null; online.phase = null; }
+    try { link.dispose(); } catch (err) { console.warn(err); }
+    try { itemView?.dispose(); boxView?.dispose(); } catch (err) { console.warn(err); }
+    try { race.dispose(); } catch (err) { console.warn(err); }
+    try { built.dispose(); } catch (err) { console.warn(err); }
+    scene.clear();
+    hud.hide();
+    hud.reset?.();
+    menus.hide();
+    split.setPlayerCount(1);
+  }
+
+  return session;
 }
 
 boot();

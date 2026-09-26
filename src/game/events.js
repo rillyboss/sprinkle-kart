@@ -36,6 +36,10 @@ export const EVENTS = Object.freeze({
   // --- Grand Prix (emitted by the modes workstream, consumed by progression) ---
   'gp-race-end': '(gp: GrandPrixResult, session) — a Grand Prix race finished; gp.standings = points so far (after race-end)',
   'gp-end': '(gp: GrandPrixResult, session) — all races of a cup done, BEFORE the GP standings screen; push unlocks into gp.unlocks',
+
+  // --- online (WS7, NETWORKING.md §10) ------------------------------------------
+  'net-emote': '({ globalPi, emote, local }) — a preset emote (0..7) from a player in the room (local = this machine)',
+  'net-room': '({ role, phase, label }) — this machine opened / joined (phase set) or left (phase null) an online room',
 });
 
 /**
