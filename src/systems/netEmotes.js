@@ -15,7 +15,7 @@ export const EMOTES = Object.freeze([
 
 /** Emoji + words for an emote id, or null for anything that is not a preset (never shown). */
 export function emoteView(id) {
-  const n = Number(id);
+  const n = typeof id === 'number' ? id : Number.NaN;
   if (!Number.isInteger(n) || n < 0 || n >= EMOTES.length) return null;
   const [emoji, text] = EMOTES[n];
   return { id: n, emoji, text };

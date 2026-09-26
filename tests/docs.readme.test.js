@@ -6,6 +6,10 @@ import { LINEUP_CHARACTERS, LINEUP_TRACKS, LINEUP_CUPS } from '../src/content/li
 import { MODE_CARDS } from '../src/modes/menus.js';
 import { PAINTS } from '../src/modes/paint.js';
 import { GOALS } from '../src/progress/goals.js';
+import { TEXT as NET_TEXT, LOBBY_EMOTES } from '../src/net/session/texts.js';
+
+const ONLINE_PRIVACY = NET_TEXT.privacy;
+const ONLINE_GATE_TEXT = NET_TEXT.inviteGate;
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const readme = read('README.md');
@@ -103,9 +107,22 @@ describe('README: modes, toys and grown-up features', () => {
     expect(changelog).toContain(`${GOALS.length} achievement stickers`);
   });
 
-  it('links the online-play infra guide as coming soon, and the guide exists', () => {
-    expect(readme).toMatch(/\[docs\/INFRA_SETUP\.md\]\(docs\/INFRA_SETUP\.md\)[^\n]*coming soon: online play/i);
+  it('links the online-play infra guide, and the guide exists', () => {
+    expect(readme).toMatch(/\[docs\/INFRA_SETUP\.md\]\(docs\/INFRA_SETUP\.md\)[^\n]*online play setup/i);
     expect(existsSync(new URL('../docs/INFRA_SETUP.md', import.meta.url))).toBe(true);
+    expect(readme).not.toMatch(/coming soon: online play/i);
+  });
+
+  it('has an Online play section: invite link, secret sweets, match check, parent gate, the privacy note', () => {
+    const section = readme.slice(readme.indexOf('## Online play'), readme.indexOf('## For developers'));
+    expect(section.length).toBeGreaterThan(500);
+    for (const words of ['invite link', 'secret sweets', 'match check', 'parent gate', 'Pause everyone', 'Robo Driver', 'Check connection', 'Free Race']) {
+      expect(section, words).toContain(words);
+    }
+    expect(section).toContain(ONLINE_PRIVACY);
+    expect(section).toContain(ONLINE_GATE_TEXT);
+    for (const e of LOBBY_EMOTES) expect(section, e.text).toContain(e.emoji);
+    expect(section).toMatch(/SPRINKLE-\d{4}/);
   });
 
   it('in-page contents links point at real headings (GitHub slug rules)', () => {

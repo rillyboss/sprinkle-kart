@@ -14,7 +14,7 @@ original: every racer, track, tune and sound was made just for this game.
 [Unlocks & Sticker Book](#unlocks-the-sticker-book-and-fun-goals-) ·
 [Paint Shop](#paint-shop-) · [Grown-ups corner](#the-grown-ups-corner-and-parent-gate-) ·
 [Effects & comfort](#effects--comfort-) · [Racers](#the-racers) · [Tracks](#the-tracks) ·
-[Online play (coming soon)](#coming-soon-online-play-) · [What's new](CHANGELOG.md) ·
+[Online play](#online-play-) · [What's new](CHANGELOG.md) ·
 [For developers](#for-developers)
 
 ---
@@ -195,6 +195,8 @@ kart in its new paint. It's saved, and every race, the podium and the title show
 
 - **Music** and **Sounds** volume
 - **Kid-Assist for new players** (on or off by default)
+- **Online play with friends** 🌐 (off until a grown-up turns it on, see [Online play](#online-play-)),
+  **Only a grown-up can let houses in**, and **Use the relay for game traffic** once a relay is set up
 - **Unlock everything** (every racer and track, right away) 🔒
 - **Start a fresh Sticker Book** (clears stickers, trophies and totals, but keeps your settings) 🔒
 
@@ -333,11 +335,41 @@ Five cups of four tracks. A cup can be raced as a Grand Prix once all four of it
 | **Moonbounce Base** 🌙 | A crescent-moon road with boing-boing moon moguls, a glass tube tunnel, a friendly rocket in the big crater and moon bunnies doing floaty hops. Low gravity makes your hops extra floaty! | Win 8 races |
 | **Ribbon Sky Rally** 🎀 | The grand finale: a rainbow ribbon road over the clouds that twirls over and under itself, with hot-air balloons, giant bows, rainbow gates and the Superstar Trophy | Win on 6 different tracks |
 
-## Coming soon: online play 🌐
+## Online play 🌐
 
-We're building friends-only online races: room codes, no public matchmaking, no typed chat (just
-cute preset emotes), and a grown-up switches it on behind the parent gate. The one-time hosting
-setup for grown-ups is in **[docs/INFRA_SETUP.md](docs/INFRA_SETUP.md)** (coming soon: online play).
+Race friends in other houses from the website, no install and no accounts. Every house can bring
+1–4 players on its own screen (up to 8 people in a room), and CPU friends fill the grid. Right now
+online play has **Free Race** 🏁; Grand Prix and the other modes come next.
+
+1. **A grown-up turns it on:** **⚙️ Grown-ups → Online play with friends** (behind the parent gate).
+   The game first shows this privacy note:
+
+   > Online play sends no names, no chat, no accounts and no analytics. Like any video call, it shows your internet address to your friends' computers, to free public matchmaking services run by other people (and public STUN servers from Google and Cloudflare) — or to our own Cloudflare server instead, once a grown-up sets it up.
+
+2. **Host a game:** **🌐 Online → Host a game** opens your room. It has a room code like
+   `SPRINKLE-4821` and 6 **secret sweets** 🍩🦄🍓🍭🧁🌈. The code alone can't find the room: friends
+   need the sweets too. Send them the **invite link** (📋 Copy invite link, or the QR code).
+3. **Join a friend:** open their invite link, or **🌐 Online → Join a friend** and enter the code and
+   the secret sweets with the controller or keyboard.
+4. **The match check:** the joining screen shows two animals (like 🦊🐸). The host's screen asks
+   *"Ask your friend: do you see 🦊🐸? Let them in?"*, so the grown-ups can check on the phone. Nobody
+   gets in without the host saying yes. The host can also lock the room or remove a house (removing a
+   house locks the room too).
+5. **Let's pick!** Each house picks its own racers at the same time; the host picks the track. Say hi
+   with the 8 preset emotes (👋 😄 🎉 👍 😮 💖 🍭 🐢). There is no typed chat anywhere.
+
+In the race your own kart feels just like at home. **Start** on the host means **Pause everyone 🍪**
+(snack break for the whole room); a friend's Start only opens their own menu, and 🤖 **Robo Driver**
+steers their kart meanwhile. Robo Driver also takes over if a controller naps or a connection drops.
+The host picks what's next on the results screen. Every house keeps **its own** stickers, unlocks and
+records: nobody is ever credited for someone else's win, and races with friends count for the
+*race with a friend* goals.
+
+An invite link on a computer where online play is off just says
+*"Ask a grown-up to turn on online play in Settings → Grown-ups 🔒"*. iPads and iPhones can join but not host.
+**🌐 Online → Check connection** tells you if online play works on your network. It works right away with free public
+matchmaking; a grown-up can make it more reliable with our own free Cloudflare helper and relay, set
+up once with **[docs/INFRA_SETUP.md](docs/INFRA_SETUP.md)** (online play setup).
 
 ---
 
@@ -375,8 +407,12 @@ setup for grown-ups is in **[docs/INFRA_SETUP.md](docs/INFRA_SETUP.md)** (coming
 | `?mode=gp&cup=my-cup&mycup=a,b,c,d` | Skip the menus and start a custom *My Cup* of those tracks (up to 4) |
 | `?mode=tutorial` | Skip the menus and start the How to Play practice race (add `&quick=<trackId>` / `&laps=` to change it) |
 | `?attract=0` | No title show behind the logo (the ✨ Effects screen has the same switch) |
+| `?netdebug=1` | Online: the network info panel (ping, loss, interpolation, prediction; never IP addresses) |
+| `?signal=public&relays=ws://127.0.0.1:8000` | Online, localhost / dev builds only: use a local tracker (`node scripts/dev/localTracker.mjs`) instead of the public ones; `?signal=worker&signalUrl=http://localhost:8787` uses a local `npm run worker:dev` |
 
 `window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests,
 plus `gp` / `lastGp` (the running Grand Prix and its latest GrandPrixResult) and `timeTrial` (ghost info).
 Showcase extras add `attract()`, `weather()`, `reactions()`, `spectacle()`, `podium()`, `photoMode()` (each `null` when idle), `music()` (song + layer mix),
 `lastPhoto` and `confettiBurst(pos, opts)`.
+Online, `net` has the room (role, room code label, phase, houses, humans, locked, racing, paused) and the netcode stats.
+Online races ignore `?simspeed`, `?autodrive` and the quick-start params.

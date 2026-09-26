@@ -16,7 +16,7 @@
  * houses[0] is the HOST house ([n] = n local players on the host machine), the rest are guest houses.
  * Options: mode 'free' (M1) · track · laps 1 · seed · speedClass · conditions (every link) · pauses
  * [{ atMs, ms }] ("Pause everyone", times after the host START) · maxSeconds · guestRobo [{ guest, atMs, ms }]
- * (a guest's local pause: its seats send the robo bit) · systems (default: all).
+ * (a guest's local pause: its seats send the robo bit) · systems (default: all) · onGuestFrame(ctx) hook.
  */
 import * as THREE from 'three';
 import { Race, aiDriveInput } from '../../src/race/Race.js';
@@ -109,6 +109,7 @@ function raceSession(machine, { race, humans, allHumans, setup, trackDef, laps, 
     ...createSessionHelpers({ humans, allHumans, audio: app.audio, input: app.input, hud: app.hud, getCharacter }),
     race, humans, setup, trackDef, laps, path, mode: setup.mode, audio: app.audio, input: app.input, hud: app.hud,
     params: app.params, paused: false, resultsShown: false, outcome: null, online: true,
+    net: { role: machine.name === 'host' ? 'host' : 'guest', paused: false, wobbly: false, hostHidden: false, raceId: setup.raceId },
   };
 }
 
@@ -122,7 +123,7 @@ function resultsFrom(order, finishOf) {
  */
 export function runHeadlessNetSession({
   houses = [[1], [1]], mode = 'free', track = 'gumdrop-meadow', laps = 1, seed = 1, speedClass = 'zippy',
-  conditions = {}, pauses = [], guestRobo = [], maxSeconds = null, systems = listSystems(), settleMs = 2500,
+  conditions = {}, pauses = [], guestRobo = [], maxSeconds = null, systems = listSystems(), settleMs = 2500, onGuestFrame = null,
 } = {}) {
   if (mode !== 'free') throw new Error(`runHeadlessNetSession: mode ${mode} is a later milestone`);
   if (houses.length < 1) throw new Error('runHeadlessNetSession: at least the host house');
@@ -290,6 +291,7 @@ export function runHeadlessNetSession({
         });
         if (hostNetRace.paused) frozen.push({ t, host: race.clock, hostTick: hostNetRace.driver.tick, guests: guests.map((g) => g.race?.predictedTick ?? null) });
       }
+      hostRaceSession.net.paused = hostNetRace.paused;
       host.bus.emit('race-frame', FRAME_MS / 1000, hostRaceSession);
       if (completeAt !== null && !hostSummary && race.clock - completeAt >= 1.2) {
         hostSummary = buildHostRaceSummary({ setup, trackDef, standings: race.getStandings(), stats, laps: setup.laps, raceTime: race.time, local: hostLocal });
@@ -318,7 +320,9 @@ export function runHeadlessNetSession({
         const truth = s.anchorTick + ((t - s.anchorMs) * 60) / 1000;
         timelineErr[i].push({ t, err: fr.T - truth });
       }
+      g.session_.net.paused = g.net.paused;
       g.machine.bus.emit('race-frame', FRAME_MS / 1000, g.session_);
+      onGuestFrame?.({ guest: i, replica: g.race, session: g.session_, humans: g.humans, t, startedAt, frame: fr, hostRace: race });
     });
     if (resultAt !== null && guests.every((g) => g.localSummary) && t >= resultAt + settleMs) break;
   }
