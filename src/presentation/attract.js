@@ -152,6 +152,28 @@ export function shotPose(shot, tg) {
 }
 
 /**
+ * Keep a low camera from parking right in front of item boxes (a wall of
+ * giant "?" filling the title screen): when a prop is within `radius` metres
+ * (horizontally) the camera rises smoothly over it, looking a little higher.
+ * Pure; props are {x,y,z} centres. Returns the same pose when nothing is near.
+ */
+export function avoidProps(pose, props, { radius = 4.5, clearance = 2.4 } = {}) {
+  if (!pose?.pos || !Array.isArray(props) || !props.length) return pose;
+  let lift = 0;
+  for (const q of props) {
+    if (!q || !Number.isFinite(q.x) || !Number.isFinite(q.z)) continue;
+    const d = Math.hypot(q.x - pose.pos.x, q.z - pose.pos.z);
+    if (d >= radius) continue;
+    const k = Math.min(1, (radius - d) / (radius * 0.5)); // 0 at the edge -> 1 halfway in
+    const w = k * k * (3 - 2 * k); // smoothstep: no sudden jumps as a box slides by
+    const want = (Number.isFinite(q.y) ? q.y : 0) + clearance + (radius - d) * 0.5;
+    lift = Math.max(lift, w * (want - pose.pos.y));
+  }
+  if (!(lift > 0)) return pose;
+  return { ...pose, pos: { ...pose.pos, y: pose.pos.y + lift }, look: { ...pose.look, y: pose.look.y + lift * 0.3 } };
+}
+
+/**
  * Where the shot's subject sits on screen (fractions of the view, 0,0 = top
  * left), so the karts play beside and below the logo instead of behind it.
  */

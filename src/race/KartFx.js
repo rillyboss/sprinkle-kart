@@ -44,7 +44,8 @@ export class KartFx {
     this.star = new THREE.Group();
     this.star.visible = false;
     this.group.add(this.star);
-    this.shellMat = new THREE.MeshBasicMaterial({ color: 0xff6fb5, transparent: true, opacity: 0.3, depthWrite: false });
+    // additive, so the star makes the kart GLOW brighter instead of greying its colours under a tinted film
+    this.shellMat = new THREE.MeshBasicMaterial({ color: 0xff6fb5, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending });
     this.shellMat2 = new THREE.MeshBasicMaterial({ color: 0x6fc3ff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending });
     this.ringMat = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.6, depthWrite: false });
     this.shell = new THREE.Mesh(g.shell, this.shellMat);

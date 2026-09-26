@@ -306,3 +306,25 @@ describe('title-attract system', () => {
     expect(ATTRACT_CLASS).toBe('skx-attract-on');
   });
 });
+
+describe('avoidProps (play-test: the title camera parked in front of giant item boxes)', () => {
+  it('rises over a nearby item box, smoothly, and leaves far-away shots alone', async () => {
+    const { avoidProps } = await import('../src/presentation/attract.js');
+    const pose = { pos: { x: 0, y: 1.6, z: 0 }, look: { x: 0, y: 1, z: -6 }, fov: 52 };
+    expect(avoidProps(pose, [{ x: 20, y: 1.2, z: 0 }])).toBe(pose);
+    expect(avoidProps(pose, [])).toBe(pose);
+    const near = avoidProps(pose, [{ x: 0.5, y: 1.2, z: 0.5 }]);
+    expect(near.pos.y).toBeGreaterThan(1.2 + 2.4); // over the box, not in it
+    expect(near.look.y).toBeGreaterThan(pose.look.y);
+    expect(near.pos.x).toBe(0);
+    // continuous: a box sliding in from the edge lifts gradually (no jump cut)
+    let prev = 1.6;
+    for (let d = 4.5; d >= 0; d -= 0.1) {
+      const y = avoidProps(pose, [{ x: d, y: 1.2, z: 0 }]).pos.y;
+      expect(y - prev).toBeLessThan(0.4);
+      expect(y).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = y;
+    }
+    expect(avoidProps(pose, [{ x: NaN, y: 1, z: 0 }, null])).toBe(pose);
+  });
+});

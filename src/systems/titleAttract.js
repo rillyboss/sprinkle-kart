@@ -17,7 +17,7 @@
 import * as THREE from 'three';
 import '../presentation/presentation.css';
 import { prefs as sharedPrefs, effectivePrefs } from '../presentation/prefs.js';
-import { createDirector, shotPose, pickAttractTrack, starCaption, framingOffset, SHOT_FRAMING } from '../presentation/attract.js';
+import { createDirector, shotPose, pickAttractTrack, starCaption, framingOffset, SHOT_FRAMING, avoidProps } from '../presentation/attract.js';
 import { TRACKS } from '../tracks/index.js';
 import { CHARACTERS } from '../characters/index.js';
 import { isAvailable } from '../progress/access.js';
@@ -106,7 +106,9 @@ export function buildAttractShow({ trackDef, racers, seed = 1, preroll = 3.5, de
         trackside = { pos: { x: p.x, y: p.y + 2.4, z: p.z } };
       }
       const star = race.karts[shot.starIndex % race.karts.length];
-      const pose = shotPose(shot, { leader, star, center, extent, trackside });
+      const boxes = race.itemBoxes?.boxes?.filter((bx) => bx.active).map((bx) => bx.mesh.position) ?? [];
+      const raw = shotPose(shot, { leader, star, center, extent, trackside });
+      const pose = shot.kind === 'heli' ? raw : avoidProps(raw, boxes); // never a wall of "?" boxes in the lens
       camera.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
       look.set(pose.look.x, pose.look.y, pose.look.z);
       camera.lookAt(look);
