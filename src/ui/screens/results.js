@@ -8,6 +8,7 @@ import { el, escapeHtml, hint, portraitHtml, floatiesLayer, confettiLayer } from
 import { ordinal, medalFor, cheerMessage, formatTime } from '../hudLogic.js';
 import { pc, hintsBar, UNLOCK_MIN_SHOW } from './_shared.js';
 import { unlockOverlay, nextUnlockTeaser } from './unlock.js';
+import { playerLabel, labelWithName } from '../../net/session/playerLabel.js';
 
 /** Results options: [id, label, icon]. Modes may pass their own via params.options. */
 export const RESULT_OPTIONS = [
@@ -35,7 +36,7 @@ export default {
     const placeOf = (k, i) => k.finishPlace ?? k.place ?? i + 1;
     const nameOf = (k) => k.name ?? ctx.char(k.characterId)?.name ?? 'Racer';
     const tagOf = (k) => (k.playerIndex != null && !k.isCPU
-      ? `<b class="sk-tag" style="--pc:${pc(k.playerIndex)}">P${k.playerIndex + 1}</b>` : '');
+      ? `<b class="sk-tag" style="--pc:${pc(k.playerIndex)}">${escapeHtml(playerLabel(k.playerIndex))}</b>` : '');
 
     const podiumOrder = [1, 0, 2].filter((i) => i < total);
     const podium = el('div.sk-podium', {}, podiumOrder.map((i) => {
@@ -70,7 +71,7 @@ export default {
     }));
 
     const headline = humanWinner
-      ? `${escapeHtml(humanWinner.playerIndex != null ? `P${humanWinner.playerIndex + 1} ` : '')}${escapeHtml(nameOf(humanWinner))} wins! 🏆`
+      ? `${escapeHtml(humanWinner.playerIndex != null ? labelWithName(humanWinner.playerIndex, nameOf(humanWinner)) : nameOf(humanWinner))} wins! 🏆`
       : 'What a race! 🎉';
     const node = el('div.sk-screen.sk-results', {},
       floatiesLayer(16, 21),

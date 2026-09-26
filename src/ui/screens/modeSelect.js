@@ -6,7 +6,7 @@
  */
 import { el, escapeHtml, hint, kbd, floatiesLayer } from '../dom.js';
 import { menuEntries } from '../screenFlow.js';
-import { MODE_CARDS, createModeSelectState, modeSelectReduce } from '../../modes/menus.js';
+import { modeCardsFor, createModeSelectState, modeSelectReduce } from '../../modes/menus.js';
 import { applyModeChoice, restoreParty } from '../../modes/flow.js';
 import { pc, hintsBar, backButton } from './_shared.js';
 
@@ -27,9 +27,10 @@ export default {
     restoreParty(d); // coming back here undoes a Time Trial's "P1 only"
     const players = d.joinState.players;
     const entries = menuEntries(ctx.screens, 'mode-select');
-    let state = createModeSelectState({ mode: d.mode, entryCount: entries.length, controllerId: players[0]?.deviceId ?? null });
+    const shown = modeCardsFor(ctx.net); // online: only ONLINE_MODES (NETWORKING.md §10.1)
+    let state = createModeSelectState({ mode: d.mode, entryCount: entries.length, controllerId: players[0]?.deviceId ?? null, cards: ctx.net ? shown : null });
 
-    const cards = MODE_CARDS.map((m, i) => el(`button.sk-mode-card.sk-mode-${m.id}`, {
+    const cards = shown.map((m, i) => el(`button.sk-mode-card.sk-mode-${m.id}`, {
       onclick: (e) => {
         e.stopPropagation();
         handle({ deviceId: 'mouse', action: state.index === i && state.row === 'cards' ? 'select' : 'set', key: 'index', value: i });

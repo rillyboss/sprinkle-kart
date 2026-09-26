@@ -8,8 +8,10 @@
  *   {
  *     id: 'mode-select',
  *     flow: { order: 25, when?: (ctx) => boolean },   // optional: part of the pre-race flow
- *     menuEntry: { label, emoji?, order?, where? },    // optional: a button on the title screen
- *                                                      // (where: 'title' default; see screenFlow.js menuEntries)
+ *     menuEntry: { label, emoji?, order?, where?, when? }, // optional: a button on the title screen
+ *                                                      // (where: 'title' default; when(ctx) hides it; see screenFlow.js menuEntries)
+ *     net: { role: 'host'|'all'|'local' },             // optional, online only (NETWORKING.md §10.1): guests see
+ *                                                      // net-waiting for 'host' screens (defaults: Menus.js DEFAULT_NET_ROLES)
  *     mount(ctx, nav, params) -> ScreenInstance,
  *   }
  * ScreenInstance: { node: HTMLElement, cls?: string, handle(ev), update?(dt), refresh?(), destroy?() }

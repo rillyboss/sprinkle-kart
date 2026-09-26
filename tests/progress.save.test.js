@@ -32,7 +32,7 @@ describe('save migration / merge (v1 -> v2)', () => {
 
   it('clamps settings, drops junk and de-duplicates unlocked ids', () => {
     const m = mergeProgress({ settings: { music: 3, sfx: -1, kidAssistDefault: 'yes' }, unlocked: ['a', 'a', 'b'] });
-    expect(m.settings).toEqual({ music: 1, sfx: 0, kidAssistDefault: false });
+    expect(m.settings).toEqual({ ...defaultSettings(), music: 1, sfx: 0, kidAssistDefault: false });
     expect(m.unlocked).toEqual(['a', 'b']);
     expect(mergeProgress({ settings: 'loud' }).settings).toEqual(defaultSettings());
   });
@@ -77,10 +77,10 @@ describe('saved progress API', () => {
     expect(progress.getSettings()).toEqual(defaultSettings());
     progress.setSettings({ music: 0.2, kidAssistDefault: true });
     progress.setSettings({ sfx: 7 });
-    expect(progress.getSettings()).toEqual({ music: 0.2, sfx: 1, kidAssistDefault: true });
+    expect(progress.getSettings()).toEqual({ ...defaultSettings(), music: 0.2, sfx: 1, kidAssistDefault: true });
     progress.recordRace(makeSummary({ humans: [{ place: 1 }] }));
     progress.resetProgress({ keepSettings: true });
-    expect(progress.getSettings()).toEqual({ music: 0.2, sfx: 1, kidAssistDefault: true });
+    expect(progress.getSettings()).toEqual({ ...defaultSettings(), music: 0.2, sfx: 1, kidAssistDefault: true });
     expect(progress.loadProgress().stats.wins).toBe(0);
     expect(progress.loadProgress().unlocked).toEqual([]);
     progress.resetProgress();

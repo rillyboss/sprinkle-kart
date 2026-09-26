@@ -24,7 +24,7 @@ export default {
       return `<i class="sk-logo-sprinkle" style="left:${x}%;top:${y}%;--r:${(i * 47) % 180}deg;--c:${colors[i % colors.length]};--i:${i}"></i>`;
     }).join('');
 
-    const entries = menuEntries(ctx.screens, 'title');
+    const entries = menuEntries(ctx.screens, 'title', ctx);
     let focus = -1;
     const chips = entries.map((en, i) => el('button.sk-title-entry', {
       onclick: (e) => { e.stopPropagation(); openEntry(i); },

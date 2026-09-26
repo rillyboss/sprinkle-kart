@@ -52,12 +52,21 @@ export function flowStart(order, { skipTitle = false } = {}) {
  * render their own with menuEntries(ctx.screens, '<their id>').
  * An entry screen is opened with params `{ returnTo }` and goes back with
  * `nav.goto(params.returnTo ?? 'title')`.
+ * An entry may declare `when: (ctx) => boolean` (e.g. the Online entry shows only
+ * once a grown-up turned online play on, NETWORKING.md §10.1); it is asked with
+ * the `ctx` passed here, and a throwing `when` hides the entry. Entries without
+ * `when` are unchanged.
  * @returns {{id:string, label:string, emoji:string, order:number}[]}
  */
-export function menuEntries(screens, where = 'title') {
+export function menuEntries(screens, where = 'title', ctx = null) {
   const list = screens instanceof Map ? [...screens.values()] : [...(screens || [])];
+  const visible = (e) => {
+    if (typeof e.when !== 'function') return true;
+    try { return !!e.when(ctx); } catch { return false; }
+  };
   return list
     .filter((s) => s && s.menuEntry && typeof s.menuEntry.label === 'string' && (s.menuEntry.where ?? 'title') === where)
+    .filter((s) => visible(s.menuEntry))
     .map((s) => ({ id: s.id, label: s.menuEntry.label, emoji: s.menuEntry.emoji ?? '', order: Number.isFinite(s.menuEntry.order) ? s.menuEntry.order : 100 }))
     .sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1));
 }

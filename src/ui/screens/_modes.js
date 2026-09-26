@@ -7,11 +7,12 @@ import '../../modes/modes.css';
 import { el, escapeHtml, portraitHtml } from '../dom.js';
 import { pc, UNLOCK_MIN_SHOW } from './_shared.js';
 import { unlockOverlay } from './unlock.js';
+import { playerLabel } from '../../net/session/playerLabel.js';
 
 /** "P1" tag for a human row. */
 export function playerTag(row) {
   return row && row.playerIndex != null && !row.isCPU
-    ? `<b class="sk-tag" style="--pc:${pc(row.playerIndex)}">P${row.playerIndex + 1}</b>` : '';
+    ? `<b class="sk-tag" style="--pc:${pc(row.playerIndex)}">${escapeHtml(playerLabel(row.playerIndex))}</b>` : '';
 }
 
 export function nameOf(ctx, characterId) {

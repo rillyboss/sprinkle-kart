@@ -12,6 +12,7 @@
  * OWNER: modes + timing workstream.
  */
 import { scoreGrandPrix, getCup, cupTracks, isCupPlayable, GP_POINTS } from '../data/cups.js';
+import { labelWithName } from '../net/session/playerLabel.js';
 
 /**
  * @param {object} o
@@ -122,7 +123,7 @@ export function podiumOrder(standings = []) {
 export function ceremonyHeadline(result, nameOf = (id) => id, cupName = 'the cup') {
   const top = result?.standings?.[0];
   if (!top) return 'What a Grand Prix! 🎉';
-  if (!top.isCPU) return `P${top.playerIndex + 1} ${nameOf(top.characterId)} wins ${cupName}! 🏆`;
+  if (!top.isCPU) return `${labelWithName(top.playerIndex, nameOf(top.characterId))} wins ${cupName}! 🏆`;
   const best = result.bestHumanPlace;
   if (best === 2) return 'Silver cup! So shiny! 🥈';
   if (best === 3) return 'Bronze cup! Hooray! 🥉';

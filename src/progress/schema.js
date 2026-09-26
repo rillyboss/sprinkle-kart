@@ -65,10 +65,17 @@ export function emptyStats() {
  * Player settings (saved alongside progress, kept by "reset progress").
  *   music, sfx          0..1 volumes (AudioManager.setVolume)
  *   kidAssistDefault    new players join with Kid-Assist on
+ *   onlineEnabled       online play with friends (NETWORKING.md §1 rule 1): off by default, switched
+ *                       on only behind the parent gate after the privacy sentence
+ *   approvalGate        "Only a grown-up can let houses in": approval Yes goes through the parent gate
+ *   relayOnly           "Use the relay for game traffic" (iceTransportPolicy 'relay'; needs our relay)
  */
 export function defaultSettings() {
-  return { music: 0.7, sfx: 0.85, kidAssistDefault: false };
+  return { music: 0.7, sfx: 0.85, kidAssistDefault: false, onlineEnabled: false, approvalGate: false, relayOnly: false };
 }
+
+/** The online settings; only a real `true` turns one on (hand-edited saves can't sneak "yes" in). */
+export const ONLINE_SETTING_KEYS = Object.freeze(['onlineEnabled', 'approvalGate', 'relayOnly']);
 
 /** Per-racer tallies (any human who raced as that character). */
 export function emptyRacerStats() {
@@ -146,6 +153,7 @@ export function mergeProgress(saved) {
     const st = saved.settings;
     for (const k of ['music', 'sfx']) if (Number.isFinite(st[k])) out.settings[k] = Math.max(0, Math.min(1, st[k]));
     if (typeof st.kidAssistDefault === 'boolean') out.settings.kidAssistDefault = st.kidAssistDefault;
+    for (const k of ONLINE_SETTING_KEYS) out.settings[k] = st[k] === true;
   }
   out.unlocked = [...new Set(out.unlocked)];
   out.unlockAll = saved.unlockAll === true;

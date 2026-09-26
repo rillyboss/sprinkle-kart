@@ -4,6 +4,7 @@
  * OWNER: showcase features & modes.
  */
 import { teamInfo, teamResultText, HOME_TEAM, AWAY_TEAM } from './team.js';
+import { playerLabel } from '../net/session/playerLabel.js';
 
 export const BATTLE_OPTIONS = Object.freeze([
   ['again', 'Battle again', '🔁'],
@@ -30,7 +31,7 @@ export function battleResultModel(battle, nameOf = (id) => id) {
   const winners = ranking.filter((r) => r.place === 1);
   const humanWinners = winners.filter((r) => !r.isCPU);
   const tie = winners.length > 1;
-  const who = (r) => (r.isCPU ? nameOf(r.characterId) : `P${r.playerIndex + 1}`);
+  const who = (r) => (r.isCPU ? nameOf(r.characterId) : playerLabel(r.playerIndex));
   let title;
   if (!winners.length) title = 'Bubble Battle!';
   else if (tie && humanWinners.length > 1) title = `${humanWinners.map(who).join(' & ')} share the win! 🫧`;
