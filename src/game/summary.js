@@ -61,6 +61,9 @@ const isHuman = (k) => !!k && !k.isCPU && k.playerIndex !== null && k.playerInde
  * @property {{playerIndex:number, characterId:string}|null} winner   a human 1st place (not estimated)
  * @property {{itemsUsed:number, bonksGiven:number, miniTurbos:number}} totals  across humans
  * @property {Array<{kind:'character'|'track', id:string}>} unlocks  COLLECTOR: 'race-end' subscribers push here
+ * @property {object} [records]  set on 'race-end' by src/systems/timingRecords.js (order 20): the result of
+ *   submitRaceRecords() in src/modes/timing.js — { trackId, raceTime, bestLap, raceBy, lapBy,
+ *   newBestRace, newBestLap, previous: {bestRace, bestLap}, record: {bestRace, bestLap} }
  */
 export function buildRaceSummary({ setup, trackDef, humans, standings, stats = null, laps, raceTime = 0 }) {
   const placeOf = (k, i) => k.finishPlace ?? k.place ?? i + 1;
