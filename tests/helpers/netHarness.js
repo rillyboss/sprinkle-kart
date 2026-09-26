@@ -164,6 +164,10 @@ export function runNetRace({
     onEvent: null,
   });
   const clock = createHostClock({ now: hostNow });
+  const pauseLog = [];
+  const timebaseLog = [];
+  clock.onPause((p) => pauseLog.push({ ...p, t }));
+  clock.onTimebase((tb) => timebaseLog.push({ ...tb, t }));
   const hostPilots = hostKarts.map((_, i) => makePilot(seed * 101 + i, pilot));
   const env = { path, racing: (tick) => tick > goTick };
   const presses = new Map(); // `${house}:${seat}` → { guest: {item, hop}, host: {item: [], hop: []} }
@@ -343,7 +347,7 @@ export function runNetRace({
       if (fr.T !== undefined && raceStarted) {
         const truth = hostTickAt(t);
         g.timelineErr.push({ t, err: fr.T - truth, paused: g.timeline.paused });
-        g.leadLog.push({ t, lead: g.driver.lead.lead, target: g.driver.lead.targetSlack, slack: null });
+        g.leadLog.push({ t, lead: g.driver.lead.lead, target: g.driver.lead.targetSlack, slack: g.driver.lastSlack, paused: g.timeline.paused });
         g.interpLog.push({ t, ms: g.replica.interpDelayMs });
         // remote pose continuity
         for (const k of g.replica.karts) {
@@ -453,6 +457,8 @@ export function runNetRace({
       lateAfter,
       roboLog,
       takeLog,
+      pauseLog,
+      timebaseLog,
     },
     finishedAt,
     t,

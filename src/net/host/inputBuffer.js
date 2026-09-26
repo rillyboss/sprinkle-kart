@@ -267,6 +267,19 @@ export function createInputBuffer({
       const s = slackRing[tick % size];
       return s && s.tick === tick ? Math.max(-127, Math.min(127, s.slack)) : SLACK_MISSING;
     },
+    /**
+     * Forget inputs stored for ticks not simulated yet. After a catch-up skip or a starved pump the guests'
+     * timelines were ahead of the host; they rewind and re-send those ticks, and the fresh copies must win
+     * over the stale ones (a duplicate tick is otherwise ignored).
+     */
+    dropFuture() {
+      for (let i = 0; i < size; i++) {
+        if (ring[i] && ring[i].tick > lastConsumed) ring[i] = null;
+        if (slackRing[i] && slackRing[i].tick > lastConsumed) slackRing[i] = null;
+      }
+      newestSeen = Math.min(newestSeen, lastConsumed);
+      stats.dropFuture = (stats.dropFuture || 0) + 1;
+    },
     /** Host decision (guest dropped / asleep): force Robo Driver on (true) or give the wheel back (false → rebaseline). */
     setRobo(on) {
       if (on) { forcedRobo = true; robo = true; } else if (forcedRobo) { forcedRobo = false; rebaseline(); }

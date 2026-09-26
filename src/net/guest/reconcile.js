@@ -122,12 +122,14 @@ export function createReconciler({
      * @param {(tick: number) => object} o.ctxFor   predictTick ctx for a tick (its emit is replaced by a no-op)
      * @param {boolean} [o.forceSnap]     snap instead of smoothing (Robo Driver hand-back)
      * @param {object} [o.path]           TrackPath, to derive s / lateral from the snapshot
+     * @param {(owner: object) => object} [o.normalizeOwner]   fix up decoded owner fields (e.g. snap
+     *                                    accelPressedAt onto the host's exact countdown values)
      * @returns {{ errors: Array<{ kart: number, err: number, snapped: boolean }> }}
      */
-    reconcile({ karts, snap, inputsFor, toTick, predictTick, ctxFor, forceSnap = false, path = null }) {
+    reconcile({ karts, snap, inputsFor, toTick, predictTick, ctxFor, forceSnap = false, path = null, normalizeOwner = null }) {
       if (!karts.length) return { errors: [] };
       const before = karts.map((k) => ({ drawn: drawn(k), pos: { x: k.position.x, y: k.position.y, z: k.position.z }, heading: k.heading }));
-      const ownerById = new Map((snap.owner || []).map((o) => [o.kart, o]));
+      const ownerById = new Map((snap.owner || []).map((o) => [o.kart, normalizeOwner ? normalizeOwner(o) : o]));
       for (const k of karts) {
         const rec = snap.karts[k.id];
         if (rec) applyKartRecord(k, rec, ownerById.get(k.id) || null, path);

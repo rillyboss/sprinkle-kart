@@ -45,6 +45,7 @@ export function createGuestDriver({
   let lastResult = null;
   let pings = 0;
   let renderTick = null;
+  let lastSlack = null;
   const stats = { snapshots: 0, events: 0, timebases: 0, pauses: 0, pongs: 0, frags: 0, bad: 0, inputsSent: 0, ctrl: 0 };
   const sampleAll = (tick) => localSeats.map((s) => s.sample(tick));
 
@@ -57,6 +58,7 @@ export function createGuestDriver({
         timeline.onSnapshot(m.tick, m.epoch, t);
         if (m.tick > lastSlackTick) {
           lastSlackTick = m.tick;
+          lastSlack = m.inputSlack;
           lead.onSlack(m.inputSlack);
         }
         lastSnapTick = Math.max(lastSnapTick, m.tick);
@@ -115,6 +117,8 @@ export function createGuestDriver({
         renderTick += Math.max(-R_SLEW * step, Math.min(R_SLEW * step, desiredR - renderTick));
       }
       const R = renderTick;
+      // The host skipped or starved while we kept predicting: our timeline was far ahead of the host's.
+      if (replica.predictedTick - Math.floor(P) > R_SNAP_TICKS) replica.rewind(Math.floor(P));
       const ticks = replica.frame(dt, sampleAll, { P, R });
       for (const tick of ticks) {
         const b = sender.afterTick(tick, { slackTarget: lead.targetSlack, lastSnapTick });
@@ -131,13 +135,14 @@ export function createGuestDriver({
     },
     stats() {
       return {
-        ...stats, lead: lead.lead, targetSlack: lead.targetSlack, leadJumps: { ...lead.stats },
+        ...stats, lead: lead.lead, targetSlack: lead.targetSlack, lastSlack, leadJumps: { ...lead.stats },
         interpDelayMs: replica.interpDelayMs, epoch: timeline.epoch, paused: timeline.paused, sender: { ...sender.stats },
         reconcileP50: replica.reconciler.percentile(0.5), reconcileP99: replica.reconciler.percentile(0.99),
         lastEventSeq: replica.events.lastSeq, clock: { rttMs: clock.rttMs, jitterMs: clock.jitterMs, ready: clock.ready },
       };
     },
     get lead() { return lead; },
+    get lastSlack() { return lastSlack; },
     get sender() { return sender; },
     get lastResult() { return lastResult; },
     dispose() { replica.dispose?.(); },

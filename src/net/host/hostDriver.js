@@ -21,6 +21,7 @@ import { createInputBuffer } from './inputBuffer.js';
 import { createEventLog } from './eventLog.js';
 import { createSnapshotter, SNAPSHOT_EVERY } from './snapshotter.js';
 import { aiDriveInput } from '../../race/Race.js';
+import { TIMEBASE_REASON, PAUSE_REASON } from './hostClock.js';
 
 export const EVENTS_PER_BATCH = 48;
 export const NETSTAT_EVERY_TICKS = 60;
@@ -44,7 +45,7 @@ const defaultTickRace = (race, inputs) => {
  * @param {() => number} [o.now]
  * @param {boolean} [o.nativeRobo]             the Race handles `robo: true` inputs itself (WS1)
  * @param {(houseId, tick, result) => void} [o.onInputTaken]    diagnostics: every buffer take
- * @param {(houseId, tick, status) => void} [o.onInputPushed]   diagnostics: every buffer push ('stored'|'late'|…)
+ * @param {(houseId, tick, status) => void} [o.onInputPushed]   diagnostics: every buffer push ('stored'|'late'|â€¦)
  */
 export function createHostDriver({
   race, transport, houses, localInputs = () => [], clock, onEvent = null, snapshotEvery = SNAPSHOT_EVERY, wire, capture,
@@ -78,12 +79,15 @@ export function createHostDriver({
     if (onEvent) onEvent(e);
   };
 
+  const dropFutureInputs = () => { for (const st of H.values()) st.buffer.dropFuture(); };
   const unsubTb = clock.onTimebase((tb) => {
     if (!started) return;
+    if (tb.reason === TIMEBASE_REASON.skip) dropFutureInputs();
     transport.broadcast('ctrl', wire.encodeCtrl(wire.MSG.TIMEBASE, tb));
   });
   const unsubPause = clock.onPause((p) => {
     if (!started) return;
+    if (!p.paused && p.reason === PAUSE_REASON.starved) dropFutureInputs();
     transport.broadcast('ctrl', wire.encodeCtrl(wire.MSG.PAUSE, p));
   });
 

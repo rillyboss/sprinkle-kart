@@ -197,7 +197,8 @@ function encodeOwner(w, s, ownerIds = []) {
     w.u8((p.driftHeld ? 1 : 0) | (p.prevAccel ? 2 : 0) | (p.driftWindow > 0 ? 4 : 0) | (p.wallCooldown > 0 ? 8 : 0));
     w.u8(Math.min(255, ceilPos(p.driftWindow, 256))); w.u8(clampInt(p.hopLen * 256, 0, 255)); w.i8(p.onPad ?? -1);
     w.u8(Math.min(255, ceilPos(p.wallCooldown, 256)));
-    w.i8(p.accelPressedAt === null || p.accelPressedAt === undefined ? -128 : clampInt(p.accelPressedAt * 32, -127, 127));
+    // accelPressedAt as whole ticks left (u8, 255 = null): the ×32 draft rounding flips the rocket-start window test
+    w.u8(p.accelPressedAt === null || p.accelPressedAt === undefined ? 255 : clampInt(p.accelPressedAt * 60, 0, 254));
     w.i8(Math.sign(p.slideDir || 0)); w.u8(clampInt(p.wrongWayTime * 32, 0, 255)); w.u32(Math.round((p.lastLapStart || 0) * 1000));
     w.u16(clampInt(p.driftTime * 256, 0, 0xffff)); w.i16(q(p.groundY, 64)); w.u8(enumIndex(ITEMS, p.pendingItem));
     w.u8(clampInt(p.rouletteTime * 32, 0, 255)); w.u8(clampInt((k.aiSpeedMult ?? 1) * 128, 0, 255));
@@ -269,14 +270,14 @@ function decodeSnapshot(r) {
   for (let i = 0; i < no; i++) {
     const kart = r.u8(); const bf = r.u8();
     const dw = r.u8() / 256; const hopLen = r.u8() / 256; const onPad = r.i8(); const wc = r.u8() / 256;
-    const apa = r.i8(); const slideDir = r.i8(); const wrongWayTime = r.u8() / 32; const lastLapStart = r.u32() / 1000;
+    const apa = r.u8(); const slideDir = r.i8(); const wrongWayTime = r.u8() / 32; const lastLapStart = r.u32() / 1000;
     const driftTime = r.u16() / 256; const groundY = r.i16() / 64; const pendingItem = ITEMS[r.u8() & 7] ?? null;
     const rouletteTime = r.u8() / 32; const aiSpeedMult = r.u8() / 128;
     owner.push({
       kart, aiSpeedMult,
       phys: {
         driftHeld: !!(bf & 1), prevAccel: !!(bf & 2), driftWindow: bf & 4 ? dw : 0, hopLen, onPad,
-        wallCooldown: bf & 8 ? wc : 0, accelPressedAt: apa === -128 ? null : apa / 32, slideDir, wrongWayTime, lastLapStart,
+        wallCooldown: bf & 8 ? wc : 0, accelPressedAt: apa === 255 ? null : apa / 60, slideDir, wrongWayTime, lastLapStart,
         driftTime, groundY, pendingItem, rouletteTime,
       },
     });

@@ -180,6 +180,16 @@ export class ReplicaRace {
     if (this.predictedTick < startTick - 1) this.predictedTick = startTick - 1;
   }
 
+  /**
+   * The host timeline moved back a long way (catch-up skip / starved host): stop predicting the future we
+   * guessed, continue from `tick`; the next snapshot re-seeds the karts (a > 4 m correction snaps).
+   */
+  rewind(tick) {
+    if (tick >= this.predictedTick) return;
+    this.predictedTick = tick;
+    this.stats.rewinds = (this.stats.rewinds || 0) + 1;
+  }
+
   _countdownAt(tick) {
     const r = tick - this.startTick + 1;
     const goR = this.goTick - this.startTick + 1;
@@ -347,11 +357,25 @@ export class ReplicaRace {
       const res = this.reconciler.reconcile({
         karts, snap, inputsFor: (t) => this._inputsFor(t), toTick: this.predictedTick, predictTick: this._predictTick,
         ctxFor: (t) => this._ctxFor(t, () => {}), forceSnap: handBack.length > 0, path: this.path,
+        normalizeOwner: (o) => this._normalizeOwner(o),
       });
       this.lastCorrections = res.errors;
       this.onCorrection?.(snap, res.errors);
     }
     return true;
+  }
+
+  /**
+   * The host's accelPressedAt is always one of its own countdown values (the countdown when accelerate was
+   * pressed). The wire carries it in whole ticks; put it back onto the host's exact float so the rocket-start
+   * window test (`at <= startBoostWindow`) decides exactly like the host at the boundary tick.
+   */
+  _normalizeOwner(o) {
+    const at = o.phys?.accelPressedAt;
+    if (at === null || at === undefined || !this._countdownAfter) return o;
+    // race tick r whose countdown value this is: countdownAfter(0) is the full countdown (3 s)
+    const r = Math.max(0, Math.round((this._countdownAfter(0) - at) * 60));
+    return { ...o, phys: { ...o.phys, accelPressedAt: this._countdownAfter(r) } };
   }
 
   /** A decoded EVENTS batch arrived (ctrl, ordered). */
