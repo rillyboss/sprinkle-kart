@@ -63,3 +63,50 @@ body.skx-cb .sk-vp.sk-vp-multi[data-skx-p='3']::after { border-style: dotted; bo
 body.skx-cb .sk-vp.sk-vp-multi[data-skx-p='4']::after { border-style: double; border-width: 0.4em; }
 .skx-shape { display: none; }
 body.skx-cb .skx-shape { display: inline; margin-right: 0.15em; }
+
+/* ---------- Racer chatter: speech bubble above the place badge ---------- */
+.skx-bubble-wrap {
+  position: absolute; bottom: 4.9em; z-index: 3; pointer-events: none;
+  opacity: 0; transform: translateY(0.4em) scale(0.6);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  max-width: min(17em, 70%);
+}
+.sk-vp[data-place-side='right'] .skx-bubble-wrap { right: 0.9em; transform-origin: 85% 100%; }
+.sk-vp[data-place-side='left'] .skx-bubble-wrap { left: 0.9em; transform-origin: 15% 100%; }
+.sk-vp[data-place-v='top'] .skx-bubble-wrap { bottom: auto; top: 4.7em; transform-origin: 85% 0%; }
+.skx-bubble-wrap.skx-on { opacity: 1; transform: none; animation: skx-bubble-pop 0.42s cubic-bezier(0.2, 1.9, 0.4, 1) both; }
+@keyframes skx-bubble-pop {
+  0% { transform: translateY(0.4em) scale(0.5) rotate(-4deg); }
+  60% { transform: translateY(-0.1em) scale(1.08) rotate(1.5deg); }
+  100% { transform: none; }
+}
+body.skx-gentle .skx-bubble-wrap.skx-on { animation: none; }
+.skx-bubble {
+  position: relative; display: flex; align-items: center; gap: 0.25em;
+  padding: 0.45em 0.8em; border-radius: 1.1em;
+  background: #fff; color: var(--sk-ink, #6b3a7a);
+  font-weight: 700; font-size: 1.05em; line-height: 1.15;
+  box-shadow: 0 0 0 0.14em var(--pc, #ff8fc8), 0 0.35em 0.7em rgba(100, 30, 110, 0.28);
+}
+.skx-bubble::after {
+  content: ''; position: absolute; bottom: -0.45em; width: 0.9em; height: 0.9em;
+  background: inherit; transform: rotate(45deg); border-radius: 0.15em;
+  box-shadow: 0.14em 0.14em 0 0 var(--pc, #ff8fc8);
+}
+.sk-vp[data-place-side='right'] .skx-bubble::after { right: 4.1em; }
+.sk-vp[data-place-side='left'] .skx-bubble::after { left: 1.3em; }
+.sk-vp[data-place-v='top'] .skx-bubble::after { bottom: auto; top: -0.45em; box-shadow: -0.14em -0.14em 0 0 var(--pc, #ff8fc8); }
+.skx-bubble-t { white-space: normal; position: relative; z-index: 1; }
+.skx-k-bonked { background: #fff3f6; }
+.skx-k-bonked .skx-bubble-t::before { content: '😤 '; }
+.skx-k-giggle .skx-bubble-t::before { content: '😄 '; }
+.skx-k-overtake .skx-bubble-t::before { content: '💨 '; }
+.skx-k-bonker .skx-bubble-t::before { content: '😜 '; }
+.skx-k-star, .skx-k-rainbow-turbo { background: #fffbe8; }
+.skx-k-star .skx-bubble-t::before, .skx-k-rainbow-turbo .skx-bubble-t::before { content: '🌈 '; }
+.skx-k-finish-win { background: #fff4c2; }
+.skx-k-finish-win .skx-bubble-t::before { content: '🏆 '; }
+.skx-k-podium .skx-bubble-t::before { content: '🏅 '; }
+.skx-k-finish .skx-bubble-t::before, .skx-k-go .skx-bubble-t::before { content: '✨ '; }
+.skx-k-final-lap .skx-bubble-t::before { content: '🏁 '; }
+.skx-k-overtaken .skx-bubble-t::before { content: '😮 '; }
