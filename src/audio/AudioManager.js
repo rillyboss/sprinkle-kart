@@ -384,4 +384,25 @@ export class AudioManager {
     }
     return true;
   }
+
+  /**
+   * Briefly lower the music so an important sound cue is heard (power-up
+   * clarity: bonks, shield blocks, item use). `level` = music gain multiplier
+   * while ducked (0.2..1), `hold` seconds before it eases back. Safe no-op
+   * before unlock. Added by the power-up clarity workstream.
+   */
+  duckMusic(level = 0.6, hold = 0.45) {
+    if (!this._ready() || !this._musicBus) return;
+    const lv = Math.max(0.2, Math.min(1, Number.isFinite(level) ? level : 0.6));
+    const h = Math.max(0.05, Math.min(3, Number.isFinite(hold) ? hold : 0.45));
+    try {
+      const g = this._musicBus.gain;
+      const t = this.ctx.currentTime;
+      const full = this._musicLevel();
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(Number.isFinite(g.value) ? g.value : full, t);
+      g.setTargetAtTime(full * lv, t, 0.03);
+      g.setTargetAtTime(full, t + h, 0.25);
+    } catch { /* never let a duck break the game */ }
+  }
 }
