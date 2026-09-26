@@ -126,6 +126,17 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 | **Bizzy Bumble** | A silly bumblebee who talks in puns |
 | **Cotton Candy Girl** 🔒 | Fluffy, sparkly and super sweet. Win a race to unlock her! |
 
+### More racers to unlock (pack A)
+
+| Racer | Who they are | How to unlock |
+|---|---|---|
+| **Bruno Bananas** 🍌 | A gentle giant gorilla in a banana-split kart. His licorice necktie flips up and boops his nose when he boosts! | Finish 2 races |
+| **Shelly Macaroon** 🐢 | A super-speedy turtle with a strawberry macaron shell. She tucks her head in to zoom, and hides in her shell when bonked | Win on Gumdrop Meadow |
+| **Boo Berry** 🫐 | A shy, giggly blueberry ghost who floats over her seat and blushes so hard she goes see-through | Finish top 3 on Starlight Galaxy |
+| **Twiggy Licorice** 🎩 | A dramatically tall licorice showman with a top hat and a curly mustache. Every boost is a "Ta-daaa!" pose | Win 3 races |
+| **Captain Crumbs** 🍪 | A jolly cookie pirate with a chocolate-chip beard and a pirate-ship kart. He keeps peeking ahead through his spyglass. Arr-some! | Bonk racers 20 times with items |
+| **Baby Bonbon** 🍬 | A giggly baby in a wrapped-candy onesie, riding a turbo stroller. Pacifier in, arms up: "Wheee!" | Finish a race with Kid-Assist on |
+
 ## The tracks
 
 | Track | What's there |
