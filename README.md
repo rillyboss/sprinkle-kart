@@ -135,6 +135,15 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 | **Starlight Galaxy** | Stella's glowing star road floating in space, with planets, crystal islands and an observatory |
 | **Sundae Slopes** | Ice-cream mountains, waffle-cone towers, a chocolate river and sprinkle snow |
 
+### 🌟 Superstar Cup
+
+| Track | What's there | Unlock |
+|---|---|---|
+| **Cupcake Carnival** 🧁 | A funfair shaped like a cupcake: game booths and bunting, roller-coaster humps under rainbow hoops, a turning ferris wheel with cupcake gondolas, a carousel of candy ponies and a big-top tent you drive right through | Win any Grand Prix cup |
+| **Aurora Ice Palace** 🏰 | A snowy night under dancing northern lights: an ice bridge over a frozen river, two zig-zag switchbacks, glowing crystal arches, the Crystal Palace, snowmen and a huddle of hopping penguins | Win on any Cozy Cup track |
+| **Moonbounce Base** 🌙 | A crescent-moon road with boing-boing moon moguls, a glass tube tunnel, a friendly rocket in the big crater and moon bunnies doing floaty hops. Low gravity makes your hops extra floaty! | Win 8 races |
+| **Ribbon Sky Rally** 🎀 | The grand finale: a rainbow ribbon road over the clouds that twirls over and under itself, with hot-air balloons, giant bows, rainbow gates and the Superstar Trophy | Win on 6 different tracks |
+
 ---
 
 ## For developers
