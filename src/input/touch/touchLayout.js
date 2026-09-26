@@ -55,7 +55,7 @@ export function unitFor(zone, size = 'medium') {
   const short = Math.min(zone.w, zone.h);
   const s = SIZE_SCALE[size] ?? 1;
   const u = Math.min(short * 0.2, zone.w * 0.14) * s;
-  return clamp(u, 40, 128 * s);
+  return clamp(u, 40, 112 * s); // tablets: big, but the bottom band must stay under ~20% of the screen
 }
 
 /**
@@ -82,18 +82,19 @@ export function layoutControlSet(zone, settingsIn, safe = {}) {
   const smallR = Math.max(MIN_TAP / 2, u * 0.36);
   const corner = { cx: R - bigR, cy: B - bigR };
   const controls = [];
-  const left = { cx: corner.cx - bigR - gap - midR, cy: corner.cy + (portrait ? bigR - midR : -bigR * 0.3) };
+  // HOP sits left of the corner button, bottom-aligned (raising it would reach into the road on tablets)
+  const left = { cx: corner.cx - bigR - gap - midR, cy: corner.cy + bigR - midR };
   if (st.autoGas) {
     controls.push(circle('item', corner.cx, corner.cy, bigR, { label: 'ITEM' }));
     controls.push(circle('drift', left.cx, left.cy, midR, { label: 'HOP', hold: true }));
-    if (portrait) controls.push(circle('brake', left.cx - midR - gap - smallR, B - smallR, smallR, { label: 'BRAKE', hold: true }));
+    if (portrait) controls.push(circle('brake', left.cx, left.cy - midR - gap - smallR, smallR, { label: 'BRAKE', hold: true }));
     else controls.push(circle('brake', corner.cx + bigR - smallR, corner.cy - bigR - gap - smallR, smallR, { label: 'BRAKE', hold: true }));
   } else {
     controls.push(circle('gas', corner.cx, corner.cy, bigR, { label: 'GO', hold: true }));
     controls.push(circle('drift', left.cx, left.cy, midR, { label: 'HOP', hold: true }));
     if (portrait) {
       controls.push(circle('item', corner.cx, corner.cy - bigR - gap - midR, midR, { label: 'ITEM' }));
-      controls.push(circle('brake', left.cx - midR - gap - smallR, B - smallR, smallR, { label: 'BRAKE', hold: true }));
+      controls.push(circle('brake', left.cx, left.cy - midR - gap - smallR, smallR, { label: 'BRAKE', hold: true }));
     } else {
       controls.push(circle('item', corner.cx + bigR - midR, corner.cy - bigR - gap - midR, midR, { label: 'ITEM' }));
       controls.push(circle('brake', left.cx, left.cy - midR - gap - smallR, smallR, { label: 'BRAKE', hold: true }));
