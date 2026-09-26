@@ -170,7 +170,7 @@ Three layers, each swappable and tested alone:
  * @property {(ch: Channel, bytes: Uint8Array, except?: string) => void} broadcast
  * @property {(fn: (peerId: string, ch: Channel, bytes: Uint8Array) => void) => () => void} onMessage
  * @property {(fn: (ev: { type: 'join'|'leave', peerId: string, reason?: string }) => void) => () => void} onPeer
- * @property {(peerId: string) => PeerStats} stats   { rttMs|null, bufferedCtrl, bufferedState, relayed: boolean|null, bytesIn, bytesOut, packetsIn, packetsOut }
+ * @property {(peerId: string) => PeerStats} stats   { rttMs|null, bufferedCtrl, bufferedState, relayed: boolean|null, bytesIn, bytesOut, wireBytesIn, wireBytesOut, packetsIn, packetsOut, stateSkips, candidateType }
  * @property {(peerId: string, reason?: string) => void} disconnect
  * @property {() => void} close
  */
@@ -494,13 +494,13 @@ Batch = `type u8, firstSeq u32, baseTick u32, count u8`, then per event `dTick u
 
 | ev | Race event | Payload (B) | Local-predicted for own kart? |
 |---|---|---|---|
-| 1 | `countdown` | `n u8` (1) | – |
-| 2 | `go` | – | – |
+| 1 | `countdown` | `n u8` (1) | yes: emitted from the prediction timeline P (§9.1); host copies dropped |
+| 2 | `go` | – | yes: from P, at `goTick` |
 | 3 | `boost` | `source u8` (0 start, 1 pad, 2 item, 3 other) (1) | start + pad: yes |
 | 4 | `hop` / 5 `land` | – | yes |
 | 6 | `drift-start` | `dir i8` (1) | yes |
 | 7 | `drift-level` / 8 `drift-boost` | `level u8` (1) | yes |
-| 9 | `bump` | `other u8 (255 = wall), strength u8` (2) | wall: yes; kart-kart: no |
+| 9 | `bump` | `other u8 (255 = wall), strength u8` (2) | wall and own-machine karts: yes; remote karts: no |
 | 10 | `item-box` | `boxIndex u8, rolling u8` (2) | – |
 | 11 | `item-get` | `item u8` (1) | – |
 | 12 | `item-use` | `item u8, chargesLeft u8` (2) | self-effect items: yes (§9.6) |
@@ -520,6 +520,9 @@ Batch = `type u8, firstSeq u32, baseTick u32, count u8`, then per event `dTick u
 | 26 | `battle-pop` | `by u8, bubblesLeft u8` (2) | – |
 | 27 | `battle-out` / 28 `battle-bonus` | – | – |
 | 29 | `robo` | `on u8` (Robo Driver took/gave back the wheel) (1) | – |
+
+Every locally predicted event is emitted on the guest with `predicted: true` (presentation only; progress
+counters ignore it, §9.6).
 
 Enums (`cause`, `item`, `why`, `source`) map to fixed tables in `src/net/enums.js`; adding a value appends
 at the end (never renumber) and bumps `PROTOCOL_VERSION`.
@@ -716,7 +719,7 @@ karts, in the same order as `Race.js` sub-steps) then `stepKart` → lap countin
 `distance` only; no `lap` event — the authoritative one comes from the host). So **couch siblings on one guest
 machine bump each other locally**, including in replay. It never reads remote karts, items or boxes. **(measured)** `stepKart`-only replay matches the host bit-exactly in
 94–98 % of 100–200 ms windows; windows with contact/bonks/items reach up to 1.4 m error — reconciliation
-smoothing absorbs that (§9.5).
+smoothing absorbs that (§9.6).
 
 ### 8.6 Other sim touches
 
