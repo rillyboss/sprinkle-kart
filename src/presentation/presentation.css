@@ -134,6 +134,11 @@ body.skx-gentle .skx-photo-flash { animation: none; }
   100% { opacity: 0; transform: rotate(-3deg) scale(0.9); }
 }
 
+/* ---------- 3D victory podium (results screen) ---------- */
+body.skx-podium3d .sk-menus.sk-mode-results { background: transparent !important; }
+body.skx-podium3d .sk-results .sk-step-portrait { visibility: hidden; animation: none; }
+body.skx-podium3d .sk-results .sk-crown { top: -2.1em; }
+
 /* ---------- Racer chatter: speech bubble above the place badge ---------- */
 .skx-bubble-wrap {
   position: absolute; bottom: 4.9em; z-index: 3; pointer-events: none;
