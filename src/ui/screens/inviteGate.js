@@ -1,11 +1,10 @@
 /**
- * "Ask a grown-up" — shown when an invite link (or the Online hub) is opened on
- * a machine with online play switched off (NETWORKING.md §10.1, acceptance M1-17).
- * One button back to the title. It never bypasses the parent gate: turning
- * online on happens only in Settings → Grown-ups (privacy sentence + gate).
+ * "Online play is off" — shown when an invite link (or the Online hub) is opened on a machine where a
+ * grown-up turned online play off (NETWORKING.md §10.1). One button back to the title. It never turns
+ * online play back on: that happens only in Settings → Grown-ups (behind the parent gate).
  *
- * Params: { returnTo? }.
- * OWNER: WS6 (session, lobby & screens).
+ * Params: { returnTo?, code? }.
+ * OWNER: online session & screens.
  */
 import './online.css';
 import { el, escapeHtml, hint, floatiesLayer } from '../dom.js';
@@ -24,9 +23,9 @@ export default {
     const node = el('div.sk-screen.skn-screen.skn-invite-gate', {},
       floatiesLayer(16, 77),
       el('div.skn-wait', {},
-        el('div.skn-wait-e', { 'aria-hidden': 'true' }, '💌'),
-        el('div.skn-wait-t', {}, 'A friend sent you an invite!'),
-        el('div.skn-wait-s', { html: escapeHtml(TEXT.inviteGate) }),
+        el('div.skn-wait-e', { 'aria-hidden': 'true' }, params.code ? '💌' : '🌙'),
+        el('div.skn-wait-t', {}, params.code ? 'A friend sent you an invite!' : 'Online play is resting'),
+        el('div.skn-wait-s', { html: escapeHtml(TEXT.onlineOff) }),
         btn),
       hintsBar([hint('A', 'Enter', 'Back to the title'), hint('B', 'Esc', 'Back')]),
     );

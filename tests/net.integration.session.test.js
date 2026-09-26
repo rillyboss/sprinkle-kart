@@ -1,7 +1,7 @@
 /**
  * WS7 acceptance M1-1 (NETWORKING.md §17 M1, §12): a host house and two guest houses ([[1], [2], [1]]) race a
- * whole Free Race over the in-memory transport at 150 ms RTT / 3 % loss using the real glue — sessions with
- * approval, composeSetup, SETUP / LOADED / START, host driver + ReplicaRaces, RESULT — and:
+ * whole Free Race over the in-memory transport at 150 ms RTT / 3 % loss using the real glue — sessions (friends
+ * with the code come straight in), composeSetup, SETUP / LOADED / START, host driver + ReplicaRaces, RESULT — and:
  *   - every machine sees exactly the host's results (order, places, finish times in ms),
  *   - every machine records only ITS OWN players (a guest never gets the host's win, and vice versa),
  *   - multiplayerRaces counts on every machine,
@@ -19,12 +19,10 @@ beforeAll(() => {
 });
 
 describe('online Free Race end to end (host + 2 guest houses, 150 ms / 3 % loss)', () => {
-  it('both guests were let in with the same match check on both screens', () => {
-    expect(s.approvals).toHaveLength(2);
-    for (const a of s.approvals) {
-      expect(a.promptAnimals).toBeTruthy();
-      expect(a.promptAnimals).toBe(a.guestAnimals);
-    }
+  it('both guests came straight in with the code — no approval step, each its own house', () => {
+    expect(s.joins).toHaveLength(2);
+    expect(s.joins.map((j) => j.houseId)).toEqual([1, 2]);
+    for (const j of s.joins) expect(j.afterMs).toBeLessThanOrEqual(800);
   });
 
   it('the setup has 4 humans (global indices 0..3, one per seat) + 4 CPUs, CPUs first', () => {

@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   phaseForScreen, desiredSeats, createDraftSync, fillMissingPicks, everyoneReady, canStart, createRoomRouter, createEventQueue,
   openHostRoom, joinGuestRoom, signalConfigFor, ONLINE_TEXT, HOST_RESULT_OPTIONS, GUEST_RESULT_OPTIONS, HOST_PAUSE_OPTIONS,
-  GUEST_PAUSE_OPTIONS, READY_TIMEOUT_MS, SESSION_TICK_MS,
+  GUEST_PAUSE_OPTIONS, READY_TIMEOUT_MS, SESSION_TICK_MS, HOST_CODE_TRIES, listingFor,
 } from '../src/online/onlineFlow.js';
 import { encodeSetup, encodeLoaded, encodeResult } from '../src/online/netRace.js';
 import { netStack } from '../src/online/stack.js';
@@ -15,7 +15,7 @@ import { createLobby, lobbyReduce } from '../src/net/session/lobby.js';
 import { jsonEncode } from '../src/net/session/wire.js';
 import { resolveSignalConfig } from '../src/net/signaling/index.js';
 import { createMemoryHub } from './helpers/netMemoryHub.js';
-import { NET_SECRET } from './helpers/headlessSession.js';
+import { NET_CODE } from './helpers/headlessSession.js';
 
 const lobbyWith = (players = 1) => lobbyReduce(createLobby({ label: 'SPRINKLE-4821' }), { type: 'house-join', isHost: true, players }).lobby;
 const draft = ({ players = [], picks = null, done = false } = {}) => ({
@@ -168,24 +168,23 @@ describe('room router', () => {
 });
 
 describe('opening and joining a room (in-memory transport)', () => {
-  it('host opens, guest knocks with the match check, host approves, both see one lobby', async () => {
+  it('host opens, a guest with the code comes straight in, both see one lobby', async () => {
     const hub = createMemoryHub({ seed: 2 });
     const hostEp = hub.endpoint('host0000host0000', 'host');
     const guestEp = hub.endpoint('guest000guest000', 'guest');
     let t = 0;
     const now = () => t;
-    const host = await openHostRoom({ progress: null, pickCpus: (n) => ['a', 'b', 'c', 'd', 'e', 'f', 'g'].slice(0, n), deps: { transport: hostEp, now, makeSecret: () => NET_SECRET } });
+    const host = await openHostRoom({ progress: null, pickCpus: (n) => ['a', 'b', 'c', 'd', 'e', 'f', 'g'].slice(0, n), deps: { transport: hostEp, now, makeCode: () => NET_CODE } });
     expect(host.role).toBe('host');
     expect(host.session.state.phase).toBe('lobby');
     expect(host.netCtx.role).toBe('host');
-    const guest = await joinGuestRoom({ secret: NET_SECRET, localPlayers: 2, deps: { transport: guestEp, now, platform: { userAgent: 'node', platform: 'Win32', maxTouchPoints: 0 } } });
+    const guest = await joinGuestRoom({ code: NET_CODE, localPlayers: 2, deps: { transport: guestEp, now, platform: { userAgent: 'node', platform: 'Win32', maxTouchPoints: 0 } } });
     expect(guest.session.state.phase).toBe('connecting');
     hub.link('host0000host0000', 'guest000guest000');
     t = 50; hub.advance(50);
-    const prompt = host.session.prompt();
-    expect(prompt?.peerId).toBe('guest000guest000');
-    host.session.dispatch({ type: 'approve', peerId: prompt.peerId, yes: true });
     t = 100; hub.advance(100);
+    expect(host.code).toBe(NET_CODE);
+    expect(host.session.lobby().label).toBe(NET_CODE);
     expect(guest.session.state.phase).toBe('joined');
     expect(guest.hostId()).toBe('host0000host0000');
     expect(host.peerOf(guest.session.state.houseId)).toBe('guest000guest000');
@@ -206,11 +205,11 @@ describe('opening and joining a room (in-memory transport)', () => {
 
   it('a room that cannot be reached turns into the friendly sentence (never a crash)', async () => {
     const guest = await joinGuestRoom({
-      secret: NET_SECRET,
+      code: NET_CODE,
       deps: { openOnline: async () => { const e = new Error('nope'); e.code = 'no-host'; throw e; }, deriveRoomIds: async () => ({ topic: 't', password: 'p', workerRoom: 'r' }), selfId: 'abcdabcdabcdabcd' },
     });
     expect(guest.session.state.phase).toBe('ended');
-    expect(guest.session.state.end.text).toMatch(/couldn't find that room/i);
+    expect(guest.session.state.end.text).toMatch(/couldn't find that game/i);
     expect(guest.router).toBe(null);
     guest.close();
   });
@@ -223,13 +222,77 @@ describe('opening and joining a room (in-memory transport)', () => {
       progress: { getSettings: () => ({ relayOnly: true }) }, pickCpus: () => [],
       signal: { signalUrl: 'https://signal.example', forced: null, relays: null },
       deps: {
-        makeSecret: () => NET_SECRET, selfId: 'host0000host0000',
-        deriveRoomIds: async (s) => { calls.push(['ids', s.label]); return { topic: 'sk-x', password: 'pw', workerRoom: 'r1' }; },
-        openOnline: async (o) => { calls.push(['open', o.role, o.relayOnly, o.signalUrl, o.ids.workerRoom]); return { transport: ep, signaling: { kind: 'worker', leave() {} } }; },
+        makeCode: () => NET_CODE, selfId: 'host0000host0000',
+        deriveRoomIds: async (c) => { calls.push(['ids', c]); return { code: c, topic: 'sk-x', password: 'pw', workerRoom: 'r1' }; },
+        openOnline: async (o) => { calls.push(['open', o.role, o.relayOnly, o.signalUrl, o.ids.workerRoom, o.listing]); return { transport: ep, signaling: { kind: 'worker', leave() {} } }; },
+      },
+      who: 'luna',
+    });
+    expect(calls).toEqual([['ids', NET_CODE], ['open', 'host', true, 'https://signal.example', 'r1', { on: true, who: 'luna', players: 1 }]]);
+    expect(host.signaling.kind).toBe('worker');
+    host.close();
+  });
+
+  it('a code the Worker says is taken is swapped for a fresh one (a few tries, then the friendly sentence)', async () => {
+    const hub = createMemoryHub({ seed: 5 });
+    const ep = hub.endpoint('host0000host0000', 'host');
+    const tried = [];
+    const codes = ['CAKE', 'BUNS', 'TART'];
+    const host = await openHostRoom({
+      progress: null, pickCpus: () => [],
+      deps: {
+        makeCode: (_rng, { avoid = [] } = {}) => { const c = codes.find((x) => !avoid.includes(x)); return c; },
+        selfId: 'host0000host0000',
+        deriveRoomIds: async (c) => ({ code: c, topic: 't', password: 'p', workerRoom: `r-${c}` }),
+        openOnline: async (o) => {
+          tried.push(o.ids.code);
+          if (o.ids.code !== 'TART') { const e = new Error('taken'); e.code = 'host-exists'; throw e; }
+          return { transport: ep, signaling: { kind: 'worker', leave() {} } };
+        },
       },
     });
-    expect(calls).toEqual([['ids', 'SPRINKLE-4821'], ['open', 'host', true, 'https://signal.example', 'r1']]);
-    expect(host.signaling.kind).toBe('worker');
+    expect(tried).toEqual(['CAKE', 'BUNS', 'TART']);
+    expect(host.code).toBe('TART');
+    expect(host.session.lobby().label).toBe('TART');
+    host.close();
+    let n = 0;
+    await expect(openHostRoom({
+      progress: null, pickCpus: () => [],
+      deps: {
+        makeCode: () => `CAK${'EFGHJ'[n++ % 5]}`, selfId: 'host0000host0000',
+        deriveRoomIds: async (c) => ({ code: c, topic: 't', password: 'p', workerRoom: 'r' }),
+        openOnline: async () => { const e = new Error('taken'); e.code = 'host-exists'; throw e; },
+      },
+    })).rejects.toMatchObject({ code: 'host-exists' });
+    expect(n).toBe(HOST_CODE_TRIES);
+  });
+
+  it('the host keeps its open-games entry in step with the lobby, and can hide / show the room', async () => {
+    const hub = createMemoryHub({ seed: 6 });
+    const ep = hub.endpoint('host0000host0000', 'host');
+    const sent = [];
+    const signaling = { kind: 'worker', leave() {}, canList: () => true, setListing: (l) => { sent.push(l); return true; } };
+    const host = await openHostRoom({
+      progress: null, pickCpus: () => [],
+      deps: {
+        makeCode: () => NET_CODE, selfId: 'host0000host0000',
+        deriveRoomIds: async (c) => ({ code: c, topic: 't', password: 'p', workerRoom: 'r' }),
+        openOnline: async () => ({ transport: ep, signaling }),
+      },
+    });
+    expect(host.netCtx.listing()).toEqual({ supported: true, on: true });
+    host.session.dispatch({ type: 'host-intent', intent: { kind: 'pick', seat: 0, characterId: 'luna' } });
+    expect(sent.at(-1)).toEqual({ on: true, who: 'luna', players: 1 });
+    host.netCtx.setListed(false);
+    expect(sent.at(-1)).toEqual({ on: false, who: 'luna', players: 1 });
+    expect(host.netCtx.listing()).toEqual({ supported: true, on: false });
+    const count = sent.length;
+    host.session.dispatch({ type: 'host-intent', intent: { kind: 'pick', seat: 0, characterId: 'luna' } }); // nothing new
+    expect(sent.length).toBe(count);
+    host.netCtx.setListed(true);
+    expect(sent.at(-1).on).toBe(true);
+    expect(listingFor(host.session.lobby())).toEqual({ on: true, who: 'luna', players: 1 });
+    expect(listingFor(null)).toEqual({ on: true, who: null, players: 1 });
     host.close();
   });
 

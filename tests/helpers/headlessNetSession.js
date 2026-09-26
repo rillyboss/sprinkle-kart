@@ -3,7 +3,7 @@
  * each with its own event bus, installed systems, fake audio / HUD and in-memory progress, talking over the
  * seeded in-memory NetTransport hub with network conditions. It uses the real glue the game uses:
  *
- *   WS6 sessions (HELLO → approval with the match check → WELCOME, seat / pick / ready intents,
+ *   WS6 sessions (HELLO → WELCOME straight away (friends with the code come in), seat / pick / ready intents,
  *   createHostNetContext().composeSetup → NetRaceSetup) → src/online/netRace.js (SETUP → Race on the host,
  *   ReplicaRace on each guest → LOADED → START, host driver / guest drivers) → race-complete →
  *   HostRaceSummary → RESULT → each machine localizes it and emits ITS OWN race-end (progress, goals, records).
@@ -28,7 +28,6 @@ import { installSystems, listSystems } from '../../src/systems/index.js';
 import { getCharacter } from '../../src/characters/index.js';
 import { createHostSession, createHostNetContext } from '../../src/net/session/hostSession.js';
 import { createGuestSession } from '../../src/net/session/guestSession.js';
-import { matchEmoji } from '../../src/net/session/approval.js';
 import { applyRaceSummary, applyGrandPrix, evaluateUnlocks, lineupEntries } from '../../src/progress/engine.js';
 import { emptyProgress, mergeProgress, defaultSettings } from '../../src/progress/schema.js';
 import { netStack } from '../../src/online/stack.js';
@@ -45,7 +44,7 @@ import { createMemoryHub } from './netMemoryHub.js';
 import { trackFixture, defaultRacerIds, stubKartModel } from './raceHarness.js';
 
 const FRAME_MS = 1000 / 60;
-export const NET_SECRET = Object.freeze({ label: 'SPRINKLE-4821', sweets: Object.freeze([3, 14, 15, 9, 26, 53]) });
+export const NET_CODE = 'CAKE';
 const NODE_PLATFORM = Object.freeze({ userAgent: 'node', platform: 'Win32', maxTouchPoints: 0 });
 
 /**
@@ -137,30 +136,27 @@ export function runHeadlessNetSession({
   // ---------------------------------------------------------------- lobby (WS6 sessions)
   const hostEp = hub.endpoint('host0000host0000', 'host');
   const host = makeMachine('host', systems);
-  const hostSession = createHostSession({ transport: hostEp, secret: NET_SECRET, hostPlayers: houses[0][0], now });
+  const hostSession = createHostSession({ transport: hostEp, code: NET_CODE, hostPlayers: houses[0][0], now });
   hostSession.dispatch({ type: 'open' });
   hostSession.dispatch({ type: 'opened' });
   const hostNet = createHostNetContext(hostSession, { makeSeed: () => (seed * 2654435761) >>> 0, pickCpus: (n) => defaultRacerIds(8).slice(8 - n) });
-  const approvals = [];
+  const joins = [];
   const guests = houses.slice(1).map(([n], gi) => {
     const id = `guest${String(gi + 1).padStart(3, '0')}guest000`.slice(0, 16);
     const ep = hub.endpoint(id, 'guest');
     const machine = makeMachine(`guest${gi + 1}`, systems);
-    const session = createGuestSession({ transport: ep, secret: NET_SECRET, localPlayers: n, now, platform: NODE_PLATFORM });
+    const session = createGuestSession({ transport: ep, code: NET_CODE, localPlayers: n, now, platform: NODE_PLATFORM });
     return { gi, id, ep, machine, session, players: n, race: null, net: null, pending: createPendingBytes(), resultMsg: null, localSummary: null };
   });
   for (const g of guests) {
     hub.setPath('host0000host0000', g.id, conditions);
     g.session.dispatch({ type: 'connect' });
     hub.link('host0000host0000', g.id);
+    const knockedAt = t;
     advance(t + 400);
-    const prompt = hostSession.prompt();
-    const guestSees = matchEmoji(g.session.state.match);
-    approvals.push({ guest: g.gi, promptAnimals: prompt?.animals ?? null, guestAnimals: guestSees, prompt });
-    if (!prompt) throw new Error(`guest ${g.gi} never reached the approval prompt`);
-    hostSession.dispatch({ type: 'approve', peerId: prompt.peerId, yes: true });
     advance(t + 400);
     if (g.session.state.phase !== 'joined') throw new Error(`guest ${g.gi} not joined (${g.session.state.phase})`);
+    joins.push({ guest: g.gi, houseId: g.session.state.houseId, afterMs: t - knockedAt });
   }
 
   // picks: distinct racers, everyone ready (host house via host-intent, guests via intents)
@@ -335,7 +331,7 @@ export function runHeadlessNetSession({
   });
   const out = {
     setup,
-    approvals,
+    joins,
     hostSummary,
     pauseLog,
     frozen,

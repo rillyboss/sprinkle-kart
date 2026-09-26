@@ -21,8 +21,7 @@ export const ROWS = {
   kidAssist: ['✨', 'Kid-Assist for new players', 'Always full gas + extra steering help'],
   unlockAll: ['🎁', 'Unlock everything', 'Every racer and track, right away'],
   reset: ['🧹', 'Start a fresh Sticker Book', 'Clears stickers, trophies and totals'],
-  online: ['🌐', 'Online play with friends', 'Race friends in other houses with a secret room code'],
-  approvalGate: ['🚪', 'Only a grown-up can let houses in', 'Saying yes to a new house needs the grown-up question'],
+  online: ['🌐', 'Online play with friends', 'Turn it off to hide Online on the title screen'],
   relayOnly: ['🛟', 'Use the relay for game traffic', TEXT.relayHint],
   back: ['🏠', 'Back', ''],
 };
@@ -41,8 +40,7 @@ export function applySettingsEffects(ctx, effects = []) {
         pr?.setSettings?.({ music: e.music, sfx: e.sfx });
         ctx.audio?.setVolume?.({ music: e.music, sfx: e.sfx });
       } else if (e.type === 'kidAssist') pr?.setSettings?.({ kidAssistDefault: !!e.on });
-      else if (e.type === 'online') pr?.setSettings?.({ onlineEnabled: !!e.on });
-      else if (e.type === 'approvalGate') pr?.setSettings?.({ approvalGate: !!e.on });
+      else if (e.type === 'online') pr?.setSettings?.({ onlineOff: !e.on });
       else if (e.type === 'relayOnly') pr?.setSettings?.({ relayOnly: !!e.on });
       else if (e.type === 'unlockAll') pr?.setUnlockAll?.(!!e.on);
       else if (e.type === 'reset') pr?.resetProgress?.({ keepSettings: true });
@@ -90,8 +88,8 @@ export default {
         else if (key === 'kidAssist') ctl = pill(state.kidAssist);
         else if (key === 'unlockAll') ctl = state.unlockAll ? pill(true, 'ALL OPEN') : '<span class="skp-lockchip">🔒 Grown-ups only</span>';
         else if (key === 'reset') ctl = '<span class="skp-lockchip">🔒 Grown-ups only</span>';
-        else if (key === 'online') ctl = state.online ? pill(true) : '<span class="skp-lockchip">🔒 Grown-ups only</span>';
-        else if (key === 'approvalGate' || key === 'relayOnly') ctl = pill(state[key]);
+        else if (key === 'online') ctl = pill(state.online);
+        else if (key === 'relayOnly') ctl = pill(state[key]);
         rowEls[i].innerHTML = `<span class="skp-set-e">${emoji}</span><span class="skp-set-t">${escapeHtml(title)}${help ? `<small>${escapeHtml(help)}</small>` : ''}</span>${ctl}`;
         rowEls[i].classList.toggle('sk-sel', i === state.row && !state.modal);
       });
@@ -130,22 +128,10 @@ export default {
           e.stopPropagation();
           handle({ deviceId: 'mouse', action: 'select', index: Number(b.dataset.i) });
         }));
-      } else if (state.modal === 'privacy') {
-        modal.innerHTML = '<div class="skp-card skp-confirm skn-privacy">'
-          + '<div class="skp-gate-k">Online play with friends 🌐</div>'
-          + `<div class="skp-confirm-t skn-privacy-t">${escapeHtml(TEXT.privacy)}</div>`
-          + '<div class="skp-confirm-b">'
-          + `<button class="skp-btn ${state.confirmIndex === 0 ? 'sk-sel' : ''}" data-i="0">🌐 ${escapeHtml(TEXT.privacyOk)}</button>`
-          + `<button class="skp-btn ${state.confirmIndex === 1 ? 'sk-sel' : ''}" data-i="1">💖 ${escapeHtml(TEXT.privacyNo)}</button>`
-          + '</div></div>';
-        modal.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', (e) => {
-          e.stopPropagation();
-          handle({ deviceId: 'mouse', action: 'select', index: Number(b.dataset.i) });
-        }));
       } else if (state.modal === 'done' && state.gateFor === 'online') {
-        modal.innerHTML = '<div class="skp-card skp-done"><div class="skp-done-e">🌐🎉</div>'
-          + '<div class="skp-gate-k">Online play is on!</div>'
-          + '<div class="skp-confirm-t">Find "Online" on the title screen. Only friends with your secret room code can ask to join 💖</div>'
+        modal.innerHTML = '<div class="skp-card skp-done skn-privacy"><div class="skp-done-e">🌐🎉</div>'
+          + '<div class="skp-gate-k">Online play is on again!</div>'
+          + `<div class="skp-confirm-t skn-privacy-t">${escapeHtml(TEXT.privacy)}</div>`
           + `<div class="sk-press">Press ${glyph('A')} or ${kbd('Enter')}</div></div>`;
         modal.firstChild?.addEventListener?.('click', (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'confirm' }); });
       } else if (state.modal === 'done') {

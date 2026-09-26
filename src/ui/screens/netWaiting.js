@@ -1,7 +1,6 @@
 /**
  * net-waiting — the generic "please wait" screen of online play (NETWORKING.md §10.1, §10.4):
  *   mode 'connecting'   "Knocking on the door… 🚪" while signaling / ICE run
- *   mode 'approval'     "Waiting for the host… show them 🦊🐸" (the match check, big)
  *   mode 'picking'      "Host is picking a mode… 🎨" — guests see this for host-only screens
  *                       (Menus.goto routes ScreenDef.net.role === 'host' here; `forId` names it)
  *   mode 'waiting'      "Waiting for the host… ⏳" (host tab hidden / snack break)
@@ -9,8 +8,8 @@
  * B asks to leave the room (ctx.online.leave(), else back to the Online hub).
  * FOCUS previews of the host's card are milestone M3.
  *
- * Params: { mode?, forId?, text?, animals?, label?, sub? }.
- * OWNER: WS6 (session, lobby & screens).
+ * Params: { mode?, forId?, text?, label?, sub? }.
+ * OWNER: online session & screens.
  */
 import './online.css';
 import { el, escapeHtml, hint, floatiesLayer } from '../dom.js';
@@ -30,10 +29,6 @@ export function waitingView(params = {}) {
   const mode = params.mode ?? (params.forId ? 'picking' : 'waiting');
   switch (mode) {
     case 'connecting': return { mode, emoji: '🚪', text: params.text ?? TEXT.knocking, sub: params.label ? `Room ${params.label}` : '' };
-    case 'approval': return {
-      mode, emoji: '', animals: params.animals ?? '', text: params.text ?? TEXT.showHost(params.animals ?? ''),
-      sub: 'The host will ask your grown-up if they see the same two animals 📞',
-    };
     case 'picking': return { mode, emoji: '🎨', text: params.text ?? HOST_SCREEN_TEXT[params.forId] ?? TEXT.hostPicking.default, sub: params.sub ?? 'Get ready to cheer! 📣' };
     case 'reconnecting': return { mode, emoji: '🔌', text: params.text ?? TEXT.reconnecting, sub: '' };
     default: return { mode: 'waiting', emoji: '⏳', text: params.text ?? TEXT.hostWaiting, sub: params.sub ?? '' };
@@ -53,7 +48,7 @@ export default {
     const node = el('div.sk-screen.skn-screen.skn-waiting', {},
       floatiesLayer(14, 64),
       el('div.skn-wait', {},
-        v.animals ? el('div.skn-animals', { 'aria-label': 'match check' }, v.animals) : el('div.skn-wait-e', { 'aria-hidden': 'true' }, v.emoji),
+        el('div.skn-wait-e', { 'aria-hidden': 'true' }, v.emoji),
         el('div.skn-wait-t', { html: `${escapeHtml(v.text)}` }),
         v.sub ? el('div.skn-wait-s', {}, v.sub) : null,
         el('div.skn-wait-s.skn-dots', {}, v.mode === 'picking' ? '' : 'Hang on')),

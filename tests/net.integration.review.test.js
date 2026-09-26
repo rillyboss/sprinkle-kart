@@ -20,7 +20,7 @@ import { netStack } from '../src/online/stack.js';
 import { jsonEncode } from '../src/net/session/wire.js';
 import { TEXT, allTexts } from '../src/net/session/texts.js';
 import { createMemoryHub } from './helpers/netMemoryHub.js';
-import { NET_SECRET } from './helpers/headlessSession.js';
+import { NET_CODE } from './helpers/headlessSession.js';
 import { netHudModel, NET_HUD_TEXT } from '../src/systems/netHud.js';
 import { modeSelectEntries } from '../src/ui/screens/modeSelect.js';
 import { hubTips } from '../src/ui/screens/online.js';
@@ -32,18 +32,18 @@ const PC = { userAgent: 'node', platform: 'Win32', maxTouchPoints: 0 };
 const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 const netRaceSrc = main.slice(main.indexOf('function startNetRace('), main.indexOf('\nboot();'));
 
-/** A host room + one guest room on the in-memory hub, approved and joined, with SESSION ticks on a fake clock. */
+/** A host room + one guest room on the in-memory hub, joined (no approval step), with SESSION ticks on a fake clock. */
 async function joinedRoom({ openOnline } = {}) {
   const hub = createMemoryHub({ seed: 4 });
   const hostEp = hub.endpoint('host0000host0000', 'host');
   let t = 0;
   const now = () => t;
-  const host = await openHostRoom({ progress: null, pickCpus: (n) => Array.from({ length: n }, (_, i) => `cpu${i}`), deps: { transport: hostEp, now, makeSecret: () => NET_SECRET } });
+  const host = await openHostRoom({ progress: null, pickCpus: (n) => Array.from({ length: n }, (_, i) => `cpu${i}`), deps: { transport: hostEp, now, makeCode: () => NET_CODE } });
   let guestEp = null;
   const deps = openOnline
     ? { openOnline: (o) => openOnline(hub, o), deriveRoomIds: async () => ({ topic: 't', password: 'p', workerRoom: 'r' }), now, platform: PC, tokenStore: null, selfId: 'guest000guest000', makePeerId: (() => { let n = 0; return () => `guest${String(++n).padStart(3, '0')}again0000`.slice(0, 16); })() }
     : { transport: (guestEp = hub.endpoint('guest000guest000', 'guest')), now, platform: PC, tokenStore: null };
-  const guest = await joinGuestRoom({ secret: NET_SECRET, localPlayers: 1, deps });
+  const guest = await joinGuestRoom({ code: NET_CODE, localPlayers: 1, deps });
   if (!openOnline) hub.link('host0000host0000', 'guest000guest000');
   const run = (ms) => {
     const end = t + ms;
@@ -63,8 +63,6 @@ async function joinedRoom({ openOnline } = {}) {
     }
   };
   run(500);
-  const prompt = host.session.prompt();
-  host.session.dispatch({ type: 'approve', peerId: prompt.peerId, yes: true });
   run(500);
   return { hub, host, guest, guestEp, hostEp, run, runAsync, get t() { return t; } };
 }
@@ -131,7 +129,7 @@ describe('#2 host pause → lobby / start over ends every guest race at once', (
 });
 
 describe('#6 reconnect: a fresh connection, the same house, the race hands the karts back', () => {
-  it('joinGuestRoom opens a NEW matchmaker + selfId per attempt; HELLO with the ticket re-attaches without approval', async () => {
+  it('joinGuestRoom opens a NEW matchmaker + selfId per attempt; HELLO with the ticket re-attaches the same house', async () => {
     const opened = [];
     const r = await joinedRoom({
       openOnline: async (hub, o) => {
@@ -155,7 +153,7 @@ describe('#6 reconnect: a fresh connection, the same house, the race hands the k
     expect(new Set(opened).size).toBe(opened.length); // never the old, dying id
     expect(r.guest.session.state.phase).toBe('joined');
     expect(r.guest.session.state.houseId).toBe(houseId);
-    expect(r.host.session.prompt()).toBe(null);
+    expect(r.host.session.lobby().houses).toHaveLength(2); // the same house came back, no second one
     expect(reattached.map((e) => e.houseId)).toEqual([houseId]);
     expect(r.guest.hostId()).toBe('host0000host0000');
   });
@@ -186,18 +184,18 @@ describe('#6 reconnect: a fresh connection, the same house, the race hands the k
     const mem = new Map();
     const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) };
     const store = sessionTicketStore(storage);
-    store.save(NET_SECRET, 'f'.repeat(32));
+    store.save(NET_CODE, 'f'.repeat(32));
     expect(JSON.parse(mem.get(TICKET_KEY)).token).toBe('f'.repeat(32));
-    expect(store.load(NET_SECRET)).toBe('f'.repeat(32));
-    expect(store.load({ label: 'SPRINKLE-1111', sweets: [1, 2, 3, 4, 5, 6] })).toBe(null);
-    store.clear({ label: 'OTHER-0000', sweets: [] });
-    expect(store.load(NET_SECRET)).toBe('f'.repeat(32));
-    store.clear(NET_SECRET);
-    expect(store.load(NET_SECRET)).toBe(null);
+    expect(store.load(NET_CODE)).toBe('f'.repeat(32));
+    expect(store.load('BUNS')).toBe(null);
+    store.clear('TART');
+    expect(store.load(NET_CODE)).toBe('f'.repeat(32));
+    store.clear(NET_CODE);
+    expect(store.load(NET_CODE)).toBe(null);
     const broken = sessionTicketStore({ getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } });
-    expect(() => broken.save(NET_SECRET, 'a'.repeat(32))).not.toThrow();
-    expect(broken.load(NET_SECRET)).toBe(null);
-    expect(sessionTicketStore(null).load(NET_SECRET)).toBe(null);
+    expect(() => broken.save(NET_CODE, 'a'.repeat(32))).not.toThrow();
+    expect(broken.load(NET_CODE)).toBe(null);
+    expect(sessionTicketStore(null).load(NET_CODE)).toBe(null);
   });
 
   it('the transport proxy forwards to whichever transport is current and forgets the old one', () => {

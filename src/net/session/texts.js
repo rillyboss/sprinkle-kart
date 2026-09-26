@@ -13,8 +13,7 @@ export const TEXT = Object.freeze({
   // §13.5
   full: 'This room is full of racers 🚗',
   closed: "The host's room is closed for now 🔒",
-  doorTimeout: "The host didn't open the door this time 🚪",
-  notFound: "We couldn't find that room. Check the code and the secret sweets? 🔍 If it still won't work, ask everyone to refresh 🔄",
+  notFound: "We couldn't find that game. Check the 4 letters? 🔍 If it still won't work, ask everyone to refresh 🔄",
   unreachable: "Couldn't reach the matchmaker 🙈",
   noConnect: "We couldn't connect your houses 🙈",
   noConnectTips: [
@@ -28,14 +27,11 @@ export const TEXT = Object.freeze({
   hostWaiting: 'Waiting for the host… ⏳',
   snackBreak: "Snack break at the host's house 🍪",
   keepTabOpen: "Keep this tab open, you're the host! 🏁",
-  // §1 rule 3 / §7.1
-  askFriend: (animals) => `Ask your friend: do you see ${animals}? Let them in?`,
-  showHost: (animals) => `Waiting for the host… show them ${animals}`,
+  // §7.1
   knocking: 'Knocking on the door… 🚪',
-  wantsToJoin: '🏡 wants to join',
   // §10.9
   roomLocked: 'Room locked 🔒 — tap to open again',
-  roomOpen: 'Room open 🔓 — friends with the invite can ask to join',
+  roomOpen: 'Room open 🔓 — friends with the code can hop in',
   // §10.4
   hostPicking: {
     mode: 'Host is picking a mode… 🎨',
@@ -44,10 +40,20 @@ export const TEXT = Object.freeze({
   },
   waitingForHost: 'Waiting for host…',
   // §10.1
-  inviteGate: 'Ask a grown-up to turn on online play in Settings → Grown-ups 🔒',
-  joinInvite: (label) => `Join 🏡 ${label}?`,
+  onlineOff: 'Online play is turned off on this computer. A grown-up can turn it back on in Settings → Grown-ups 🔒',
+  joinInvite: (code) => `Join ${code}?`,
   copied: 'Invite link copied! 📋 Send it to your friends.',
   copyFallback: 'Copy this link and send it to your friends 📋',
+  // §10.1 the Join screen
+  openGames: 'Games you can join',
+  noOpenGames: 'No games to join yet. Ask your friend to press Host a game 🏰 — or type their code!',
+  lookingForGames: 'Looking for games… 🔎',
+  typeCode: 'Type a code',
+  codeHelp: 'Type the 4 big letters on your friend\'s screen',
+  friendsGame: (name) => `${name}'s game`,
+  someonesGame: "A friend's game",
+  listShown: '👀 Shown in "Games you can join"',
+  listHidden: '🙈 Hidden — friends type the code',
   // §13.5 (see also src/net/platform.js)
   hostNeedsComputer: 'Hosting needs a computer 💻 — you can still join!',
   comingSoon: 'Online play is almost ready — check back soon! ✨',
@@ -57,13 +63,12 @@ export const TEXT = Object.freeze({
   // §13.2: this machine's own connection is down (not the host's fault)
   netNap: 'Your internet took a nap 📶 Reconnecting… 🔌',
   netNapEnd: 'Your internet took a nap 📶 Check the Wi-Fi, then join again!',
-  // §1 rule 6 (acceptance M1-12): shown BEFORE online can be switched on
+  // §1 rule 6 (acceptance M1-12): on the Online hub (before hosting or joining) and in Settings → Grown-ups
   privacy:
     'Online play sends no names, no chat, no accounts and no analytics. Like any video call, it shows your internet address '
     + "to your friends' computers, to free public matchmaking services run by other people (and public STUN servers from Google "
     + 'and Cloudflare) — or to our own Cloudflare server instead, once a grown-up sets it up.',
-  privacyOk: 'Okay, turn it on',
-  privacyNo: 'Not now',
+  privacyShort: "Online play sends no names and no chat. Like a video call, your friends' computers can see your internet address.",
   relayHint: "Hides your address from your friends' computers (the matchmaker still sees it)",
 });
 
@@ -84,11 +89,12 @@ export const LOBBY_EMOTES = Object.freeze([
 
 /** Friendly sentence for a REJECT reason (§6.2) + optional detail. */
 export function rejectText(reason, detail = null) {
+  void detail;
   switch (reason) {
     case 'version': return TEXT.version;
     case 'full':
     case 'in-race-full': return TEXT.full;
-    case 'declined': return detail === 'timeout' ? TEXT.doorTimeout : TEXT.closed;
+    case 'declined': return TEXT.closed;
     case 'locked': return TEXT.closed;
     case 'removed': return TEXT.removed;
     case 'host-leaving': return TEXT.hostGone;
@@ -109,12 +115,12 @@ export function signalingErrorText(code) {
   }
 }
 
-/** Every plain string in the catalogue (functions called with sample emoji) — for tone tests. */
+/** Every plain string in the catalogue (functions called with a sample value) — for tone tests. */
 export function allTexts() {
   const list = [];
   const visit = (v) => {
     if (typeof v === 'string') list.push(v);
-    else if (typeof v === 'function') list.push(String(v('🦊🐸')));
+    else if (typeof v === 'function') list.push(String(v('CAKE')));
     else if (Array.isArray(v)) v.forEach(visit);
     else if (v && typeof v === 'object') Object.values(v).forEach(visit);
   };

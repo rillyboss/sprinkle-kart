@@ -3,8 +3,10 @@
  *
  * - `chooseSignaling({ signalUrl, health })` → ordered kinds: a build with `VITE_SIGNAL_URL`
  *   uses `['worker', 'public']`, a build without it `['public']`.
- * - The HOST joins every kind at once (so a guest on an old cached build, or a guest whose
- *   Worker is down, still finds it on public signaling).
+ * - The HOST joins the Worker first and public signaling as soon as the Worker answered (so a guest on
+ *   an old cached build, or a guest whose Worker is down, still finds it on public signaling). A Worker
+ *   `host-exists` means the room code is already taken: the whole join fails with it, so the caller can pick
+ *   another code before anyone meets the other room on public signaling.
  * - A GUEST starts the Worker, then adds public signaling 4 s later — at once when `/health`
  *   failed or the Worker said it doesn't know the room. The guest uses ONE selfId on both; the
  *   first RTCPeerConnection whose two channels open wins (the WebRtcTransport decides and calls
@@ -44,6 +46,8 @@ export function signalingSchedule({ kinds, role, health, guestPublicDelayMs = GU
   const out = {};
   for (const k of kinds) out[k] = 0;
   if (role === 'guest' && kinds.includes('worker') && kinds.includes('public') && health?.ok !== false) out.public = guestPublicDelayMs;
+  // The host's public join waits for the Worker's answer (Infinity = "after the Worker", see createDualSignaling).
+  if (role === 'host' && kinds.includes('worker') && kinds.includes('public')) out.public = Infinity;
   return out;
 }
 
@@ -160,7 +164,8 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
           if (joined) return;
           resolved = true;
           const errs = subs.map((s) => s.error).filter(Boolean);
-          const pick = errs.find((e) => DEFINITIVE.has(e.code)) ?? errs.find((e) => e.code !== 'unreachable') ?? errs[0];
+          const pick = errs.find((e) => e.code === 'host-exists' && role === 'host') ?? errs.find((e) => DEFINITIVE.has(e.code))
+            ?? errs.find((e) => e.code !== 'unreachable') ?? errs[0];
           reject(pick ?? new SignalingError('unreachable'));
         };
         const start = (s) => {
@@ -182,6 +187,10 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
                 s.state = 'joined';
                 s.result = r;
                 if (s.kind === 'worker' && r?.iceServers?.length) sub('public')?.t.setIceServers?.(r.iceServers);
+                if (role === 'host' && s.kind === 'worker') {
+                  const p = sub('public');
+                  if (p && p.state === 'scheduled') start(p);
+                }
                 if (!resolved) {
                   resolved = true;
                   resolve({ iceServers: r?.iceServers ?? opts.iceServers ?? publicIceServers() });
@@ -191,6 +200,15 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
                 if (s.state === 'left') return;
                 s.state = 'failed';
                 s.error = err instanceof SignalingError ? err : new SignalingError('unreachable', { kind: s.kind, cause: err });
+                if (role === 'host' && s.kind === 'worker') {
+                  if (s.error.code === 'host-exists') {
+                    // This code is taken on the Worker: never open the same code on public signaling.
+                    for (const o of subs) if (o !== s) leaveSub(o);
+                  } else {
+                    const p = sub('public');
+                    if (p && p.state === 'scheduled') start(p);
+                  }
+                }
                 if (role === 'guest' && s.kind === 'worker') {
                   if (DEFINITIVE.has(s.error.code)) {
                     // The host is on the Worker and said no: don't knock on the other door.
@@ -206,7 +224,8 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
         };
         for (const s of subs) {
           const delay = schedule[s.kind] ?? 0;
-          if (delay > 0) {
+          if (delay === Infinity) s.state = 'scheduled'; // started by the Worker's answer
+          else if (delay > 0) {
             s.state = 'scheduled';
             s.timer = timers.setTimeout(() => start(s), delay);
           } else start(s);
@@ -223,6 +242,14 @@ export function createDualSignaling({ transports, kinds, health = null, guestPub
     setLocked(locked) {
       for (const s of subs) if (s.state === 'joined') s.t.setLocked(locked);
     },
+    /** Host: the open-games list entry (only a Worker with the list uses it). */
+    setListing(l) {
+      let sent = false;
+      for (const s of subs) if (s.state === 'joined' && typeof s.t.setListing === 'function') sent = s.t.setListing(l) || sent;
+      return sent;
+    },
+    /** Is this room in the Worker's open-games list? */
+    canList: () => subs.some((s) => s.state === 'joined' && typeof s.t.canList === 'function' && s.t.canList()),
     async refreshIce() {
       const w = sub('worker');
       if (w && w.state === 'joined') return w.t.refreshIce();
@@ -316,9 +343,10 @@ export async function createSignaling({ signalUrl, health = null, forced = null,
  * @param {'worker'|'public'|null} [o.forced]
  * @param {string[]|null} [o.relays]
  * @param {RTCIceServer[]} [o.iceServers]
+ * @param {{ on: boolean, who: string|null, players: number }|null} [o.listing]  host: open-games entry
  * @param {object} [o.deps]
  */
-export async function openOnline({ role, selfId, ids, relayOnly = false, signalUrl = null, health = null, forced = null, relays = null, iceServers, deps = {} }) {
+export async function openOnline({ role, selfId, ids, relayOnly = false, signalUrl = null, health = null, forced = null, relays = null, iceServers, listing = null, deps = {} }) {
   const signaling = deps.signaling ?? (await createSignaling({ signalUrl, health, forced, relays, deps }));
   const { createWebRtcTransport } = await import('../transport/webrtc.js');
   const transport = createWebRtcTransport({
@@ -330,7 +358,7 @@ export async function openOnline({ role, selfId, ids, relayOnly = false, signalU
     ...(deps.timers ? { timers: deps.timers } : {}),
   });
   try {
-    const joined = await signaling.join({ ids, role, selfId, iceServers: iceServers ?? publicIceServers(), relayOnly });
+    const joined = await signaling.join({ ids, role, selfId, iceServers: iceServers ?? publicIceServers(), relayOnly, listing });
     return { transport, signaling, joined };
   } catch (err) {
     transport.close();

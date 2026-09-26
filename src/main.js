@@ -72,6 +72,7 @@ import { demoContent } from './game/demoContent.js';
 // Online (WS7, NETWORKING.md §10): only tiny pure helpers are imported up front; the network code itself
 // (matchmakers, WebRTC, netcode) loads with import('./online/index.js') once Online is opened.
 import { startupInvite, createInviteMemory } from './net/session/inviteLink.js';
+import { isOnlineOn } from './progress/schema.js';
 import { setLabelContext, clearLabelContext } from './net/session/playerLabel.js';
 import { createJoinState } from './ui/menuState.js';
 import { paintStore, paintFor } from './modes/paint.js';
@@ -79,22 +80,22 @@ import { paintStore, paintFor } from './modes/paint.js';
 const params = parseDebugParams(typeof location !== 'undefined' ? location.search : '');
 if (params.unlockReset) progress.resetProgress();
 
-// `#join=` invite links (NETWORKING.md §10.1): read ONCE at start-up and cleared from the address bar right
-// away, so a reload or a screenshot never keeps it. Online on → the Online hub asks "Join 🏡 …?"; online
-// off → the "ask a grown-up" screen (never a way around the parent gate). The secret stays in memory only.
+// `?join=CAKE` invite links (NETWORKING.md §10.1): read ONCE at start-up and removed from the address bar
+// right away, so a reload does not knock again. Online on (the default) → straight into that room; online
+// turned off by a grown-up → the "online play is off" screen (the code is remembered for this page load).
 const startInvite = readStartupInvite();
 const inviteMemory = createInviteMemory();
-if (startInvite?.screen === 'invite-gate') inviteMemory.remember(startInvite.secret);
+if (startInvite?.screen === 'invite-gate') inviteMemory.remember(startInvite.code);
 
 function readStartupInvite() {
   if (typeof location === 'undefined') return null;
-  let onlineEnabled = false;
-  try { onlineEnabled = !!progress.getSettings().onlineEnabled; } catch { /* storage off: online off */ }
-  const r = startupInvite({ hash: location.hash, pathname: location.pathname, search: location.search, onlineEnabled });
+  let onlineOn = true;
+  try { onlineOn = isOnlineOn(progress.getSettings()); } catch { /* storage off: defaults */ }
+  const r = startupInvite({ search: location.search, hash: location.hash, pathname: location.pathname, onlineOn });
   for (const e of r.effects) {
     if (e.type === 'replaceState') { try { history.replaceState(history.state, '', e.url); } catch { /* ignore */ } }
   }
-  return r.screen ? r : null;
+  return r.screen || r.join ? r : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -267,7 +268,9 @@ async function flow() {
   let skipTitle = false;
   let setup = null;
   // a screen to open right after the menus start (an invite link, or back to the Online hub after a room)
-  let startAt = startInvite ? { id: startInvite.screen, params: startInvite.params } : null;
+  let startAt = startInvite?.screen ? { id: startInvite.screen, params: startInvite.params } : null;
+  // an invite link with online on: hop straight into that room (no presses)
+  let autoJoin = startInvite?.join ? startInvite.code : null;
 
   if (wantsQuickStart(params) && !startAt) {
     setup = quickSetup(params, input, CHARACTERS, TRACKS, { cups: CUPS });
@@ -283,6 +286,7 @@ async function flow() {
       onlineRequest = request;
       const run = menus.run({ skipTitle, previous });
       if (startAt) { menus.goto(startAt.id, startAt.params); startAt = null; }
+      if (autoJoin) { request.resolve({ role: 'guest', code: autoJoin }); autoJoin = null; }
       const raw = await Promise.race([run, request.promise.then((r) => ({ __online: r }))]);
       onlineRequest = null;
       if (raw?.__online) {
@@ -807,10 +811,11 @@ function withoutEdges(inputs) {
 /* Online play (WS7, NETWORKING.md §9–§13)                             */
 /* ------------------------------------------------------------------ */
 //
-//   Online hub → Host a game → runOnlineHost: open a room, lobby (approve / remove / lock), "Let's pick!"
+//   Online hub → Host a game → runOnlineHost: open a room (a 4-letter code), lobby (remove / lock / list), "Let's pick!"
 //     → this machine's menus (join → mode → racers → track) with ctx.net → wait for friends' picks →
 //     NetRaceSetup → startNetRace (Race + host driver) → results (host decides again / next / lobby)
-//   Online hub → Join → runOnlineGuest: knock (match check) → lobby → PHASE-driven picking (join + racers)
+//   Online hub → Join (a game from the list, a code, or an invite link) → runOnlineGuest: knock → lobby →
+//     PHASE-driven picking (join + racers)
 //     → SETUP → startNetRace (ReplicaRace + guest driver) → RESULT (localized) → the host's CHOICE
 //
 // Offline play never enters this section: `online` stays null and startRace() is untouched. Online races
@@ -827,7 +832,20 @@ function deferred() {
 }
 
 function onlineEnabledNow() {
-  try { return !!progress.getSettings().onlineEnabled; } catch { return false; }
+  try { return isOnlineOn(progress.getSettings()); } catch { return true; }
+}
+
+/** Could this build show "Games you can join"? (our Worker is configured; the list itself may still be off) */
+function workerListPossible() {
+  try { if (import.meta.env?.VITE_SIGNAL_URL) return true; } catch { /* not a Vite build */ }
+  try { return /[?&]signal=worker\b/.test(location.search); } catch { return false; }
+}
+
+/** The host P1's last racer (shown in the open-games list until they pick again). */
+function lastHostRacer() {
+  const picks = [...(menus?.draft?.charPicks ?? [])].sort((a, b) => (a?.playerIndex ?? 0) - (b?.playerIndex ?? 0));
+  const id = picks.find((p) => typeof p?.characterId === 'string')?.characterId;
+  return typeof id === 'string' ? id : null;
 }
 
 /**
@@ -847,11 +865,18 @@ if (typeof window !== 'undefined') window.addEventListener('pagehide', sayByeOnP
 function installOnlineActions(m) {
   m.online = {
     host: () => { if (!online && onlineEnabledNow()) onlineRequest?.resolve({ role: 'host' }); },
-    join: (secret) => { if (!online && onlineEnabledNow()) onlineRequest?.resolve({ role: 'guest', secret }); },
+    join: (code) => { if (!online && onlineEnabledNow()) onlineRequest?.resolve({ role: 'guest', code }); },
     pick: () => online?.onPick?.(),
     leave: () => { if (online) online.leave(); else m.goto('online-hub'); },
+    /** "Games you can join": our Worker's open-games list ({ supported: false } without one). */
+    listRooms: async () => {
+      const mod = await loadOnline();
+      return mod.fetchOpenRooms({ signalUrl: signalConfig(mod).signalUrl });
+    },
+    /** false = no Worker in this build: Join goes straight to "Type a code". */
+    get canList() { return workerListPossible(); },
   };
-  // After a grown-up turned online on, the Online hub offers a remembered invite once (§10.1).
+  // After a grown-up turned online back on, the Online hub offers a remembered invite once (§10.1).
   const baseGoto = m.goto.bind(m);
   m.goto = (id, p = {}) => {
     if (id === 'online-hub' && !p?.invite && onlineEnabledNow() && inviteMemory.peek()) return baseGoto(id, { ...p, invite: inviteMemory.take() });
@@ -896,7 +921,7 @@ async function runOnline(req) {
     console.error('[online] could not load', err);
     return { message: "Couldn't reach the matchmaker 🙈" };
   }
-  return req.role === 'host' ? runOnlineHost(mod) : runOnlineGuest(mod, req.secret);
+  return req.role === 'host' ? runOnlineHost(mod) : runOnlineGuest(mod, req.code);
 }
 
 /** Shared per-room state + the per-frame housekeeping (onlineTick). */
@@ -935,7 +960,7 @@ function createOnlineState(mod, room) {
     if (e.type === 'emote') bus.emit('net-emote', { globalPi: e.globalPi, emote: e.emote, local: state.localPis().includes(e.globalPi) });
     if (e.type === 'net-state') { state.reconnecting = !!e.reconnecting; state.reconnectText = e.text || ''; }
   });
-  // Session housekeeping (KEEP heartbeat, approvals, host silence, reconnects) on a plain timer, never rAF: a
+  // Session housekeeping (KEEP heartbeat, host silence, reconnects) on a plain timer, never rAF: a
   // hidden or busy tab keeps its room open (a throttled 1 Hz timer is still plenty).
   const onlineNow = () => { try { return typeof navigator === 'undefined' || navigator.onLine !== false; } catch { return true; } };
   state.sessionTimer = setInterval(() => {
@@ -978,7 +1003,7 @@ function netInfo(o) {
   const lobby = o.room.session.lobby();
   const info = {
     role: o.role,
-    label: lobby?.label ?? o.room.secret?.label ?? null,
+    label: lobby?.label ?? o.room.code ?? null,
     phase: o.room.role === 'host' ? o.room.session.state.phase : o.room.session.state.hostPhase ?? o.room.session.state.phase,
     houses: lobby?.houses?.length ?? 0,
     humans: lobby ? lobby.houses.reduce((n, h) => n + h.players.length, 0) : 0,
@@ -1024,7 +1049,7 @@ async function runOnlineHost(mod) {
   let room;
   try {
     room = await mod.openHostRoom({
-      progress, hostPlayers: 1, rules: rulesForMode('free'), signal: signalConfig(mod),
+      progress, hostPlayers: 1, rules: rulesForMode('free'), signal: signalConfig(mod), who: lastHostRacer(),
       pickCpus: (n) => onlineCpus(n, (room?.session?.lobby() ? room.session.lobby().houses.flatMap((h) => h.players.map((p) => p.characterId)) : []).filter(Boolean)),
     });
   } catch (err) {
@@ -1033,7 +1058,7 @@ async function runOnlineHost(mod) {
   }
   const o = createOnlineState(mod, room);
   online = o;
-  bus.emit('net-room', { role: 'host', phase: 'lobby', label: room.secret.label });
+  bus.emit('net-room', { role: 'host', phase: 'lobby', label: room.code });
   // The host's menus compose the NetRaceSetup only after everyone picked (see below).
   menus.net = { ...room.netCtx, composeSetup: (local) => ({ __local: local }) };
   let previousLocal = null;
@@ -1092,10 +1117,10 @@ function waitForFriends(o, mod) {
   });
 }
 
-/** Guest: knock, wait for approval, then follow the host (PHASE / SETUP / RESULT / CHOICE). */
-async function runOnlineGuest(mod, secret) {
-  menus.goto('net-waiting', { mode: 'connecting', text: mod.TEXT.knocking, label: secret?.label ?? '' });
-  const room = await mod.joinGuestRoom({ secret, localPlayers: Math.max(1, menus?.draft?.joinState?.players?.length || 1), progress, signal: signalConfig(mod) });
+/** Guest: knock, then follow the host (PHASE / SETUP / RESULT / CHOICE). */
+async function runOnlineGuest(mod, code) {
+  menus.goto('net-waiting', { mode: 'connecting', text: mod.TEXT.knocking, label: code ?? '' });
+  const room = await mod.joinGuestRoom({ code, localPlayers: Math.max(1, menus?.draft?.joinState?.players?.length || 1), progress, signal: signalConfig(mod) });
   const o = createOnlineState(mod, room);
   online = o;
   menus.net = room.netCtx;
@@ -1128,8 +1153,7 @@ async function runOnlineGuest(mod, secret) {
   // whatever the session already decided before we listened
   const st0 = room.session.state;
   if (st0.phase === 'ended') { closeOnline(o); return { message: st0.end?.text ?? '', tips: st0.end?.reason === 'no-connect' ? [...mod.TEXT.noConnectTips] : null }; }
-  if (st0.phase === 'waiting-approval') menus.goto('net-waiting', { mode: 'approval', animals: matchText(st0.match), text: mod.TEXT.showHost(matchText(st0.match)), label: secret.label });
-  bus.emit('net-room', { role: 'guest', phase: 'connecting', label: secret?.label ?? null });
+  bus.emit('net-room', { role: 'guest', phase: 'connecting', label: code ?? null });
   let guestPrev = null;
   try {
     for (;;) {
@@ -1178,10 +1202,6 @@ async function runOnlineGuest(mod, secret) {
   }
 }
 
-function matchText(match) {
-  // the session keeps indices; WS6's matchEmoji is in the online chunk, net-waiting takes the text
-  try { return onlineMod?.matchEmoji?.(match) ?? ''; } catch { return ''; }
-}
 
 /**
  * One online race on this machine (NETWORKING.md §9, §10.4–§10.6, §12). The host runs the real Race on the

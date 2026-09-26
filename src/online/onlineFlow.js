@@ -5,14 +5,14 @@
  * friendly option lists for results and pause online. main.js drives it (`runOnlineHost` /
  * `runOnlineGuest`); everything here is testable without a browser.
  *
- * Loaded with `import()` only after a grown-up turned online on and the family opened Online, so no
- * network code is downloaded before that (§1 rule 1).
+ * Loaded with `import()` only once the family opens Online, so no network code is downloaded before that
+ * (§1 rule 1).
  *
  * OWNER: WS7 (online game integration).
  */
 import { createHostSession, createHostNetContext } from '../net/session/hostSession.js';
 import { createGuestSession, createGuestNetContext } from '../net/session/guestSession.js';
-import { makeRoomSecret } from '../net/session/roomCode.js';
+import { makeRoomCode } from '../net/session/roomCode.js';
 import { buildIdentity } from '../net/session/wire.js';
 import { allPlayers, getHouse, lobbyAllReady } from '../net/session/lobby.js';
 import { currentPlatform } from '../net/platform.js';
@@ -67,7 +67,7 @@ export function setupEndsRace(current, next) {
 /** How long the host waits for friends to finish picking before filling in racers (§10.4). */
 export const READY_TIMEOUT_MS = 30_000;
 /**
- * Session housekeeping (KEEP heartbeat, LOBBY coalescing, approval timeouts, host silence, reconnects) runs
+ * Session housekeeping (KEEP heartbeat, LOBBY coalescing, host silence, reconnects) runs
  * this often — from a plain timer, never from rAF, so a hidden or busy tab keeps its room alive.
  */
 export const SESSION_TICK_MS = 250;
@@ -212,23 +212,23 @@ export function createRoomRouter({ transport, stack = netStack }) {
 
 /**
  * The WELCOME ticket store for guest sessions (§13.2), in sessionStorage: per tab, gone when the tab closes,
- * never sent anywhere but back to the same room's host. Keyed by the room label + sweets so another room never
- * sees it. Every storage call may throw (private windows, blocked storage): then there is simply no ticket.
+ * never sent anywhere but back to the same room's host. Keyed by the room code so another room never sees it.
+ * Every storage call may throw (private windows, blocked storage): then there is simply no ticket.
  * @param {Storage|null} [storage]
  */
 export function sessionTicketStore(storage = (() => { try { return globalThis.sessionStorage ?? null; } catch { return null; } })()) {
-  const keyOf = (secret) => (secret ? `${secret.label}|${(secret.sweets ?? []).join('.')}` : '');
+  const keyOf = (code) => (typeof code === 'string' ? code : '');
   const read = () => { try { return JSON.parse(storage?.getItem(TICKET_KEY) ?? 'null'); } catch { return null; } };
   return {
-    load(secret) {
+    load(code) {
       const t = read();
-      return t && t.room === keyOf(secret) && typeof t.token === 'string' ? t.token : null;
+      return t && t.room === keyOf(code) && typeof t.token === 'string' ? t.token : null;
     },
-    save(secret, token) {
-      try { storage?.setItem(TICKET_KEY, JSON.stringify({ room: keyOf(secret), token })); } catch { /* no ticket */ }
+    save(code, token) {
+      try { storage?.setItem(TICKET_KEY, JSON.stringify({ room: keyOf(code), token })); } catch { /* no ticket */ }
     },
-    clear(secret) {
-      try { if (read()?.room === keyOf(secret)) storage?.removeItem(TICKET_KEY); } catch { /* ignore */ }
+    clear(code) {
+      try { if (read()?.room === keyOf(code)) storage?.removeItem(TICKET_KEY); } catch { /* ignore */ }
     },
   };
 }
@@ -281,42 +281,86 @@ export function signalConfigFor({ env = {}, location = globalThis.location, reso
   });
 }
 
+/** How many fresh codes a host tries when the Worker says a code is already taken. */
+export const HOST_CODE_TRIES = 5;
+
+/** The open-games entry for a lobby: the host P1's racer and how many racers are in the room. */
+export function listingFor(lobby, on = true) {
+  const players = allPlayers(lobby);
+  const hostP1 = lobby?.houses?.find((h) => h.isHost)?.players?.slice().sort((a, b) => a.seat - b.seat)[0] ?? null;
+  return { on: !!on, who: typeof hostP1?.characterId === 'string' ? hostP1.characterId : null, players: Math.max(1, Math.min(8, players.length || 1)) };
+}
+
 /**
- * Open a room as the host: secret → room ids → matchmaker(s) + WebRTC → host session → ctx.net.
+ * Open a room as the host: a fresh 4-letter code → room ids → matchmaker(s) + WebRTC → host session → ctx.net.
+ * The room is listed in "Games you can join" right away (Worker builds whose Worker has the list); the host
+ * can hide it from the lobby. A code the Worker says is taken is swapped for a fresh one.
  * @param {object} o
- * @param {object} o.progress                progress module (settings.relayOnly / approvalGate)
+ * @param {object} o.progress                progress module (settings.relayOnly)
  * @param {number} [o.hostPlayers]
  * @param {(count: number) => string[]} o.pickCpus
  * @param {object} [o.rules]
  * @param {object} [o.signal]                { signalUrl, forced, relays }
- * @param {object} [o.deps]                  { openOnline, makeSecret, deriveRoomIds, transport, signaling, now }
+ * @param {string|null} [o.who]              the host P1's last racer (shown in the list until they pick)
+ * @param {object} [o.deps]                  { openOnline, makeCode, deriveRoomIds, transport, signaling, now }
  */
-export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules = {}, signal = {}, deps = {} }) {
-  const secret = (deps.makeSecret ?? makeRoomSecret)();
+export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules = {}, signal = {}, who = null, deps = {} }) {
   let transport = deps.transport ?? null;
   let signaling = deps.signaling ?? null;
+  const makeCode = deps.makeCode ?? makeRoomCode;
+  let listing = { on: true, who: typeof who === 'string' ? who : null, players: Math.max(1, Number(hostPlayers) || 1) };
+  let code;
   if (!transport) {
-    const ids = await (deps.deriveRoomIds ?? netStack.deriveRoomIds)(secret);
     const open = deps.openOnline ?? (await import('../net/signaling/index.js')).openOnline;
     const selfId = deps.selfId ?? (await import('../net/signaling/types.js')).makePeerId();
     const relayOnly = !!progress?.getSettings?.()?.relayOnly;
-    const r = await open({ role: 'host', selfId, ids, relayOnly, signalUrl: signal.signalUrl ?? null, forced: signal.forced ?? null, relays: signal.relays ?? null });
-    transport = r.transport;
-    signaling = r.signaling;
-  }
+    const avoid = [];
+    for (let attempt = 0; ; attempt++) {
+      code = makeCode(null, { avoid });
+      const ids = await (deps.deriveRoomIds ?? netStack.deriveRoomIds)(code);
+      try {
+        const r = await open({
+          role: 'host', selfId, ids, relayOnly, listing, signalUrl: signal.signalUrl ?? null, forced: signal.forced ?? null, relays: signal.relays ?? null,
+        });
+        transport = r.transport;
+        signaling = r.signaling;
+        break;
+      } catch (err) {
+        if (err?.code === 'host-exists' && attempt < HOST_CODE_TRIES - 1) { avoid.push(code); continue; }
+        throw err;
+      }
+    }
+  } else code = makeCode(null, {});
   const now = deps.now ?? (() => Date.now());
   const racers = knownCharacterIds();
   const session = createHostSession({
-    transport, signalings: signaling ? [signaling] : [], progress, now, secret, hostPlayers, mine: identity(),
+    transport, signalings: signaling ? [signaling] : [], progress, now, code, hostPlayers, mine: identity(),
     isCharacter: (id) => racers.has(id), // a pick from another version never reaches the Race
   });
+  // Keep the open-games entry in step with the lobby (host P1's racer, player count); locking is the
+  // Worker's business (a locked room leaves the list on its own).
+  let sentKey = JSON.stringify(listing);
+  const pushListing = () => {
+    const next = listingFor(session.lobby(), listing.on);
+    if (!next.who && listing.who) next.who = listing.who; // keep the last racer until P1 picks again
+    const key = JSON.stringify(next);
+    listing = next;
+    if (key === sentKey) return;
+    sentKey = key;
+    try { signaling?.setListing?.(next); } catch { /* the list is a nicety */ }
+  };
+  session.onEffect((e) => { if (e.type === 'lobby') pushListing(); });
   session.dispatch({ type: 'open' });
   session.dispatch({ type: 'opened' });
   for (const peerId of transport.peers?.() ?? []) session.dispatch({ type: 'peer-join', peerId });
   const netCtx = createHostNetContext(session, { pickCpus, rules });
+  /** Is this room in "Games you can join"? (supported = our Worker keeps the list) */
+  netCtx.listing = () => ({ supported: !!signaling?.canList?.(), on: listing.on });
+  /** Show (true) / hide (false) the room in "Games you can join". */
+  netCtx.setListed = (on) => { listing = { ...listing, on: !!on }; sentKey = ''; pushListing(); };
   const router = createRoomRouter({ transport });
   return {
-    role: 'host', secret, transport, signaling, session, netCtx, router,
+    role: 'host', code, transport, signaling, session, netCtx, router,
     /** peer id of a joined house (null = gone). */
     peerOf(houseId) {
       const e = Object.entries(session.state.peers).find(([, p]) => p.stage === 'joined' && p.houseId === houseId);
@@ -334,7 +378,7 @@ export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules 
 
 /**
  * Join a room as a guest. Resolves once the matchmaker found the host (or with the error the session turns
- * into a friendly sentence); the approval (match check) then runs inside the session.
+ * into a friendly sentence); the HELLO / WELCOME handshake then runs inside the session.
  *
  * The session, router and race talk to a swappable transport proxy: when the session asks to reconnect
  * (§13.2 — the link dropped), a fresh matchmaker + connection (new selfId, so the host never mistakes it for the
@@ -342,7 +386,7 @@ export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules 
  * Signaling hints feed the session: a host that showed up (`host-seen`) turns a later timeout into the NAT
  * sentence instead of "check the code", and a locked host's refusal becomes "closed".
  */
-export async function joinGuestRoom({ secret, localPlayers = 1, progress = null, signal = {}, deps = {} }) {
+export async function joinGuestRoom({ code, localPlayers = 1, progress = null, signal = {}, deps = {} }) {
   const now = deps.now ?? (() => Date.now());
   const proxy = createTransportProxy();
   let signaling = null;
@@ -369,7 +413,7 @@ export async function joinGuestRoom({ secret, localPlayers = 1, progress = null,
   };
   const openLink = async (attempt) => {
     if (fixed) return { transport: fixed, signaling: deps.signaling ?? null };
-    const ids = await (deps.deriveRoomIds ?? netStack.deriveRoomIds)(secret);
+    const ids = await (deps.deriveRoomIds ?? netStack.deriveRoomIds)(code);
     const open = deps.openOnline ?? (await import('../net/signaling/index.js')).openOnline;
     const selfId = (attempt === 0 && deps.selfId) || (deps.makePeerId ?? (await import('../net/signaling/types.js')).makePeerId)();
     const relayOnly = !!progress?.getSettings?.()?.relayOnly;
@@ -386,7 +430,7 @@ export async function joinGuestRoom({ secret, localPlayers = 1, progress = null,
   try { useLink(await openLink(0)); } catch (err) { failure = err?.code ?? 'unreachable'; }
   const tokenStore = deps.tokenStore === undefined ? sessionTicketStore() : deps.tokenStore;
   session = createGuestSession({
-    transport: proxy, signalings: signaling ? [signaling] : [], secret, localPlayers, now, mine: identity(), platform: deps.platform ?? currentPlatform(), tokenStore,
+    transport: proxy, signalings: signaling ? [signaling] : [], code, localPlayers, now, mine: identity(), platform: deps.platform ?? currentPlatform(), tokenStore,
   });
   const router = failure ? null : createRoomRouter({ transport: proxy });
   session.dispatch({ type: 'connect' });
@@ -416,7 +460,7 @@ export async function joinGuestRoom({ secret, localPlayers = 1, progress = null,
 
   const netCtx = createGuestNetContext(session);
   return {
-    role: 'guest', secret, transport: proxy, get signaling() { return signaling; }, session, netCtx, router,
+    role: 'guest', code, transport: proxy, get signaling() { return signaling; }, session, netCtx, router,
     hostId: () => session.state.hostPeerId,
     close() {
       try { session.dispatch({ type: 'leave' }); } catch { /* ignore */ }

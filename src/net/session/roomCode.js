@@ -1,52 +1,55 @@
 /**
- * Room labels + secret sweets (NETWORKING.md §1 rule 2, §4.2, §10.1, §19).
+ * Kid-friendly room codes (NETWORKING.md §1 rule 2, §4.2, §10.1, §19).
  *
- * A room has a friendly **label** like `SPRINKLE-4821` (one of 32 cute words +
- * 4 digits; shown and said out loud, NOT secret) and a secret of 6 **secret
- * sweets** (6 picks from a fixed 64-treat palette = 36 bits). Label + sweets are
- * stretched into the room key by `deriveRoomIds` (src/net/roomKey.js, WS2); the
- * label alone gives nothing.
+ * A room is just **4 big letters**, like `CAKE`, shown huge on the host's TV. The letters come from an
+ * unambiguous alphabet (no I, O or Q, so nobody mixes them up with 1 and 0), and a small blocklist keeps
+ * rude words away. Friends join by picking the game in "Games you can join" (our Worker's open-games list),
+ * by opening the invite link (`?join=CAKE`) or by typing the 4 letters on the chunky letter grid.
  *
- * Also the pure `codeEntryReduce` for the code-entry screen: a word wheel,
- * 4 digit wheels and an 8 × 8 sweets grid, driven by a controller, the keyboard
- * or the mouse.
+ * `deriveRoomIds(code)` turns a code into the matchmaker ids (a quick SHA-256, no secrets): the public
+ * signaling topic + password and the Worker room id. The Worker uses the very same room-id formula
+ * (infra/signal-worker/src/codes.js) to check a host's code before listing its room.
  *
- * SECRET_SWEETS: the binding palette lives with WS2's roomKey.js. Until that
- * lands on main, this module carries the same 64-entry palette so the lobby,
- * invite links and code entry work; switch the import when roomKey.js merges
- * (the indices, not the pictures, are what the room key uses).
+ * Also the pure `codeEntryReduce` for the code-entry screen (controller, keyboard and mouse).
  *
- * OWNER: WS6 (session, lobby & screens).
+ * OWNER: online session & screens.
  */
 
-/** 32 cute words for room labels (upper case, letters only). Append-only: never reorder. */
-export const ROOM_WORDS = Object.freeze([
-  'SPRINKLE', 'CUPCAKE', 'GUMDROP', 'LOLLIPOP', 'COOKIE', 'MUFFIN', 'DONUT', 'BUBBLE',
-  'RAINBOW', 'UNICORN', 'SUNDAE', 'TOFFEE', 'CANDY', 'JELLY', 'PUDDING', 'WAFFLE',
-  'PANCAKE', 'BISCUIT', 'CHERRY', 'PEACH', 'BERRY', 'MANGO', 'TEACUP', 'TEDDY',
-  'BUNNY', 'KITTEN', 'PUPPY', 'PICNIC', 'STARLIGHT', 'MOONBEAM', 'SUNSHINE', 'BALLOON',
+/** Capital letters without the look-alikes I and O (and Q, which kids read as O). */
+export const CODE_ALPHABET = 'ABCDEFGHJKLMNPRSTUVWXYZ';
+export const CODE_LENGTH = 4;
+const CODE_RE = /^[ABCDEFGHJKLMNPRSTUVWXYZ]{4}$/;
+
+/** Three-letter bits that never appear anywhere in a code. */
+export const BLOCKED_PARTS = Object.freeze([
+  'ASS', 'FUK', 'FUC', 'FCK', 'FKU', 'SEX', 'XXX', 'KKK', 'WTF', 'CUM', 'FAG', 'JEW', 'NGR', 'NGA', 'NAZ',
+  'DMN', 'PUS', 'PNS', 'VAG', 'TWT', 'CNT', 'SHT', 'SUX', 'GAY', 'KYS', 'STD', 'DUM', 'FAT', 'UGL', 'PMS',
+  'BUM', 'PEE', 'WEE', 'NUD', 'DED', 'WTH', 'STF',
+]);
+/** Whole four-letter words a code is never. */
+export const BLOCKED_WORDS = Object.freeze([
+  'ARSE', 'ANAL', 'ANUS', 'BUTT', 'CRAP', 'CUNT', 'DAMN', 'DUMB', 'DYKE', 'FAGS', 'FART', 'FUCK', 'FUKK',
+  'HELL', 'JERK', 'KUNT', 'RAPE', 'SCUM', 'SEXY', 'SHAT', 'SLUT', 'SUCK', 'TURD', 'TWAT', 'UGLY', 'WANK',
+  'HATE', 'DEAD', 'DUMP', 'SPAZ', 'JAPS', 'GAYS', 'HUMP', 'NUDE', 'PUKE', 'PERV', 'THUG', 'SCAT', 'BRAT',
+  'DRUG', 'BEER', 'GUNS', 'STAB', 'NERD', 'MEAN', 'PRAT', 'KLAN', 'SMUT', 'BAWD',
 ]);
 
-/** 64 secret sweets (index 0..63 = one base64url character in invite links). Append-only. */
-export const SECRET_SWEETS = Object.freeze([
-  '🍩', '🦄', '🍓', '🍭', '🧁', '🌈', '🍪', '🍫',
-  '🍬', '🍰', '🎂', '🍦', '🍨', '🍧', '🥧', '🍮',
-  '🍯', '🍒', '🍑', '🍉', '🍇', '🍌', '🍍', '🥝',
-  '🍋', '🍊', '🍎', '🍐', '🥭', '🥥', '🥨', '🥞',
-  '🧇', '🍿', '🥐', '🍡', '🍥', '🍘', '🧃', '🥤',
-  '🧋', '🍵', '🥮', '🥛', '🎈', '🎀', '🎁', '💖',
-  '🌸', '🌻', '🌷', '🍀', '🍄', '🌙', '🍙', '🧸',
-  '🎠', '🎡', '🎨', '🎵', '💎', '🌺', '🌟', '🎉',
-]);
+/** True when a code contains a rude bit (or is a rude word). */
+export function isRudeCode(code) {
+  const c = String(code ?? '').toUpperCase();
+  if (BLOCKED_WORDS.includes(c)) return true;
+  return BLOCKED_PARTS.some((p) => c.includes(p));
+}
 
-export const SWEETS_COUNT = 6;
-export const SWEETS_GRID_COLS = 8;
-export const LABEL_DIGITS = 4;
+/** A well-formed room code: 4 letters of CODE_ALPHABET. */
+export function isRoomCode(code) {
+  return typeof code === 'string' && CODE_RE.test(code);
+}
 
 /** Uniform integer 0..n-1 from crypto.getRandomValues (browser + node 20). */
 export function cryptoRandomInt(n) {
   const c = globalThis.crypto;
-  if (!c?.getRandomValues) throw new Error('crypto.getRandomValues is needed for room secrets');
+  if (!c?.getRandomValues) throw new Error('crypto.getRandomValues is needed for room codes');
   const buf = new Uint32Array(1);
   const limit = Math.floor(0x100000000 / n) * n; // rejection sampling: no modulo bias
   for (;;) {
@@ -63,235 +66,148 @@ function intFrom(rng, n) {
   return Math.max(0, Math.min(n - 1, i));
 }
 
-/** 'SPRINKLE' + [4,8,2,1] → 'SPRINKLE-4821'. */
-export function formatLabel(wordIndex, digits) {
-  const w = ROOM_WORDS[wordIndex] ?? ROOM_WORDS[0];
-  return `${w}-${digits.map((d) => String(Math.max(0, Math.min(9, d | 0)))).join('')}`;
-}
-
 /**
- * A fresh room secret for a host.
+ * A fresh room code for a host (never a rude one).
  * @param {(() => number)|null} [rng] returns [0,1); default crypto.getRandomValues
- * @returns {{ label: string, sweets: number[] }}
+ * @param {{ avoid?: string[] }} [o] codes not to use (e.g. one that was already taken)
  */
-export function makeRoomSecret(rng = null) {
-  const word = intFrom(rng, ROOM_WORDS.length);
-  const digits = Array.from({ length: LABEL_DIGITS }, () => intFrom(rng, 10));
-  const sweets = Array.from({ length: SWEETS_COUNT }, () => intFrom(rng, SECRET_SWEETS.length));
-  return { label: formatLabel(word, digits), sweets };
+export function makeRoomCode(rng = null, { avoid = [] } = {}) {
+  for (let tries = 0; tries < 200; tries++) {
+    let code = '';
+    for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[intFrom(rng, CODE_ALPHABET.length)];
+    if (!isRudeCode(code) && !avoid.includes(code)) return code;
+  }
+  return 'CAKE'; // a broken rng that keeps landing on blocked codes: still a friendly room
 }
 
 /**
- * Forgiving label parser: case, spaces, '-', '_' or nothing between word and
- * digits. 'sprinkle 4821' → 'SPRINKLE-4821'; anything else → null.
+ * Forgiving code parser: case, spaces and dashes are fine ('c a-k e' → 'CAKE'); anything that is not
+ * 4 letters of the alphabet → null.
  * @param {unknown} text
  */
 export function parseRoomCode(text) {
-  if (typeof text !== 'string' || text.length > 64) return null;
-  const m = /^\s*([a-z]+)\s*[-_ ]?\s*(\d)\s*(\d)\s*(\d)\s*(\d)\s*$/i.exec(text);
-  if (!m) return null;
-  const word = m[1].toUpperCase();
-  if (!ROOM_WORDS.includes(word)) return null;
-  return `${word}-${m[2]}${m[3]}${m[4]}${m[5]}`;
+  if (typeof text !== 'string' || text.length > 32) return null;
+  const c = text.replace(/[\s-_]+/g, '').toUpperCase();
+  return isRoomCode(c) ? c : null;
 }
 
-/** Word index + digits of a canonical label (null if it is not one). */
-export function splitLabel(label) {
-  const canon = parseRoomCode(label);
-  if (!canon) return null;
-  const [word, digits] = canon.split('-');
-  return { wordIndex: ROOM_WORDS.indexOf(word), digits: [...digits].map(Number) };
+/* ------------------------------------------------------------------ */
+/* Room ids for the matchmakers                                        */
+/* ------------------------------------------------------------------ */
+
+/** Must match infra/signal-worker/src/codes.js ROOM_ID_SALT (the Worker checks listed codes with it). */
+export const ROOM_ID_SALT = 'sprinkle-kart-room-v2|';
+const TOPIC_SALT = 'sprinkle-kart-topic-v2|';
+const PASSWORD_SALT = 'sprinkle-kart-pw-v2|';
+
+const enc = new TextEncoder();
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+function b64url(buf) {
+  let s = '';
+  for (const b of new Uint8Array(buf)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** True for a well-formed RoomSecret { label, sweets: 6 × 0..63 }. */
-export function isRoomSecret(s) {
-  return !!s && typeof s === 'object'
-    && parseRoomCode(s.label) === s.label
-    && Array.isArray(s.sweets) && s.sweets.length === SWEETS_COUNT
-    && s.sweets.every((i) => Number.isInteger(i) && i >= 0 && i < SECRET_SWEETS.length);
-}
-
-/** '🍩🦄🍓🍭🧁🌈' for display (the host's own screen and the code-entry echo). */
-export function sweetsText(sweets = []) {
-  return sweets.map((i) => SECRET_SWEETS[i] ?? '❔').join('');
+/**
+ * The matchmaker ids for a room code (quick: three SHA-256s).
+ * @param {string} code
+ * @param {{ subtle?: SubtleCrypto }} [o]
+ * @returns {Promise<{ code: string, topic: string, password: string, workerRoom: string }>}
+ */
+export async function deriveRoomIds(code, { subtle = globalThis.crypto?.subtle } = {}) {
+  if (!isRoomCode(code)) throw new TypeError('deriveRoomIds: a 4-letter room code is needed');
+  if (!subtle) throw new Error('deriveRoomIds: crypto.subtle is not available (a secure context is needed)');
+  const sha = (text) => subtle.digest('SHA-256', enc.encode(text));
+  const [room, topic, pw] = await Promise.all([sha(ROOM_ID_SALT + code), sha(TOPIC_SALT + code), sha(PASSWORD_SALT + code)]);
+  return { code, topic: `sk-${hex(topic).slice(0, 20)}`, password: b64url(pw), workerRoom: `r${hex(room).slice(0, 24)}` };
 }
 
 /* ------------------------------------------------------------------ */
 /* Code entry reducer                                                  */
 /* ------------------------------------------------------------------ */
 
-export const LABEL_COLS = 1 + LABEL_DIGITS; // word wheel + 4 digit wheels
+/** The chunky on-screen keys: every letter, then "erase". 6 columns × 4 rows. */
+export const CODE_KEYS = Object.freeze([...CODE_ALPHABET, 'erase']);
+export const CODE_GRID_COLS = 6;
 const wrap = (i, n) => ((i % n) + n) % n;
 const out = (state, fx = [], go = null, extra = {}) => ({ state, fx, go, ...extra });
 
-/**
- * @param {{ label?: string, sweets?: number[] }} [prefill] e.g. from a pasted code
- */
-export function createCodeEntryState(prefill = {}) {
-  const lab = splitLabel(prefill.label ?? '') ?? { wordIndex: 0, digits: [0, 0, 0, 0] };
-  const picks = Array.isArray(prefill.sweets)
-    ? prefill.sweets.filter((i) => Number.isInteger(i) && i >= 0 && i < SECRET_SWEETS.length).slice(0, SWEETS_COUNT)
-    : [];
-  return {
-    focus: 'label',   // 'label' | 'sweets' | 'go'
-    col: 0,           // label column: 0 = word, 1..4 = digits
-    wordIndex: lab.wordIndex,
-    digits: lab.digits,
-    cursor: 0,        // sweets grid cursor 0..63
-    picks,            // chosen sweet indices, in order
-    typed: '',        // letters typed on a keyboard (word prefix search)
-  };
+/** @param {string} [prefill] letters already typed (e.g. from a pasted code) */
+export function createCodeEntryState(prefill = '') {
+  const letters = [...String(prefill ?? '').toUpperCase()].filter((ch) => CODE_ALPHABET.includes(ch)).slice(0, CODE_LENGTH).join('');
+  return { letters, cursor: 0 };
 }
 
-/** The label the wheels show. */
-export const entryLabel = (s) => formatLabel(s.wordIndex, s.digits);
-
-/** The full secret once 6 sweets are picked, else null. */
-export function entrySecret(s) {
-  if (s.picks.length !== SWEETS_COUNT) return null;
-  return { label: entryLabel(s), sweets: [...s.picks] };
-}
-
-function typeText(s, text) {
-  let st = s;
-  let changed = false;
-  for (const ch of String(text)) {
-    if (/[a-z]/i.test(ch)) {
-      const typed = (st.typed + ch).toUpperCase();
-      let idx = ROOM_WORDS.findIndex((w) => w.startsWith(typed));
-      let nextTyped = typed;
-      if (idx < 0) { // start a new word with this letter
-        nextTyped = ch.toUpperCase();
-        idx = ROOM_WORDS.findIndex((w) => w.startsWith(nextTyped));
-      }
-      if (idx >= 0) { st = { ...st, wordIndex: idx, typed: nextTyped, focus: 'label', col: 0 }; changed = true; }
-    } else if (/[0-9]/.test(ch)) {
-      const col = st.focus === 'label' && st.col >= 1 ? st.col : 1;
-      const digits = [...st.digits];
-      digits[col - 1] = Number(ch);
-      const nextCol = col < LABEL_DIGITS ? col + 1 : col;
-      st = { ...st, digits, focus: col === LABEL_DIGITS ? 'sweets' : 'label', col: col === LABEL_DIGITS ? col : nextCol, typed: '' };
-      changed = true;
-    }
-  }
-  return changed ? out(st, ['move']) : out(s);
+/** Add one letter; the 4th letter joins right away. */
+function addLetter(s, ch) {
+  if (!CODE_ALPHABET.includes(ch)) return out(s, ['back'], null, { shake: true });
+  if (s.letters.length >= CODE_LENGTH) return out(s);
+  const letters = s.letters + ch;
+  const st = { ...s, letters };
+  return letters.length === CODE_LENGTH ? out(st, ['confirm'], 'join', { code: letters }) : out(st, ['move']);
 }
 
 /**
- * Controller: in the label row Left/Right pick a wheel and Up/Down spin it, A
- * moves on to the sweets grid. In the grid the arrows move and A picks a sweet
- * (6 picks → the "Join!" button). B removes the last sweet / steps back; B on an
- * empty grid returns to the wheels, and B on the wheels leaves (go 'back').
- * Keyboard: { action:'type', text } (letters search the word list, digits fill
- * the digit wheels), { action:'erase' } (Backspace), { action:'paste', text }
- * (a whole code 'SPRINKLE-4821' or an invite link / fragment).
- * Mouse: { action:'set', key:'word'|'digit', col?, value }, { action:'pick', index },
- * { action:'unpick', index }, { action:'focus', focus }.
- * `go`: 'back' | 'join' (+ `secret`).
+ * Controller: the arrows move over the letter grid, A presses the key under the cursor (a letter, or
+ * "erase"), B erases the last letter (and on an empty code leaves: go 'back'), Start with 4 letters joins.
+ * Keyboard: { action:'type', text } (letters; I/O/Q and anything else wiggles), { action:'erase' }
+ * (Backspace), { action:'paste', text } (a code or an invite link). Mouse: { action:'press', index }.
+ * `go`: 'back' | 'join' (+ `code`) — the 4th letter joins at once, no extra press.
+ * @param {{ letters: string, cursor: number }} s
+ * @param {{ action: string } & object} ev
+ * @param {{ parseInvite?: (text: string) => string|null }} [o]
  */
 export function codeEntryReduce(s, ev, { parseInvite = null } = {}) {
-  const n = SECRET_SWEETS.length;
-  const cols = SWEETS_GRID_COLS;
+  const n = CODE_KEYS.length;
+  const cols = CODE_GRID_COLS;
+  const press = (index) => {
+    const key = CODE_KEYS[index];
+    if (key === undefined) return out(s);
+    const st = { ...s, cursor: index };
+    if (key === 'erase') return st.letters ? out({ ...st, letters: st.letters.slice(0, -1) }, ['back']) : out(st, ['back']);
+    return addLetter(st, key);
+  };
   switch (ev.action) {
-    case 'type': return typeText(s, ev.text ?? '');
-    case 'erase': {
-      if (s.picks.length) return out({ ...s, picks: s.picks.slice(0, -1), focus: 'sweets' }, ['back']);
-      if (s.typed) return out({ ...s, typed: s.typed.slice(0, -1) }, ['back']);
-      return out(s);
+    case 'type': {
+      let st = s;
+      let res = out(s);
+      for (const ch of String(ev.text ?? '').toUpperCase()) {
+        if (!/[A-Z]/.test(ch)) continue;
+        res = addLetter(st, ch);
+        st = res.state;
+        if (res.go || res.shake) return res;
+      }
+      return res;
     }
+    case 'erase':
+      return s.letters ? out({ ...s, letters: s.letters.slice(0, -1) }, ['back']) : out(s);
     case 'paste': {
       const text = String(ev.text ?? '');
-      const secret = typeof parseInvite === 'function' ? parseInvite(text) : null;
-      if (secret) {
-        const next = createCodeEntryState(secret);
-        return out({ ...next, focus: 'go' }, ['confirm']);
-      }
-      const label = parseRoomCode(text);
-      if (!label) return out(s, ['back'], null, { shake: true });
-      const lab = splitLabel(label);
-      return out({ ...s, wordIndex: lab.wordIndex, digits: lab.digits, focus: 'sweets', typed: '' }, ['confirm']);
+      const code = (typeof parseInvite === 'function' ? parseInvite(text) : null) ?? parseRoomCode(text);
+      if (!code) return out(s, ['back'], null, { shake: true });
+      return out({ ...s, letters: code }, ['confirm'], 'join', { code });
     }
-    case 'focus':
-      if (!['label', 'sweets', 'go'].includes(ev.focus)) return out(s);
-      if (ev.focus === 'go' && s.picks.length !== SWEETS_COUNT) return out(s);
-      return out({ ...s, focus: ev.focus }, ['move']);
-    case 'set': {
-      if (ev.key === 'word' && Number.isInteger(ev.value)) {
-        return out({ ...s, focus: 'label', col: 0, wordIndex: wrap(ev.value, ROOM_WORDS.length), typed: '' }, ['move']);
-      }
-      if (ev.key === 'digit' && Number.isInteger(ev.col) && ev.col >= 1 && ev.col <= LABEL_DIGITS && Number.isInteger(ev.value)) {
-        const digits = [...s.digits];
-        digits[ev.col - 1] = wrap(ev.value, 10);
-        return out({ ...s, focus: 'label', col: ev.col, digits, typed: '' }, ['move']);
-      }
-      return out(s);
+    case 'press':
+      return Number.isInteger(ev.index) ? press(ev.index) : out(s);
+    case 'left': return out({ ...s, cursor: wrap(s.cursor - 1, n) }, ['move']);
+    case 'right': return out({ ...s, cursor: wrap(s.cursor + 1, n) }, ['move']);
+    case 'up': {
+      const c = s.cursor - cols;
+      return out({ ...s, cursor: c >= 0 ? c : Math.min(n - 1, wrap(s.cursor, cols) + cols * Math.floor((n - 1) / cols)) }, ['move']);
     }
-    case 'pick': {
-      if (!(Number.isInteger(ev.index) && ev.index >= 0 && ev.index < n)) return out(s);
-      if (s.picks.length >= SWEETS_COUNT) return out({ ...s, cursor: ev.index, focus: 'go' }, ['back'], null, { shake: true });
-      const picks = [...s.picks, ev.index];
-      return out({ ...s, cursor: ev.index, picks, focus: picks.length === SWEETS_COUNT ? 'go' : 'sweets' }, ['join']);
+    case 'down': {
+      const c = s.cursor + cols;
+      return out({ ...s, cursor: c < n ? c : wrap(s.cursor, cols) }, ['move']);
     }
-    case 'unpick': {
-      if (!(Number.isInteger(ev.index) && ev.index >= 0 && ev.index < s.picks.length)) return out(s);
-      return out({ ...s, picks: s.picks.filter((_, k) => k !== ev.index), focus: 'sweets' }, ['back']);
-    }
-    default: break;
-  }
-
-  if (s.focus === 'label') {
-    switch (ev.action) {
-      case 'left': return out({ ...s, col: wrap(s.col - 1, LABEL_COLS), typed: '' }, ['move']);
-      case 'right': return out({ ...s, col: wrap(s.col + 1, LABEL_COLS), typed: '' }, ['move']);
-      case 'up':
-      case 'down': {
-        const d = ev.action === 'up' ? 1 : -1;
-        if (s.col === 0) return out({ ...s, wordIndex: wrap(s.wordIndex + d, ROOM_WORDS.length), typed: '' }, ['move']);
-        const digits = [...s.digits];
-        digits[s.col - 1] = wrap(digits[s.col - 1] + d, 10);
-        return out({ ...s, digits, typed: '' }, ['move']);
-      }
-      case 'confirm':
-      case 'start':
-        if (s.col < LABEL_COLS - 1 && ev.action === 'confirm') return out({ ...s, col: s.col + 1 }, ['move']);
-        return out({ ...s, focus: s.picks.length === SWEETS_COUNT ? 'go' : 'sweets' }, ['confirm']);
-      case 'back':
-        if (s.col > 0) return out({ ...s, col: s.col - 1 }, ['back']);
-        return out(s, ['back'], 'back');
-      default: return out(s);
-    }
-  }
-
-  if (s.focus === 'sweets') {
-    switch (ev.action) {
-      case 'left': return out({ ...s, cursor: wrap(s.cursor - 1, n) }, ['move']);
-      case 'right': return out({ ...s, cursor: wrap(s.cursor + 1, n) }, ['move']);
-      case 'up':
-        if (s.cursor < cols) return out({ ...s, focus: 'label' }, ['move']);
-        return out({ ...s, cursor: s.cursor - cols }, ['move']);
-      case 'down':
-        if (s.cursor + cols >= n) return s.picks.length === SWEETS_COUNT ? out({ ...s, focus: 'go' }, ['move']) : out(s);
-        return out({ ...s, cursor: s.cursor + cols }, ['move']);
-      case 'confirm':
-        return codeEntryReduce(s, { action: 'pick', index: s.cursor });
-      case 'start':
-        if (s.picks.length === SWEETS_COUNT) return out({ ...s, focus: 'go' }, ['confirm'], 'join', { secret: entrySecret(s) });
-        return codeEntryReduce(s, { action: 'pick', index: s.cursor });
-      case 'back':
-        if (s.picks.length) return out({ ...s, picks: s.picks.slice(0, -1) }, ['back']);
-        return out({ ...s, focus: 'label' }, ['back']);
-      default: return out(s);
-    }
-  }
-
-  // focus 'go'
-  switch (ev.action) {
     case 'confirm':
+      return press(s.cursor);
     case 'start':
-      if (s.picks.length !== SWEETS_COUNT) return out({ ...s, focus: 'sweets' }, ['back'], null, { shake: true });
-      return out(s, ['confirm'], 'join', { secret: entrySecret(s) });
-    case 'up': return out({ ...s, focus: 'sweets' }, ['move']);
-    case 'back': return out({ ...s, picks: s.picks.slice(0, -1), focus: 'sweets' }, ['back']);
-    default: return out(s);
+      if (s.letters.length === CODE_LENGTH) return out(s, ['confirm'], 'join', { code: s.letters });
+      return press(s.cursor);
+    case 'back':
+      if (s.letters) return out({ ...s, letters: s.letters.slice(0, -1) }, ['back']);
+      return out(s, ['back'], 'back');
+    default:
+      return out(s);
   }
 }

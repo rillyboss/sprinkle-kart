@@ -7,7 +7,7 @@
 .skp-set-list.skn-many .skp-set-t { font-size: 1em; }
 .skp-set-list.skn-many .skp-set-row.sk-sel { transform: scale(1.02); }
 .skp-set-list.skn-many .skp-set-back { grid-column: 1 / -1; justify-self: center; width: min(22em, 100%); }
-.skp-set-online.skp-set-row, .skp-set-approvalGate.skp-set-row, .skp-set-relayOnly.skp-set-row { background: rgba(236, 246, 255, 0.92) !important; }
+.skp-set-online.skp-set-row, .skp-set-relayOnly.skp-set-row { background: rgba(236, 246, 255, 0.92) !important; }
 .skn-privacy { max-width: 40em; }
 .skn-privacy-t { max-width: 34em; font-size: 0.98em; line-height: 1.35; text-align: left; }
 @media (max-height: 520px) {

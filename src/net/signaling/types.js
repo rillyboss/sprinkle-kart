@@ -5,7 +5,8 @@
  * connecting `RTCPeerConnection` per remote peer. It never sends game data: the WebRtcTransport
  * (src/net/transport/webrtc.js) adds the two negotiated data channels on top.
  *
- * @typedef {object} RoomIds         // deriveRoomIds(secret) in src/net/roomKey.js (WS2)
+ * @typedef {object} RoomIds         // deriveRoomIds(code) in src/net/session/roomCode.js
+ * @property {string} [code]         the 4-letter room code ('CAKE'); the Worker lists rooms by it
  * @property {string} topic          public path: Trystero room id 'sk-' + 20 hex
  * @property {string} password       public path: Trystero password (base64url, 32 B)
  * @property {string} workerRoom     Worker path: the `:code` of GET /room/:code ('r' + 24 hex)
@@ -18,6 +19,8 @@
  * @property {string} selfId            our app-level peer id (16 hex), the same on every matchmaker
  * @property {RTCIceServer[]} iceServers
  * @property {boolean} relayOnly        PARAMETER (the session reads settings; signaling never does)
+ * @property {{ on: boolean, who: string|null, players: number }|null} [listing]  host only: the open-games
+ *           list entry (Worker only; public signaling ignores it)
  *
  * @typedef {object} SignalingTransport
  * @property {'public'|'worker'} kind
@@ -32,6 +35,8 @@
  * @property {(peerId: string) => Promise<boolean>} [restartIce]  guest-side ICE restart hook
  *           (the WebRtcTransport calls it when a pc fails or for TURN renewal)
  * @property {() => string} [detail]  e.g. 'public-torrent' | 'public-nostr' | 'worker' (debug overlay)
+ * @property {(l: { on?: boolean, who?: string|null, players?: number }) => boolean} [setListing]  host only:
+ *           update the open-games list entry (Worker with the list only)
  */
 
 /** Every code a matchmaker may reject `join()` with (binding, §4.2). */

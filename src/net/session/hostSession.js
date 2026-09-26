@@ -1,31 +1,31 @@
 /**
  * Host session state machine (NETWORKING.md §7.1, §10.2, §10.9, §13).
  *
- *   idle → opening (signaling join on every matchmaker, label + sweets shown) → lobby ⇄ approving
+ *   idle → opening (signaling join on every matchmaker, the room code shown) → lobby
  *   lobby → mode → characters → course → loading → race → results → (again | next) → loading …
  *   results → lobby ("Back to the lobby") → … → closing (host ends) → idle
  *
  * `hostReduce(state, ev) → { state, effects }` is pure (tested without a browser);
  * `createHostSession()` wraps it: it keeps the state, runs the transport /
  * signaling effects and tells listeners (`onEffect`) about everything else
- * (screens, the approval prompt, lobby refreshes, emotes).
+ * (screens, lobby refreshes, emotes).
  *
- * Events: open · opened · open-failed · peer-join · peer-leave · hello · approve ·
+ * Events: open · opened · open-failed · peer-join · peer-leave · hello ·
  * intent · host-intent · remove-house · remove-seat · lock · unlock · choice · phase ·
- * emote · peer-net · settings · tick · close. Each may carry `now` (ms).
+ * emote · peer-net · tick · close. Each may carry `now` (ms).
  *
  * Effects: { type: 'send', peerId, msg } · { type: 'disconnect', peerId } ·
  * { type: 'setLocked', locked } · { type: 'drop', peerId } · { type: 'join-signaling' } ·
- * { type: 'leave-signaling' } · { type: 'prompt', prompt } · { type: 'lobby', lobby } ·
+ * { type: 'leave-signaling' } · { type: 'lobby', lobby } ·
  * { type: 'emote', globalPi, emote } · { type: 'error', text } · { type: 'phase', phase } ·
  * { type: 'reattach', houseId, peerId } (a house came back with its token: the race hands its karts back).
  *
- * Kid-safety rules enforced here: every new house needs approval (match check);
- * approvals queue while the host's players race; a locked room refuses new houses
- * with no prompt; removing a house locks the room (a reload with a new peer id is
- * refused until the host unlocks AND approves again); a valid reconnect token
- * re-attaches its house without approval, even while locked (the house was never
- * removed); LOBBY sends are coalesced to ≤ 4/s per guest and never sent mid-race.
+ * Friends with the room code come straight in (no approval prompt: a handful of friends, NETWORKING.md §1
+ * rule 3). Kid-safety rules enforced here: a locked room refuses new houses; removing a house locks the room
+ * (a reload with a new peer id is refused until the host unlocks); a valid reconnect token re-attaches its
+ * house even while locked (the house was never removed); a house that joins while the host is already
+ * picking follows straight into the picking screens; LOBBY sends are coalesced to ≤ 4/s per guest and never
+ * sent mid-race.
  *
  * OWNER: WS6 (session, lobby & screens).
  */
@@ -33,7 +33,6 @@ import {
   createLobby, lobbyReduce, lobbyForWire, seatsLeft, getHouse, hostHouse, houseOfPi, localCapacity, activePlayers, LOBBY_SEND_INTERVAL_MS,
 } from './lobby.js';
 import { composeOnlineSetup, cpuCountFor } from './composeSetup.js';
-import { createApprovalQueue, approvalReduce, isMatch } from './approval.js';
 import { rejectText, signalingErrorText } from './texts.js';
 import {
   compatible as defaultCompatible, buildIdentity, jsonEncode, jsonDecode, randomToken, isToken,
@@ -41,7 +40,7 @@ import {
 } from './wire.js';
 import { MAX_LOCAL_PLAYERS } from '../../config.js';
 
-/** Phases in which a race runs: approvals queue silently, LOBBY waits (§6.2, §10.4). */
+/** Phases in which a race runs: LOBBY waits (§6.2, §10.4). */
 export const RACING_PHASES = Object.freeze(['loading', 'race']);
 /** A peer that never says HELLO is let go after this long. */
 export const HELLO_TIMEOUT_MS = 15_000;
@@ -56,18 +55,17 @@ export const RECONNECT_WINDOW_MS = 60_000;
 export const GUEST_WOBBLY_MS = 3_000;
 
 /**
- * @param {{ secret: { label: string, sweets: number[] }, hostPlayers?: number|Array<{easyDrive?:boolean}>,
- *           approvalGate?: boolean, mine?: object }} o
+ * @param {{ code: string, hostPlayers?: number|Array<{easyDrive?:boolean}>, mine?: object }} o
  */
-export function createHostState({ secret, hostPlayers = 1, approvalGate = false, mine = buildIdentity() } = /** @type {any} */ ({})) {
+export function createHostState({ code = '', hostPlayers = 1, mine = buildIdentity() } = /** @type {any} */ ({})) {
+  const c = typeof code === 'string' ? code : '';
   return {
     phase: 'idle',
-    secret: secret ? { label: secret.label, sweets: [...secret.sweets] } : null, // host-local, never sent
+    code: c,
     hostPlayers,
     mine,
-    lobby: createLobby({ label: secret?.label ?? '' }),
-    approval: createApprovalQueue({ approvalGate }),
-    peers: {},   // peerId → { stage: 'hello-wait'|'pending'|'joined'|'gone', since, houseId?, token?, localPlayers? }
+    lobby: createLobby({ label: c }),
+    peers: {},   // peerId → { stage: 'hello-wait'|'joined'|'gone', since, houseId?, token? }
     tokens: {},  // token → houseId (M2 reconnect)
     asleep: {},  // houseId → { at, bye } houses whose connection went (removed after RECONNECT_WINDOW_MS / a BYE)
     keep: {},    // peerId → last ctrl send ms (KEEP heartbeat)
@@ -88,7 +86,6 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
   return function hostReduce(state, ev) {
     const effects = [];
     let st = { ...state, now: Number.isFinite(ev?.now) ? ev.now : state.now };
-    const prevPrompt = JSON.stringify(currentPromptOf(state));
     const prevLobby = state.lobby;
 
     const send = (peerId, msg) => effects.push({ type: 'send', peerId, msg });
@@ -107,21 +104,12 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
       }
       return r;
     };
-    const applyApproval = (aev) => {
-      const r = approvalReduce(st.approval, aev);
-      st = { ...st, approval: r.queue };
-      for (const d of r.decided) decide(d);
-    };
-    const decide = (d) => {
-      const peer = st.peers[d.peerId];
-      if (!peer || peer.stage === 'gone') return;
-      if (d.result === 'cancelled') return;
-      if (d.result === 'timeout') { reject(d.peerId, 'declined', 'timeout'); return; }
-      if (d.result === 'declined') { reject(d.peerId, 'declined'); return; }
+    /** A new house with the room code: straight in (the lobby still refuses when it is full). */
+    const admit = (peerId, localPlayers) => {
       const before = new Set(st.lobby.houses.map((h) => h.houseId));
-      const r = applyLobby({ type: 'house-approve', players: d.localPlayers });
-      if (r.effects.some((e) => e.type === 'refused')) { reject(d.peerId, racing(st) ? 'in-race-full' : 'full'); return; }
-      welcome(d.peerId, r.lobby.houses.find((h) => !before.has(h.houseId)));
+      const r = applyLobby({ type: 'house-approve', players: localPlayers });
+      if (r.effects.some((e) => e.type === 'refused')) { reject(peerId, racing(st) ? 'in-race-full' : 'full'); return; }
+      welcome(peerId, r.lobby.houses.find((h) => !before.has(h.houseId)));
     };
     const welcome = (peerId, house) => {
       fresh.add(peerId);
@@ -135,7 +123,9 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
       send(peerId, {
         type: 'WELCOME', houseId: house.houseId, emoji: house.emoji, token, hostBuild: st.mine.build, tickHz: TICK_HZ, lobby: lobbyForWire(st.lobby),
       });
-      if (racing(st)) send(peerId, { type: 'PHASE', phase: st.phase, screen: null, params: {} });
+      // Not in the lobby (racing, or the host is already picking): follow the host at once, so a friend who
+      // joins while everyone picks racers lands in the racer screen too.
+      if (st.phase !== 'lobby') send(peerId, { type: 'PHASE', phase: st.phase, screen: null, params: {} });
     };
     const dropTokens = (houseId) => {
       st = { ...st, tokens: Object.fromEntries(Object.entries(st.tokens).filter(([, hid]) => hid !== houseId)) };
@@ -188,7 +178,7 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
 
       case 'opened': {
         if (st.phase !== 'opening') break;
-        st = { ...st, phase: 'lobby', lobby: createLobby({ label: st.secret?.label ?? '' }) };
+        st = { ...st, phase: 'lobby', lobby: createLobby({ label: st.code ?? '' }) };
         applyLobby({ type: 'house-join', isHost: true, players: st.hostPlayers });
         effects.push({ type: 'phase', phase: 'lobby' });
         break;
@@ -214,7 +204,7 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         if (peer && peer.stage !== 'hello-wait') break; // one HELLO per connection
         if (!peer) st = { ...st, peers: { ...st.peers, [peerId]: { stage: 'hello-wait', since: st.now } } };
         if (!compatible(st.mine, h).ok) { reject(peerId, 'version'); break; }
-        // M2: a valid reconnect token re-attaches its house with no approval, even while locked.
+        // M2: a valid reconnect token re-attaches its house, even while locked.
         if (isToken(h.token) && Object.hasOwn(st.tokens, h.token)) {
           const houseId = st.tokens[h.token];
           const house = getHouse(st.lobby, houseId);
@@ -247,24 +237,18 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         }
         if (st.lobby.locked) { reject(peerId, 'locked'); break; }
         const n = Number(h.house?.localPlayers);
-        if (!Number.isInteger(n) || n < 1 || n > MAX_LOCAL_PLAYERS || !isMatch(h.match)) { reject(peerId, 'declined'); break; }
+        if (!Number.isInteger(n) || n < 1 || n > MAX_LOCAL_PLAYERS) { reject(peerId, 'declined'); break; }
         if (n > seatsLeft(st.lobby) || st.lobby.houses.length >= 8) { reject(peerId, racing(st) ? 'in-race-full' : 'full'); break; }
-        st = { ...st, peers: { ...st.peers, [peerId]: { stage: 'pending', since: st.now, localPlayers: n } } };
-        applyApproval({ type: 'request', peerId, match: h.match, localPlayers: n, now: st.now });
+        admit(peerId, n);
         break;
       }
-
-      case 'approve':
-        applyApproval({ type: 'answer', peerId: ev.peerId, yes: !!ev.yes });
-        break;
 
       case 'peer-leave': {
         const peer = st.peers[ev.peerId];
         if (!peer || peer.stage === 'gone') break;
         const was = peer.stage;
         st = { ...st, peers: { ...st.peers, [ev.peerId]: { ...peer, stage: 'gone' } } };
-        if (was === 'pending') applyApproval({ type: 'cancel', peerId: ev.peerId });
-        else if (was === 'joined') {
+        if (was === 'joined') {
           const houseId = peer.houseId;
           if (ev.bye && !racing(st)) {
             // "Leave the room" in the lobby: the house goes at once, its seats are free.
@@ -336,7 +320,6 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         const r = applyLobby({ type: 'phase', phase: ev.phase });
         if (r.effects.some((e) => e.type === 'refused')) break;
         st = { ...st, phase: ev.phase };
-        applyApproval({ type: 'racing', on: racing(st), now: st.now });
         expireAsleep();
         for (const p of joinedPeers(st)) send(p, { type: 'PHASE', phase: ev.phase, screen: ev.screen ?? null, params: ev.params ?? {} });
         effects.push({ type: 'phase', phase: ev.phase });
@@ -365,12 +348,7 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         break;
       }
 
-      case 'settings':
-        if (typeof ev.approvalGate === 'boolean') applyApproval({ type: 'gate', on: ev.approvalGate });
-        break;
-
       case 'tick': {
-        applyApproval({ type: 'tick', now: st.now });
         for (const [peerId, p] of Object.entries(st.peers)) {
           if (p.stage === 'hello-wait' && st.now - p.since >= HELLO_TIMEOUT_MS) {
             st = { ...st, peers: { ...st.peers, [peerId]: { ...p, stage: 'gone' } } };
@@ -389,10 +367,10 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
             if (house.net !== want) applyLobby({ type: 'net', houseId: p.houseId, net: want });
           }
         }
-        // KEEP heartbeat: every waiting or joined guest hears from us at least once a second (§7.4), so a quiet
-        // lobby, a slow "Let them in?" or a host lingering on the track screen never looks like a sleeping host.
+        // KEEP heartbeat: every joined guest hears from us at least once a second (§7.4), so a quiet lobby or a
+        // host lingering on the track screen never looks like a sleeping host.
         for (const [peerId, p] of Object.entries(st.peers)) {
-          if ((p.stage === 'pending' || p.stage === 'joined') && !(st.now - (st.keep[peerId] ?? -Infinity) < KEEPALIVE_MS)) {
+          if (p.stage === 'joined' && !(st.now - (st.keep[peerId] ?? -Infinity) < KEEPALIVE_MS)) {
             send(peerId, { type: 'KEEP' });
           }
         }
@@ -402,7 +380,7 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
       case 'close':
         if (st.phase === 'idle') break;
         for (const p of joinedPeers(st)) send(p, { type: 'BYE', reason: BYE.hostEnding });
-        st = { ...createHostState({ secret: st.secret, hostPlayers: st.hostPlayers, approvalGate: st.approval.approvalGate, mine: st.mine }), tokens: {} };
+        st = { ...createHostState({ code: st.code, hostPlayers: st.hostPlayers, mine: st.mine }), tokens: {} };
         effects.push({ type: 'leave-signaling' }, { type: 'phase', phase: 'idle' });
         break;
 
@@ -434,15 +412,8 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
     let keep = null;
     for (const e of effects) if (e.type === 'send') (keep ??= { ...st.keep })[e.peerId] = st.now;
     if (keep) st = { ...st, keep };
-
-    const prompt = currentPromptOf(st);
-    if (JSON.stringify(prompt) !== prevPrompt) effects.push({ type: 'prompt', prompt });
     return { state: st, effects };
   };
-}
-
-function currentPromptOf(st) {
-  return approvalReduce(st.approval, { type: 'noop' }).prompt;
 }
 
 /**
@@ -450,10 +421,10 @@ function currentPromptOf(st) {
  * @param {object} o
  * @param {object} [o.transport]      NetTransport (§4.1): send / disconnect / onMessage / onPeer
  * @param {object[]} [o.signalings]   SignalingTransports (§4.2): setLocked / drop
- * @param {object} [o.progress]       for settings.approvalGate
+ * @param {object} [o.progress]       unused (kept for the §16 signature)
  * @param {() => number} [o.rng]      unused by M1 logic (tokens use crypto); kept for the §16 signature
  * @param {() => number} [o.now]
- * @param {{ label: string, sweets: number[] }} o.secret
+ * @param {string} o.code             the room code ('CAKE')
  * @param {number|Array} [o.hostPlayers] the host house's local players
  * @param {object} [o.mine]           buildIdentity() (WS2 version.js values)
  * @param {(mine, theirs) => { ok: boolean }} [o.compatible]
@@ -463,14 +434,13 @@ function currentPromptOf(st) {
  * @param {(id: string) => boolean} [o.isCharacter]  racer ids this build knows (picks of others are ignored)
  */
 export function createHostSession({
-  transport = null, signalings = [], progress = null, rng = null, now = () => Date.now(), secret,
+  transport = null, signalings = [], progress = null, rng = null, now = () => Date.now(), code = '',
   hostPlayers = 1, mine = buildIdentity(), compatible, encode = jsonEncode, decode = jsonDecode, makeToken, isCharacter = null,
 } = /** @type {any} */ ({})) {
   void rng;
-  let approvalGate = false;
-  try { approvalGate = !!progress?.getSettings?.()?.approvalGate; } catch { /* ignore */ }
+  void progress;
   const reduce = createHostReducer({ makeToken, compatible, isCharacter });
-  let state = createHostState({ secret, hostPlayers, approvalGate, mine });
+  let state = createHostState({ code, hostPlayers, mine });
   const listeners = new Set();
   const offs = [];
   const heard = {}; // peerId → last ms any byte came from it (every channel; cheap, no dispatch per packet)
@@ -495,7 +465,6 @@ export function createHostSession({
     },
     onEffect(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     lobby() { return state.lobby; },
-    prompt() { return currentPromptOf(state); },
     dispose() { offs.splice(0).forEach((off) => { try { off(); } catch { /* ignore */ } }); listeners.clear(); },
   };
 
@@ -519,7 +488,7 @@ export function createHostSession({
 
 /**
  * The `ctx.net` object the menus use on the HOST (Menus.js: role, composeSetup, lobby,
- * prompt, dispatch, seatsLeft …), built from a live host session. `composeSetup` turns the
+ * dispatch, seatsLeft …), built from a live host session. `composeSetup` turns the
  * host's local flow result (track / speed / laps / mode) into a NetRaceSetup for the whole
  * lobby (§10.5): it records the host's choice in the lobby, draws the seed, numbers the
  * race and asks `pickCpus(count)` for the CPU racers (from the host's unlocked racers).
@@ -530,10 +499,9 @@ export function createHostNetContext(session, { makeSeed = () => cryptoU32(), pi
   let raceId = 0;
   return {
     role: 'host',
-    get secret() { return session.state.secret; },
+    get code() { return session.state.code; },
     houseId: 0,
     lobby: () => session.lobby(),
-    prompt: () => session.prompt(),
     dispatch: (ev) => session.dispatch(ev),
     onEffect: (fn) => session.onEffect(fn),
     seatsLeft: () => {

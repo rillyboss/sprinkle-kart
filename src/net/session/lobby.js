@@ -1,13 +1,12 @@
 /**
  * LobbyState — host-owned, sent to guests in LOBBY (NETWORKING.md §10.3).
  *
- *   { v: 1, label: 'SPRINKLE-4821', phase, locked, capacity: 8,
+ *   { v: 1, label: 'CAKE', phase, locked, capacity: 8,          (label = the room code)
  *     houses: [{ houseId, emoji, isHost, net: 'ok'|'wobbly'|'asleep', rttMs,
  *                players: [{ globalPi, seat, characterId|null, paintId, easyDrive, ready }] }],
  *     hostChoice: { mode, trackId, cupId, arenaId, speedClass, laps } }
  *
- * The secret sweets are NEVER in LobbyState (guests already know them; the host
- * screen reads them locally), and neither are peer ids or the approval queue.
+ * Peer ids are NEVER in LobbyState.
  * Global player index 0..7 is assigned by the host in join order (lowest free
  * index) and kept for the whole session; it decides nothing about the grid.
  *

@@ -65,17 +65,22 @@ export function emptyStats() {
  * Player settings (saved alongside progress, kept by "reset progress").
  *   music, sfx          0..1 volumes (AudioManager.setVolume)
  *   kidAssistDefault    new players join with Kid-Assist on
- *   onlineEnabled       online play with friends (NETWORKING.md §1 rule 1): off by default, switched
- *                       on only behind the parent gate after the privacy sentence
- *   approvalGate        "Only a grown-up can let houses in": approval Yes goes through the parent gate
+ *   onlineOff           "Turn off online play" (NETWORKING.md §1 rule 1): online play is ON by default; a
+ *                       grown-up may switch it off in Settings → Grown-ups (switching it back on needs the gate)
  *   relayOnly           "Use the relay for game traffic" (iceTransportPolicy 'relay'; needs our relay)
+ * (Older saves' `onlineEnabled` / `approvalGate` are simply dropped.)
  */
 export function defaultSettings() {
-  return { music: 0.7, sfx: 0.85, kidAssistDefault: false, onlineEnabled: false, approvalGate: false, relayOnly: false };
+  return { music: 0.7, sfx: 0.85, kidAssistDefault: false, onlineOff: false, relayOnly: false };
 }
 
 /** The online settings; only a real `true` turns one on (hand-edited saves can't sneak "yes" in). */
-export const ONLINE_SETTING_KEYS = Object.freeze(['onlineEnabled', 'approvalGate', 'relayOnly']);
+export const ONLINE_SETTING_KEYS = Object.freeze(['onlineOff', 'relayOnly']);
+
+/** Is online play available on this machine? (on unless a grown-up turned it off) */
+export function isOnlineOn(settings) {
+  return settings?.onlineOff !== true;
+}
 
 /** Per-racer tallies (any human who raced as that character). */
 export function emptyRacerStats() {

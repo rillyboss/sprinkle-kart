@@ -1,18 +1,17 @@
 /**
  * WS7: the running game uses copies of the WS5 test stand-ins (src/online/standins/*) until WS1 / WS2 land.
  * These tests pin them to the originals the convergence matrix was proven with (same bytes, same sim
- * steps), check the swap point (src/online/stack.js), and check deriveRoomIds against the §4.2 algorithm.
+ * steps) and check the swap point (src/online/stack.js). Room ids: tests/net.roomcode.test.js.
  */
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { webcrypto } from 'node:crypto';
 import * as srcWire from '../src/online/standins/wire.js';
 import * as testWire from './helpers/netWire.js';
 import * as srcSim from '../src/online/standins/sim.js';
 import * as testSim from './helpers/netSim.js';
 import { createClockSync as srcClock } from '../src/online/standins/clockSync.js';
 import { createClockSync as testClock } from './helpers/netClock.js';
-import { deriveRoomIds, roomKeyPassword, ROOM_KDF_ITERATIONS, ROOM_KDF_SALT } from '../src/online/standins/roomKey.js';
+import { deriveRoomIds } from '../src/net/session/roomCode.js';
 import { netStack, COUNTDOWN_SECONDS } from '../src/online/stack.js';
 import { makeSimStateFixture } from '../src/race/simState.types.js';
 import { Race } from '../src/race/Race.js';
@@ -105,40 +104,6 @@ describe('clock sync copy = the WS5 test stand-in', () => {
   });
 });
 
-describe('deriveRoomIds (§4.2 room key, WS2 stand-in)', () => {
-  const subtle = globalThis.crypto?.subtle ?? webcrypto.subtle;
-  const secret = { label: 'SPRINKLE-4821', sweets: [3, 14, 15, 9, 26, 53] };
-
-  it('follows the binding algorithm: PBKDF2-SHA256 150 000 × salt, then HMAC topic / pw / room', async () => {
-    expect(ROOM_KDF_ITERATIONS).toBe(150000);
-    expect(ROOM_KDF_SALT).toBe('sprinkle-kart-room-v1');
-    expect(roomKeyPassword(secret)).toBe('SPRINKLE-4821|3.14.15.9.26.53');
-    const ids = await deriveRoomIds(secret, { subtle, iterations: 1000 });
-    // reference computation with node's crypto
-    const { pbkdf2Sync, createHmac } = await import('node:crypto');
-    const K = pbkdf2Sync('SPRINKLE-4821|3.14.15.9.26.53', 'sprinkle-kart-room-v1', 1000, 32, 'sha256');
-    const h = (s) => createHmac('sha256', K).update(s).digest();
-    expect(ids.topic).toBe(`sk-${h('topic').toString('hex').slice(0, 20)}`);
-    expect(ids.workerRoom).toBe(`r${h('room').toString('hex').slice(0, 24)}`);
-    expect(ids.password).toBe(h('pw').toString('base64url'));
-    expect(ids.topic).toMatch(/^sk-[0-9a-f]{20}$/);
-    expect(ids.workerRoom).toMatch(/^r[0-9a-f]{24}$/);
-  });
-
-  it('the label alone never gives the ids: other sweets → other ids', async () => {
-    const a = await deriveRoomIds(secret, { subtle, iterations: 500 });
-    const b = await deriveRoomIds({ ...secret, sweets: [3, 14, 15, 9, 26, 54] }, { subtle, iterations: 500 });
-    expect(a.topic).not.toBe(b.topic);
-    expect(a.workerRoom).not.toBe(b.workerRoom);
-    expect(a.password).not.toBe(b.password);
-  });
-
-  it('rejects junk and missing crypto with a clear error', async () => {
-    await expect(deriveRoomIds(null, { subtle })).rejects.toThrow(/RoomSecret/);
-    await expect(deriveRoomIds(secret, { subtle: null })).rejects.toThrow(/secure context/);
-  });
-});
-
 describe('netStack (the WS1 / WS2 swap point)', () => {
   it('exposes everything the WS5 netcode needs', () => {
     expect(typeof netStack.wire.encodeSnapshot).toBe('function');
@@ -147,7 +112,7 @@ describe('netStack (the WS1 / WS2 swap point)', () => {
     expect(typeof netStack.predictTick).toBe('function');
     expect(typeof netStack.tickRace).toBe('function');
     expect(typeof netStack.createClockSync).toBe('function');
-    expect(typeof netStack.deriveRoomIds).toBe('function');
+    expect(netStack.deriveRoomIds).toBe(deriveRoomIds);
     expect(netStack.makeCountdown(COUNTDOWN_SECONDS).goTick).toBe(testSim.makeCountdown(3).goTick);
     expect(Object.isFrozen(netStack)).toBe(true);
   });

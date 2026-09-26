@@ -38,7 +38,7 @@ export function allText(node) {
 
 /** A minimal Menus-like ctx for mounting one screen. */
 export function fakeCtx({ settings = {}, net = null, online = null } = {}) {
-  let saved = { music: 0.7, sfx: 0.85, kidAssistDefault: false, onlineEnabled: false, approvalGate: false, relayOnly: false, ...settings };
+  let saved = { music: 0.7, sfx: 0.85, kidAssistDefault: false, onlineOff: false, relayOnly: false, ...settings };
   const ctx = {
     screens: SCREENS,
     characters: CHARACTERS,

@@ -1,42 +1,42 @@
 /**
  * online-lobby — the room (NETWORKING.md §10.1, §10.3, §10.4, §10.9).
  *
- * Host: the room label + secret sweets, "Copy invite link 📋", a QR code of the link,
- * every house with its players / racers / ping icon, the approval prompt with the
- * match check ("Ask your friend: do you see 🦊🐸? Let them in?", behind the parent
- * gate when "Only a grown-up can let houses in" is on), remove a house or a single
- * player, lock / unlock ("Room locked 🔒 — tap to open again") and "Let's pick! 🎨".
+ * Host: the 4-letter room code, HUGE (friends read it off the TV), whether the room shows in
+ * "Games you can join" (a toggle, when our Worker keeps the list), "Copy invite link 📋", a QR code of
+ * the link, every house with its players / racers / ping icon, remove a house or a single player,
+ * lock / unlock ("Room locked 🔒 — tap to open again") and "Let's pick! 🎨". Friends with the code come
+ * straight in — no approval prompts.
  * Guests: the same room read-only, "Waiting for the host to start…".
  * Everyone: the 8 preset emotes (Y), and Leave.
  *
- * Live data comes from `ctx.net` (WS7 wires the session): { role, lobby(), prompt(),
- * secret, houseId, dispatch(ev), onEffect?(fn) } — or, for tests / screenshots, from
- * params { role, lobby, prompt, secret, localHouseId, inviteLink }.
- * Actions go to `ctx.net.dispatch` (approve / remove-house / remove-seat / lock / unlock /
- * emote) and `ctx.online` (pick() = "Let's pick!", leave()).
+ * Live data comes from `ctx.net` (main.js wires the session): { role, lobby(), code, houseId,
+ * dispatch(ev), onEffect?(fn), listing?() → { supported, on }, setListed?(on) } — or, for tests /
+ * screenshots, from params { role, lobby, code, localHouseId, inviteLink, listing }.
+ * Actions go to `ctx.net.dispatch` (remove-house / remove-seat / lock / unlock / emote), `ctx.net.setListed`
+ * and `ctx.online` (pick() = "Let's pick!", leave()).
  *
  * Logic: `lobbyScreenReduce` below (pure, tested).
- * OWNER: WS6 (session, lobby & screens).
+ * OWNER: online session & screens.
  */
 import './online.css';
-import { el, escapeHtml, hint, glyph, kbd, floatiesLayer, portraitHtml } from '../dom.js';
+import { el, escapeHtml, hint, kbd, floatiesLayer, portraitHtml } from '../dom.js';
 import { hintsBar, backButton, shake } from './_shared.js';
 import { TEXT, LOBBY_EMOTES } from '../../net/session/texts.js';
-import { sweetsText, isRoomSecret } from '../../net/session/roomCode.js';
+import { isRoomCode } from '../../net/session/roomCode.js';
 import { makeInviteLink, inviteQrSvg, INVITE_BASE_URL } from '../../net/session/inviteLink.js';
-import { createGate, gateReduce, GATE_TRIES } from '../../progress/screenState.js';
 
 const wrap = (i, n) => (n ? ((i % n) + n) % n : 0);
 const out = (state, fx = [], effects = [], extra = {}) => ({ state, fx, effects, ...extra });
 
-export const HOST_ACTIONS = Object.freeze(['start', 'lock', 'copy', 'leave']);
+export const HOST_ACTIONS = Object.freeze(['start', 'list', 'copy', 'lock', 'leave']);
 export const GUEST_ACTIONS = Object.freeze(['leave']);
 
-export function createLobbyScreenState({ role = 'host' } = {}) {
-  const actions = role === 'host' ? HOST_ACTIONS : GUEST_ACTIONS;
+/** @param {{ role?: 'host'|'guest', canList?: boolean }} [o] canList: our Worker keeps the open-games list */
+export function createLobbyScreenState({ role = 'host', canList = true } = {}) {
+  const actions = role === 'host' ? HOST_ACTIONS.filter((a) => a !== 'list' || canList) : GUEST_ACTIONS;
   return {
     role, actions, focus: 'actions', action: 0, house: 0, emote: 0,
-    modal: null, modalIndex: 0, gate: null, houseOptions: [], seed: 7,
+    modal: null, modalIndex: 0, houseOptions: [],
   };
 }
 
@@ -50,44 +50,14 @@ export function houseModalOptions(house) {
 /**
  * @param {object} s screen state
  * @param {{ action: string } & object} ev menu event
- * @param {{ lobby?: object, prompt?: object|null, selectable?: object[] }} ctx live data:
- *   `selectable` = the house cards the host may pick (guest houses)
+ * @param {{ lobby?: object, selectable?: object[], listed?: boolean }} ctx live data:
+ *   `selectable` = the house cards the host may pick (guest houses); `listed` = shown in "Games you can join"
  * @returns {{ state, fx: string[], effects: object[], shake?: boolean }}
- *   effects: start | lock | unlock | copy | leave | approve {yes} | remove-house {houseId} |
+ *   effects: start | lock | unlock | list {on} | copy | leave | remove-house {houseId} |
  *   remove-seat {houseId, seat} | emote {emote}
  */
-export function lobbyScreenReduce(s, ev, { lobby = null, prompt = null, selectable = [] } = {}) {
+export function lobbyScreenReduce(s, ev, { lobby = null, selectable = [], listed = true } = {}) {
   const a = ev.action;
-  // The approval prompt (host) sits on top of everything until answered.
-  if (s.modal === 'prompt') {
-    if (!prompt) return out({ ...s, modal: null });
-    switch (a) {
-      case 'left': case 'right': case 'up': case 'down':
-        return out({ ...s, modalIndex: 1 - s.modalIndex }, ['move']);
-      case 'select':
-        if (ev.index !== 0 && ev.index !== 1) return out(s);
-        return lobbyScreenReduce({ ...s, modalIndex: ev.index }, { ...ev, action: 'confirm' }, { lobby, prompt, selectable });
-      case 'confirm': case 'start':
-        if (s.modalIndex === 1) return out({ ...s, modal: null, modalIndex: 0 }, ['back'], [{ type: 'approve', peerId: prompt.peerId, yes: false }]);
-        if (prompt.needsGate) {
-          const gate = createGate(s.seed);
-          return out({ ...s, modal: 'gate', gate, seed: gate.seed }, ['confirm']);
-        }
-        return out({ ...s, modal: null, modalIndex: 0 }, ['join'], [{ type: 'approve', peerId: prompt.peerId, yes: true }]);
-      case 'back':
-        return out({ ...s, modalIndex: 1 }, ['move']); // B points at "Not now" (never a surprise decline)
-      default: return out(s);
-    }
-  }
-  if (s.modal === 'gate') {
-    const r = gateReduce(s.gate, ev);
-    if (r.go === 'cancel') return out({ ...s, modal: prompt ? 'prompt' : null, gate: null }, r.fx);
-    if (r.go === 'pass') {
-      if (!prompt) return out({ ...s, modal: null, gate: null }, r.fx);
-      return out({ ...s, modal: null, gate: null, modalIndex: 0 }, [...r.fx, 'join'], [{ type: 'approve', peerId: prompt.peerId, yes: true }]);
-    }
-    return out({ ...s, gate: r.state }, r.fx, [], { shake: !!r.shake });
-  }
   if (s.modal === 'house') {
     const n = s.houseOptions.length;
     switch (a) {
@@ -95,7 +65,7 @@ export function lobbyScreenReduce(s, ev, { lobby = null, prompt = null, selectab
       case 'down': case 'right': return out({ ...s, modalIndex: wrap(s.modalIndex + 1, n) }, ['move']);
       case 'select':
         if (!(ev.index >= 0 && ev.index < n)) return out(s);
-        return lobbyScreenReduce({ ...s, modalIndex: ev.index }, { ...ev, action: 'confirm' }, { lobby, prompt, selectable });
+        return lobbyScreenReduce({ ...s, modalIndex: ev.index }, { ...ev, action: 'confirm' }, { lobby, selectable, listed });
       case 'confirm': case 'start': {
         const opt = s.houseOptions[s.modalIndex];
         const closed = { ...s, modal: null, modalIndex: 0, houseOptions: [] };
@@ -107,11 +77,10 @@ export function lobbyScreenReduce(s, ev, { lobby = null, prompt = null, selectab
       default: return out(s);
     }
   }
-  if (prompt && s.role === 'host') return out({ ...s, modal: 'prompt', modalIndex: 0 }, ['join']);
-
   const acts = s.actions;
   const actionEffect = (id) => {
     if (id === 'lock') return lobby?.locked ? { type: 'unlock' } : { type: 'lock' };
+    if (id === 'list') return { type: 'list', on: !listed };
     return { type: id };
   };
   // pointer shortcuts
@@ -137,7 +106,7 @@ export function lobbyScreenReduce(s, ev, { lobby = null, prompt = null, selectab
       case 'left': case 'up': return out({ ...s, house: wrap(s.house - 1, n) }, ['move']);
       case 'right': return out({ ...s, house: wrap(s.house + 1, n) }, ['move']);
       case 'down': return out({ ...s, focus: 'actions' }, ['move']);
-      case 'confirm': case 'start': return lobbyScreenReduce(s, { action: 'pick-house', index: wrap(s.house, n) }, { lobby, prompt, selectable });
+      case 'confirm': case 'start': return lobbyScreenReduce(s, { action: 'pick-house', index: wrap(s.house, n) }, { lobby, selectable, listed });
       case 'back': return out({ ...s, focus: 'actions' }, ['back']);
       default: return out(s);
     }
@@ -195,13 +164,15 @@ export default {
     const net = ctx.net ?? null;
     const role = net?.role ?? params.role ?? 'host';
     const getLobby = () => (net?.lobby ? net.lobby() : params.lobby) ?? null;
-    const getPrompt = () => (role === 'host' ? (net?.prompt ? net.prompt() : params.prompt) ?? null : null);
-    const secret = isRoomSecret(net?.secret) ? net.secret : isRoomSecret(params.secret) ? params.secret : null;
+    const code = isRoomCode(net?.code) ? net.code : isRoomCode(params.code) ? params.code : null;
+    const getListing = () => {
+      try { return (net?.listing ? net.listing() : params.listing) ?? { supported: false, on: false }; } catch { return { supported: false, on: false }; }
+    };
     const localHouseId = net?.houseId ?? params.localHouseId ?? (role === 'host' ? 0 : null);
-    const link = params.inviteLink ?? (secret && role === 'host' ? makeInviteLink(secret, pageBaseUrl()) : '');
-    let state = createLobbyScreenState({ role });
+    const link = params.inviteLink ?? (code && role === 'host' ? makeInviteLink(code, pageBaseUrl()) : '');
+    let state = createLobbyScreenState({ role, canList: !!getListing().supported });
     let lastLobby = null;
-    let lastPromptKey = '';
+    let lastListKey = '';
     const bubbles = new Map(); // houseId → { emoji, until }
     let clock = 0;
 
@@ -215,16 +186,17 @@ export default {
     }, em.emoji));
     const modal = el('div.skn-modal', { hidden: true, onclick: (e) => e.stopPropagation() });
 
-    const invitePanel = role === 'host' && secret ? el('div.skn-invite', {},
+    const listLine = el('div.skn-listline');
+    const invitePanel = role === 'host' && code ? el('section.skn-invite', { 'aria-label': 'Room code' },
       el('div.skn-invite-k', {}, 'Room code'),
-      el('div.skn-label', {}, secret.label),
-      el('div.skn-invite-k', {}, 'Secret sweets 🤫'),
-      el('div.skn-sweets', {}, sweetsText(secret.sweets)),
+      el('div.skn-code-big', { 'aria-label': code.split('').join(' ') }, code),
+      el('div.skn-invite-how', {}, 'Friends: Online → Join a friend'),
+      listLine,
       qr,
       el('div.skn-link', {}, link),
-    ) : role === 'guest' ? el('div.skn-invite', {},
+    ) : role === 'guest' ? el('section.skn-invite', {},
       el('div.skn-invite-k', {}, 'You are in'),
-      el('div.skn-label', {}, getLobby()?.label ?? ''),
+      el('div.skn-code-big', {}, getLobby()?.label ?? ''),
       el('div.skn-wait-s', {}, 'Waiting for the host to start… 🍭'),
     ) : null;
 
@@ -275,12 +247,16 @@ export default {
         housesEl.appendChild(card);
       }
       lockLine.textContent = lobby?.locked ? (role === 'host' ? TEXT.roomLocked : "The host's room is closed for now 🔒") : '';
+      const li = getListing();
+      listLine.textContent = li.supported ? (li.on && !lobby?.locked ? TEXT.listShown : TEXT.listHidden) : '';
     };
 
     const renderActions = () => {
       const lobby = getLobby();
+      const listed = !!getListing().on;
       const labels = {
         start: "🎨 Let's pick!",
+        list: listed ? '🙈 Hide from the list' : '👀 Show in the list',
         lock: lobby?.locked ? '🔓 Open the room' : '🔒 No more houses, please',
         copy: '📋 Copy invite link',
         leave: role === 'host' ? '👋 End the room' : '👋 Leave the room',
@@ -295,29 +271,7 @@ export default {
     const renderModal = () => {
       modal.hidden = !state.modal;
       if (!state.modal) { modal.innerHTML = ''; return; }
-      const prompt = getPrompt();
-      if (state.modal === 'prompt' && prompt) {
-        modal.innerHTML = '<div class="skn-modal-card skn-prompt">'
-          + `<div class="skn-modal-k">${escapeHtml(TEXT.wantsToJoin)}</div>`
-          + `<div class="skn-animals">${escapeHtml(prompt.animals)}</div>`
-          + `<div class="skn-modal-t">${escapeHtml(prompt.text)}</div>`
-          + `${prompt.needsGate ? '<div class="skn-wait-s">A grown-up answers a little question first 🔒</div>' : ''}`
-          + '<div class="skn-actions">'
-          + `<button class="skn-btn ${state.modalIndex === 0 ? 'sk-sel' : ''}" data-i="0">🚪 Yes, let them in</button>`
-          + `<button class="skn-btn ${state.modalIndex === 1 ? 'sk-sel' : ''}" data-i="1">💖 Not now</button>`
-          + '</div></div>';
-      } else if (state.modal === 'gate') {
-        const g = state.gate;
-        const tries = Array.from({ length: GATE_TRIES }, (_, i) => `<i class="${i < g.tries ? 'used' : ''}"></i>`).join('');
-        modal.innerHTML = '<div class="skn-modal-card skp-gate">'
-          + '<div class="skn-modal-k">Grown-ups only! 🧁</div>'
-          + `<div class="skp-gate-q">What is <b>${g.a}</b> + <b>${g.b}</b>?</div>`
-          + `<div class="skp-dial"><div class="skp-dial-v">${g.value}</div></div>`
-          + `<div class="skp-gate-oops">${g.tries ? 'Hmm, not quite! Try again 🙈' : ''}</div>`
-          + `<div class="skp-gate-tries">${tries}</div>`
-          + `<div class="skp-gate-h"><span class="sk-g sk-g-dpad">✚</span> pick the number · ${glyph('A')} answer · ${glyph('B')} never mind</div>`
-          + '</div>';
-      } else if (state.modal === 'house') {
+      if (state.modal === 'house') {
         const lobby = getLobby();
         const labelFor = (o) => {
           if (o.kind === 'remove-house') return '👋 Remove this house';
@@ -358,7 +312,7 @@ export default {
     function apply(effects) {
       for (const e of effects) {
         switch (e.type) {
-          case 'approve': net?.dispatch?.({ type: 'approve', peerId: e.peerId, yes: e.yes }); break;
+          case 'list': net?.setListed?.(e.on); break;
           case 'remove-house': net?.dispatch?.({ type: 'remove-house', houseId: e.houseId }); break;
           case 'remove-seat': net?.dispatch?.({ type: 'remove-seat', houseId: e.houseId, seat: e.seat }); break;
           case 'lock': net?.dispatch?.({ type: 'lock' }); break;
@@ -393,7 +347,7 @@ export default {
 
     const selectableNow = () => (role === 'host' ? guestHouses(getLobby()) : []);
     const handle = (ev) => {
-      const res = lobbyScreenReduce(state, ev, { lobby: getLobby(), prompt: getPrompt(), selectable: selectableNow() });
+      const res = lobbyScreenReduce(state, ev, { lobby: getLobby(), selectable: selectableNow(), listed: !!getListing().on });
       state = res.state;
       ctx.fx?.(res);
       apply(res.effects);
@@ -411,15 +365,11 @@ export default {
     const update = (dt = 1 / 60) => {
       clock += dt;
       const lobby = getLobby();
-      const prompt = getPrompt();
-      const key = prompt ? `${prompt.peerId}|${prompt.needsGate}` : '';
-      if (lobby !== lastLobby || key !== lastPromptKey) {
+      const li = getListing();
+      const listKey = `${li.supported}|${li.on}`;
+      if (lobby !== lastLobby || listKey !== lastListKey) {
         lastLobby = lobby;
-        if (key !== lastPromptKey) {
-          lastPromptKey = key;
-          if (prompt && !state.modal) state = { ...state, modal: 'prompt', modalIndex: 0 };
-          if (!prompt && (state.modal === 'prompt' || state.modal === 'gate')) state = { ...state, modal: null, gate: null };
-        }
+        lastListKey = listKey;
         sync();
       }
       for (const [hid, b] of bubbles) if (b.until <= clock) { bubbles.delete(hid); renderHouses(); }

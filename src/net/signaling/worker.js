@@ -11,6 +11,12 @@
  *
  * `data` inside a signal is ours: `{ type: 'offer'|'answer', sdp }`,
  * `{ type: 'candidate', candidate }` or `{ type: 'restart-request' }`.
+ *
+ * Open-games list ("Games you can join", §4.2): a host joins with `&code=CAKE&who=<racer id>&players=<n>
+ * &list=1|0` (old workers ignore these). A worker that keeps the list says `list: true` in `joined`; only then
+ * does `setListing()` send `{ t: 'list', on, who, players }` — at once and every LISTING_REFRESH_MS while
+ * listed, so the list entry never expires while the room is open (an old worker would close the socket on an
+ * unknown message).
  */
 import { SignalingError, workerErrorToSignalingError, createListeners, isPeerId } from './types.js';
 
@@ -20,16 +26,31 @@ export const WORKER_ICE_TIMEOUT_MS = 5000;
 export const WORKER_ICE_MIN_INTERVAL_MS = 30000;
 export const WORKER_PING_MS = 25000;
 export const WORKER_MAX_MSG_BYTES = 16 * 1024;
+/** How often a listed host refreshes its open-games entry (the worker forgets it after 10 minutes). */
+export const LISTING_REFRESH_MS = 2 * 60 * 1000;
+const WHO_RE = /^[a-z0-9-]{1,24}$/;
+const CODE_RE = /^[ABCDEFGHJKLMNPRSTUVWXYZ]{4}$/;
+
+/** A clean listing { on, who, players } (who: a racer id or null; players 1..8). */
+export function cleanListing(l) {
+  const n = Number(l?.players);
+  return {
+    on: l?.on !== false,
+    who: typeof l?.who === 'string' && WHO_RE.test(l.who) ? l.who : null,
+    players: Number.isInteger(n) && n >= 1 && n <= 8 ? n : 1,
+  };
+}
 const MAX_EARLY_CANDIDATES = 32;
 /** Negotiated placeholder so the guest's offer carries an SCTP m-line (never opened). */
 export const BOOT_CHANNEL = Object.freeze({ label: 'sk-boot', init: Object.freeze({ negotiated: true, id: 7 }) });
 
 /**
- * `https://x.workers.dev` → `wss://x.workers.dev/room/<room>?role=…&peer=…&proto=1`.
+ * `https://x.workers.dev` → `wss://x.workers.dev/room/<room>?role=…&peer=…&proto=1` (a host with a code and a
+ * listing adds `&code=…&who=…&players=…&list=1|0`).
  * @param {string} baseUrl
- * @param {{ workerRoom: string, role: string, selfId: string }} o
+ * @param {{ workerRoom: string, role: string, selfId: string, code?: string, listing?: object|null }} o
  */
-export function workerRoomUrl(baseUrl, { workerRoom, role, selfId }) {
+export function workerRoomUrl(baseUrl, { workerRoom, role, selfId, code = '', listing = null }) {
   const u = new URL(String(baseUrl));
   if (u.protocol === 'https:') u.protocol = 'wss:';
   else if (u.protocol === 'http:') u.protocol = 'ws:';
@@ -41,6 +62,13 @@ export function workerRoomUrl(baseUrl, { workerRoom, role, selfId }) {
   u.searchParams.set('role', role);
   u.searchParams.set('peer', selfId);
   u.searchParams.set('proto', String(WORKER_PROTO));
+  if (role === 'host' && listing && CODE_RE.test(code ?? '')) {
+    const l = cleanListing(listing);
+    u.searchParams.set('code', code);
+    if (l.who) u.searchParams.set('who', l.who);
+    u.searchParams.set('players', String(l.players));
+    u.searchParams.set('list', l.on ? '1' : '0');
+  }
   return u.toString();
 }
 
@@ -81,6 +109,11 @@ export function createWorkerSignaling({
   /** @type {null | { resolve: Function, timer: any }} */
   let icePending = null;
   let pingTimer = null;
+  /** The worker keeps the open-games list (it said `list: true` in `joined`). */
+  let canList = false;
+  /** @type {null | { on: boolean, who: string|null, players: number }} */
+  let listing = null;
+  let listTimer = null;
   /** @type {Map<string, { pc: RTCPeerConnection, pendingCands: any[], restarted: boolean }>} */
   const peers = new Map();
   /** @type {Map<string, any[]>} candidates that arrived before their offer (host) */
@@ -258,6 +291,8 @@ export function createWorkerSignaling({
         lastIceAt = now();
         hostId = role === 'host' ? selfId : isPeerId(msg.host) ? msg.host : null;
         pingTimer = timers.setInterval(() => sendMsg('ping'), WORKER_PING_MS);
+        canList = role === 'host' && msg.list === true && !!listing;
+        if (canList) listTimer = timers.setInterval(() => { if (listing?.on) sendMsg({ t: 'list', ...listing }); }, LISTING_REFRESH_MS);
         resolveJoin({ iceServers: ice, turn: !!msg.turn });
         if (role === 'guest' && hostId) {
           const entry = makePc(hostId);
@@ -303,9 +338,22 @@ export function createWorkerSignaling({
   const api = {
     kind: /** @type {'worker'} */ ('worker'),
     detail: () => 'worker',
-    stats: () => ({ ...stats, peers: peers.size, joined, locked }),
+    stats: () => ({ ...stats, peers: peers.size, joined, locked, canList }),
+    /** Does this worker keep the open-games list (and so show this room in it)? */
+    canList: () => canList,
+    /**
+     * Host: show / hide the room in "Games you can join" and update its racer + player count. A no-op on a
+     * worker without the list, or for a room opened without a code.
+     * @param {{ on?: boolean, who?: string|null, players?: number }} l
+     */
+    setListing(l) {
+      if (role !== 'host' || !listing) return false;
+      listing = cleanListing({ ...listing, ...l });
+      if (!canList) return false;
+      return sendMsg({ t: 'list', ...listing });
+    },
     /** @param {import('./types.js').JoinOptions} o */
-    join({ ids, role: r, selfId: me, iceServers = [], relayOnly: ro = false }) {
+    join({ ids, role: r, selfId: me, iceServers = [], relayOnly: ro = false, listing: li = null }) {
       if (ws) return Promise.reject(new SignalingError('unreachable', { kind: 'worker', detail: 'already-joined' }));
       if (!WebSocketImpl) return Promise.reject(new SignalingError('unreachable', { kind: 'worker', detail: 'no-websocket' }));
       role = r === 'host' ? 'host' : 'guest';
@@ -313,6 +361,7 @@ export function createWorkerSignaling({
       relayOnly = !!ro;
       ice = iceServers;
       left = false;
+      listing = role === 'host' && li && CODE_RE.test(ids?.code ?? '') ? cleanListing(li) : null;
       return new Promise((resolve, reject) => {
         let settled = false;
         const done = (fn, v) => {
@@ -335,7 +384,7 @@ export function createWorkerSignaling({
         const timer = timers.setTimeout(() => fail(new SignalingError('timeout', { kind: 'worker' })), joinTimeoutMs);
         let url;
         try {
-          url = workerRoomUrl(baseUrl, { workerRoom: ids.workerRoom, role, selfId });
+          url = workerRoomUrl(baseUrl, { workerRoom: ids.workerRoom, role, selfId, code: ids.code, listing });
           ws = new WebSocketImpl(url);
         } catch (e) {
           fail(e instanceof SignalingError ? e : new SignalingError('unreachable', { kind: 'worker', cause: e }));
@@ -349,6 +398,7 @@ export function createWorkerSignaling({
         sock.onclose = () => {
           if (!joined) fail(new SignalingError('unreachable', { kind: 'worker', detail: 'closed' }));
           timers.clearInterval(pingTimer);
+          timers.clearInterval(listTimer);
           if (icePending) {
             const p = icePending;
             icePending = null;
@@ -404,6 +454,7 @@ export function createWorkerSignaling({
       if (left) return;
       left = true;
       timers.clearInterval(pingTimer);
+      timers.clearInterval(listTimer);
       for (const id of [...peers.keys()]) removePeer(id, false);
       try {
         ws?.close(1000, 'bye');
