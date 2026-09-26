@@ -58,6 +58,9 @@ automatically; add a smoke case for a new screen by appending a function in `scr
   game condition: `waitGame(page, fn)`, `waitRaceTime`, `driveFor(page, gameSeconds)`, `waitFrames`,
   `waitMenusReady` (menus drop presses during their input cooldown), and `pressKey` / `tapPad` with
   `{ until }` (retries the press until the expected screen/state shows up).
+- **Layout is asserted, not just screenshotted:** `layoutAt(t, 'my screen', MY_LAYOUT)` measures a rule set
+  (selectors + `overlapProblems` / `insideProblems` / `crossOverlapProblems` from `scripts/smoke-layout.mjs`)
+  at 1280x720 and 800x450 and fails the scenario on overlapping or clipped UI.
 - **A new smoke case** = an `async function myTest(t)` in `scripts/smoke.mjs` + one line in `FLOW_TESTS`
   (`t.page`, `t.check(ok, msg)`, `t.shot(file)`); it is planned, filtered, retried and reported automatically.
 - **When it fails:** `smoke-out/<scenario>-FAIL.png` + `<scenario>-FAIL.log` (problems, `window.__game` state,
@@ -77,6 +80,9 @@ Shared, tested (`tests/qa.helpers.test.js`) building blocks — use them instead
 | `fakeInput.js` | `createInputRig()` = the real `InputManager` on a fake window + fake pads + fake clock (`target.keydown/tap`, `connectPad(i).press(PAD.A)`, `frame(ms)`); `createFakeInput()` = scripted stand-in (`pushMenu`, `setDrive`, `pressPause`, `connect/disconnect`, `rumbles`). |
 | `threeInspect.js` | `nonFiniteTransforms(root)`, `nonFiniteVertices(root)`, `collectResources(root)`, `watchDisposal(res)`, `buildAndDispose(build)` (what survived `dispose()`: compare two builds to tell a shared cache from a leak). |
 | `fingerprint.js` | golden fingerprints of the original tracks / racers (architect-owned). |
+| `fakeDom.js` | `createFakeDocument()`: just enough DOM to render HUD widgets in node (`vi.stubGlobal('document', doc)`): classList, textContent / innerHTML, `querySelector(All)` for `.class` / `tag`, `doc.writes` (counts text writes). |
+| `fakeOverlayDom.js` | `installFakeDom()` / `fakeElement()`: a lighter fake DOM for mounting overlay helpers (celebrations, HUD lanes); `innerHTML` is kept as text, `querySelector` finds appended children by class, `dispatch()` fires listeners. |
+| `kidRace.js` | the fairness kid driver: `kidRace(def, path, built, seed, speedClass)` -> `{ place, won }`, `kidPlaces(def)`, `fairnessSuite(cupId)` (one file per cup: `tests/race.fairness.<cup-id>.test.js`). |
 
 **Automatic coverage for new content:** `tests/qa.registry.{tracks,characters,systems}.test.js` run over the live
 registries — every track builds with no NaN, frees its geometries, completes a CPU race and a Kid-Assist race with
@@ -86,8 +92,11 @@ every track. Nothing to edit when you add a track or racer — if one of these f
 (the test name says which track/racer, and fuzz failures print their seed).
 
 **Coverage gate:** `npm run test:coverage` (CI) enforces per-module thresholds in `vite.config.js` for the logic
-modules (`src/race`, `src/progress`, `src/input`, `menuState` / `screenFlow` / `hudLogic`, `TrackPath`,
-`tracks/layout` + `pathTools`, `audio/compile`). Adding logic there? Add tests with it. The HTML report lands in
+modules (`src/race`, `src/progress`, `src/input`, `src/modes`, `src/game`, `src/systems`, `src/presentation`,
+`src/fx`, `src/data`, `src/characters`, `src/tracks`, `src/ui/widgets`, `menuState` / `screenFlow` / `hudLogic` /
+`hudWidgets`, `TrackPath`, `audio/compile`), each 2-4 points under the measured numbers (`tests/ci.coverage.test.js`
+keeps floors). Adding logic there? Add tests with it. Logic hiding in a DOM screen (a setup builder, a reducer)
+belongs in an exported pure function you can test in node. The HTML report lands in
 `coverage/` (CI artifact `coverage-report`). Thresholds only mean something on the full suite — a filtered run
 with `--coverage` will report misses.
 

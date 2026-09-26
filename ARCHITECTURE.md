@@ -382,13 +382,13 @@ archShape, extruded, mat4, Batch, stripeTexture, swirlTexture, waffleTexture, sp
 Reusable props of your own go in `src/tracks/props/<cup>-<name>.js` (pure functions taking `ctx`).
 
 **Track testing checklist** (the shared tests run over every registered track automatically —
-`tests/tracks.test.js`, `tests/tracksBuilder.test.js`, `tests/registries.test.js`, `tests/race.fairness.test.js`):
+`tests/tracks.test.js`, `tests/tracksBuilder.test.js`, `tests/registries.test.js`, `tests/race.fairness.<cup-id>.test.js`):
 length 900–1600 · closed loop, no seam jump · never closer to itself than 1.5× width unless ≥ 8 units
 apart vertically (bridges) · min curve radius > 1.15× width and > half-width + FENCE_OFFSET + 5 ·
 elevation range ≤ 16, slopes < 0.25 · start on a straight (grid 45 units behind) · item boxes and boost pads
 inside the road, pads 12+ from the start and 8+ from item rows · item rows 80+ apart · the ground never pokes
 through the road · builds, animates and disposes headlessly · lineup id/name/cup/unlock match · `theme.music`
-is a real song · friendly words · a centre-line (non-drifting) kid driver wins at least 3 of 8 Zippy races (`tests/race.fairness.test.js`). Also: look at it in 1p and 4p,
+is a real song · friendly words · a centre-line (non-drifting) kid driver wins at least 3 of 8 Zippy races, near the front on average (`tests/race.fairness.<cup-id>.test.js`, one file per cup; a new cup needs its own one-line file). Also: look at it in 1p and 4p,
 props never block the chase camera, ≥ ~30 fps target on a normal laptop (instancing for anything repeated).
 Add your own `tests/tracks.<cup>.test.js` for anything special (tunnels, basins, low gravity data).
 
@@ -610,6 +610,10 @@ recordsSet`. `setUnlockAll(on)` is the parent switch; `isEarned(id)` ignores it.
 - **Race** (`src/race/Race.js`): `new Race({ scene, trackDef, path, builtTrack, participants, speedClass,
   buildKartModel, onEvent, laps })`, `update(dt, inputs)`, `karts`, `getStandings()`, `getPlayerKart(pi)`,
   `state 'countdown'|'racing'|'finished'`, `countdown`, `time`, `clock`, `dispose()`.
+  `race.time` (race clock, lap / finish times) is **simulation time**: the sum of the dt handed to `update()`,
+  each clamped to `TUNING.maxFrameDt` (0.1 s), without the countdown (`clock` includes it). It freezes while
+  paused (main.js stops calling `update`), and below 10 fps it runs slower than the wall clock on purpose (every
+  kart gets the same clamped step). Pinned by `tests/modes.raceTime.test.js` + the menu-flow smoke.
   `race.gameplay` (normalised `trackDef.gameplay`, `src/race/gameplay.js`); physics gets it as `env.gameplay` in
   `stepKart(kart, input, env = { path, boostPads, emit, gameplay }, dt)`.
   `participants: [{ characterId, playerIndex|null, easyDrive }]`; `DriveInput = { steer -1..1, accel 0..1,
@@ -650,7 +654,11 @@ recordsSet`. `setUnlockAll(on)` is the parent switch; `isEarned(id)` ignores it.
 - `tests/visual.golden.test.js` fingerprints the ORIGINAL 4 tracks and 9 racers: if it fails you changed shared
   building code; only refresh the goldens (`UPDATE_GOLDEN=1 npx vitest run tests/visual.golden.test.js`) when that
   change is intended, and say so in the PR.
-- Smoke screenshots land in `smoke-out/`; LOOK at the ones for your area before opening a PR.
+- Smoke screenshots land in `smoke-out/`; LOOK at the ones for your area before opening a PR. Nobody diffs
+  them, so the smoke also asserts layout (`scripts/smoke-layout.mjs`: no overlapping cards / tags / podium texts,
+  nothing clipped or off-screen) at both 1280x720 and 800x450 — add a rule set when you add a screen.
+- `tests/integration.itemPipeline.test.js` drives real Race events through the real bus and every installed
+  system (item use -> sound + HUD callout + FX); rename an event field and it fails.
 - Headless-safe code: nothing touches `document`/WebGL at import time; guard DOM use (`typeof document`).
 - Shared test helpers live in `tests/helpers/` (race harness, headless session, fake bus / audio / input, three.js
   inspectors — see CONTRIBUTING.md). `tests/qa.registry.*` + `tests/qa.fuzz.test.js` cover every registered track,

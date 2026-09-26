@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { installFakeDom } from './helpers/fakeDom.js';
+import { installFakeDom } from './helpers/fakeOverlayDom.js';
 import { celebrationQueue, CELEBRATING_CLASS } from '../src/ui/screens/_modes.js';
 
 const fakeCtx = () => ({ sfx: vi.fn(), setCooldown: vi.fn(), portraits: null, audio: null });

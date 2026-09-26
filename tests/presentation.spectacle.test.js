@@ -429,7 +429,7 @@ describe('race-spectacle system', () => {
 
 describe('photo-finish card vs the results screen', () => {
   it('the "Photo finish!" polaroid is removed when the race ends, so it never covers the results title', async () => {
-    const { installFakeDom } = await import('./helpers/fakeDom.js');
+    const { installFakeDom } = await import('./helpers/fakeOverlayDom.js');
     const doc = installFakeDom();
     doc.getElementById = () => null; // falls back to document.body
     const r = rig();

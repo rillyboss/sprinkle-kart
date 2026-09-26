@@ -7,7 +7,7 @@
  *    lowest of the timer zone / flash lane (fitCallouts + calloutCeiling)
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { installFakeDom, fakeElement } from './helpers/fakeDom.js';
+import { installFakeDom, fakeElement } from './helpers/fakeOverlayDom.js';
 import { fitCallouts, calloutCeiling, CALLOUT_GAP, CALLOUT_BOTTOM } from '../src/ui/widgets/itemWidgets.js';
 import { Hud, MAX_FLASHES } from '../src/ui/Hud.js';
 

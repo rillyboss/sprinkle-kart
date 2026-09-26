@@ -1,39 +1,19 @@
 // Can a child who never drifts still win (and unlock Cotton Candy Girl)?
-// A simple "kid" driver follows the centre line with a small wobble, holds the
-// gas and uses items about a second after getting them — no drifting at all.
+// The per-track races live in tests/race.fairness.<cup-id>.test.js (one file per cup, so
+// vitest runs them in parallel — together they were the suite's critical path); the shared
+// kid driver is tests/helpers/kidRace.js. This file keeps the pure AI checks, makes sure
+// every registered track is covered by exactly one of those files, and races any track
+// that is in no cup.
 import { describe, it, expect } from 'vitest';
-import * as THREE from 'three';
-import { Race, makeRng } from '../src/race/Race.js';
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { rubberBandMult, cpuDriftChance } from '../src/race/AI.js';
 import { TRACKS } from '../src/data/tracks.js';
-import { TrackPath } from '../src/track/TrackPath.js';
-import { steerToward, rubberBandMult, cpuDriftChance } from '../src/race/AI.js';
-import { pickCpuCharacters, buildParticipants } from '../src/game/setup.js';
-import { CHARACTERS } from '../src/data/characters.js';
-import { buildTrack } from '../src/render/trackBuilder.js';
+import { CUPS } from '../src/data/cups.js';
+import { fairnessCase, tracksOutsideCups, MIN_WINS, MAX_MEAN_PLACE, FAIRNESS_SEEDS } from './helpers/kidRace.js';
 
-const stub = () => ({ group: new THREE.Group(), update() {}, dispose() {} });
-const DT = 1 / 60;
-
-function kidRace(trackDef, path, built, seed, speedClass) {
-  const rng = makeRng(seed * 7919);
-  const human = { playerIndex: 0, deviceId: 'd0', characterId: CHARACTERS[seed % 8].id, easyDrive: false };
-  const cpus = pickCpuCharacters([human.characterId], CHARACTERS.filter((c) => !c.locked), 7, rng);
-  const race = new Race({
-    scene: new THREE.Scene(), trackDef, path, builtTrack: built,
-    participants: buildParticipants([human], cpus), speedClass, buildKartModel: stub, laps: 3, seed,
-  });
-  const h = race.karts.find((k) => !k.isCPU);
-  const tp = new THREE.Vector3();
-  let held = 0;
-  let t = 0;
-  while (race.state !== 'finished' && t < 400) {
-    path.positionAt(h.s + 8 + Math.max(0, h.speed) * 0.45, Math.sin(t * 0.4) * 2, tp);
-    held = h.item && h.itemRoulette <= 0 ? held + DT : 0;
-    race.update(DT, [{ steer: steerToward(h, tp.x, tp.z, 2), accel: 1, useItem: held > 1 && held < 1 + DT * 1.5 }]);
-    t += DT;
-  }
-  return h.finishPlace === 1 && !h.finishEstimated;
-}
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 describe('race fairness for non-drifting kids', () => {
   it('rubber band never lets CPUs outrun the human speed class', () => {
@@ -51,14 +31,21 @@ describe('race fairness for non-drifting kids', () => {
     expect(cpuDriftChance(0.92, true)).toBeGreaterThan(0.7);
   });
 
-  for (const trackDef of TRACKS) {
-    it(`a centre-line driver wins at least 3 of 8 Zippy races on ${trackDef.id}`, () => {
-      const path = new TrackPath(trackDef.controlPoints, trackDef.width);
-      const built = buildTrack(trackDef, path);
-      let wins = 0;
-      for (let seed = 1; seed <= 8; seed++) if (kidRace(trackDef, path, built, seed, 'zippy')) wins++;
-      built.dispose?.();
-      expect(wins).toBeGreaterThanOrEqual(3);
-    }, 120000);
-  }
+  it('the bar is still "3 of 8 wins, near the front on average"', () => {
+    expect(MIN_WINS).toBe(3);
+    expect(FAIRNESS_SEEDS).toHaveLength(8);
+    expect(MAX_MEAN_PLACE).toBeLessThanOrEqual(3);
+  });
+
+  it('every cup has its own fairness file, so every registered track is raced', () => {
+    const files = readdirSync(HERE).filter((f) => /^race\.fairness\..+\.test\.js$/.test(f));
+    const cupFiles = files.map((f) => f.replace(/^race\.fairness\.|\.test\.js$/g, ''));
+    for (const cup of CUPS) expect(cupFiles, `add tests/race.fairness.${cup.id}.test.js`).toContain(cup.id);
+    for (const id of cupFiles) expect(CUPS.map((c) => c.id), `stale fairness file for "${id}"`).toContain(id);
+    const covered = new Set([...CUPS.flatMap((c) => c.trackIds), ...tracksOutsideCups().map((t) => t.id)]);
+    for (const t of TRACKS) expect(covered.has(t.id), t.id).toBe(true);
+  });
+
+  // Tracks outside the 5 cups (none today) are raced here.
+  for (const trackDef of tracksOutsideCups()) fairnessCase(trackDef);
 });

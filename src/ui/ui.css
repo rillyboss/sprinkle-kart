@@ -1250,8 +1250,10 @@
   max-height: min(54vh, 31em);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1.1em 0.5em 0.8em;
-  scroll-padding: 1.1em 0 0.8em;
+  /* top room for the P1/P2 cursor tags above a lifted (hot) tile, bob included —
+     1.1em clipped them (smoke layout check: racer select) */
+  padding: 1.8em 0.5em 0.8em;
+  scroll-padding: 1.8em 0 0.8em;
   align-content: flex-start;
   scrollbar-width: thin;
   scrollbar-color: #ff9fd2 transparent;
