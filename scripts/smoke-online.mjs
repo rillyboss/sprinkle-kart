@@ -458,7 +458,7 @@ function signalCfg(path_, svc) {
     : { ...base, forced: 'public', signalUrl: null, relays: [svc.tracker.url] };
 }
 function urlFor(path_, svc, extra = {}) {
-  return gameUrl({ port: PORT, path: path_, trackerUrl: svc.tracker?.url ?? null, workerUrl: svc.worker?.url ?? null, extra: { attract: '0', ...extra.query }, invite: extra.invite ?? null });
+  return gameUrl({ port: PORT, path: path_, trackerUrl: svc.tracker?.url ?? null, workerUrl: svc.worker?.url ?? null, extra: { attract: '0', fastfinish: '1', ...extra.query }, invite: extra.invite ?? null });
 }
 
 const netInfo = (p) => p.page.evaluate(() => {
@@ -528,7 +528,8 @@ async function writeDiagnostics(name, pages, problems) {
 async function roomScenario(browser, sc, svc, r) {
   const pad = sc.join === 'controller';
   const host = await openPage(browser, 'host', { pad });
-  const guest = await openPage(browser, 'guest', { pad });
+  const guest = await openPage(browser, 'guest', { pad: true }); // the pad is P2 of the guest house in the invite run
+  if (!pad) guest.via = 'kb';
   const pages = [host, guest];
   const prefix = `${sc.path}-${pad ? 'pad-' : ''}`;
   const cfg = signalCfg(sc.path, svc);
@@ -574,12 +575,12 @@ async function roomScenario(browser, sc, svc, r) {
     r.timing = Date.now() - t0;
     r.notes.push(`code entry → lobby ${(r.timing / 1000).toFixed(2)} s`);
 
-    // ---- seats: the guest house brings 2 local players
-    await waitGame(host, () => (window.__game?.menus?.net?.lobby?.()?.houses ?? []).some((h) => !h.isHost && h.players.length === 2), null, T(15000), 'the guest house with 2 seats on the host');
-
-    // ---- racer picks (the in-game character select is WS7's; the stand-in sends the same INTENTs)
-    const ids = await guest.page.evaluate(() => (window.__game?.menus?.characters ?? window.__game?.characters ?? []).map((c) => c.id).filter(Boolean).slice(0, 2));
+    // ---- seats + racer picks. The stand-in knocks with 2 local players and sends the pick INTENTs itself;
+    // the game (WS7) seats a house's players on "Who's playing at your house?" after "Let's pick!", so
+    // there both are checked inside raceSteps.
     if (r.mode === 'glue') {
+      await waitGame(host, () => (window.__game?.menus?.net?.lobby?.()?.houses ?? []).some((h) => !h.isHost && h.players.length === 2), null, T(15000), 'the guest house with 2 seats on the host');
+      const ids = await guest.page.evaluate(() => (window.__game?.menus?.characters ?? window.__game?.characters ?? []).map((c) => c.id).filter(Boolean).slice(0, 2));
       const picks = ids.length >= 2 ? ids : ['luna', 'rocco'];
       await guest.page.evaluate((cs) => cs.forEach((characterId, seat) => window.__game.menus.net.dispatch({ type: 'intent', intent: { kind: 'pick', seat, characterId, paintId: 'original' } })), picks);
       await waitGame(host, (cs) => (window.__game?.menus?.net?.lobby?.()?.houses ?? []).some((h) => !h.isHost && cs.every((c, i) => h.players.find((x) => x.seat === i)?.characterId === c)), picks, T(10000), 'the guest racer picks on the host');
@@ -629,6 +630,8 @@ async function roomScenario(browser, sc, svc, r) {
     await shot(guest, `${prefix}refused`);
     const h = await netInfo(host);
     if (h.houses.length !== 1 || !h.locked) r.problems.push(`after the refused reload the room shows ${h.houses.length} houses (locked=${h.locked})`);
+  } catch (err) {
+    r.problems.push(err.message);
   } finally {
     r.problems.push(...await hermeticProblems(pages));
     r.problems.push(...errorsOf(pages));
@@ -642,39 +645,118 @@ async function roomScenario(browser, sc, svc, r) {
  * robo/assist autopilot, identical standings on both machines, then the rematch reaches a second race.
  */
 async function raceSteps(sc, host, guest, r, prefix) {
-  const inRace = () => window.__game?.state === 'race' || window.__game?.state === 'racing' || !!window.__game?.race;
-  await press(host, 'confirm', { until: () => window.__game?.menus?.screenId !== 'online-lobby', what: "Let's pick!" });
-  const deadline = Date.now() + T(120000);
-  while (Date.now() < deadline && !(await host.page.evaluate(inRace))) {
-    for (const p of [host, guest]) {
-      const s = await p.page.evaluate(() => ({ screen: window.__game?.menus?.screenId, ready: (window.__game?.menus?._cooldown ?? 1) <= 0 }));
-      if (!s.screen || s.screen === 'net-waiting' || s.screen === 'online-lobby' || !s.ready) continue;
-      if (s.screen === 'join' && p === guest) { await p.page.keyboard.press('Enter'); if (p.via === 'pad') await padTap(p, PAD.A); }
-      await press(p, 'confirm').catch(() => {});
+  const inRace = () => window.__game?.state === 'race';
+  const atResults = () => window.__game?.state === 'results' && !!window.__game?.lastResults;
+  const ui = (p) => p.page.evaluate(() => {
+    const g = window.__game;
+    const m = g?.menus;
+    return {
+      state: g?.state, screen: m?.screenId ?? null, ready: !!m?.screen && (m?._cooldown ?? 1) <= 0,
+      players: (m?.draft?.joinState?.players ?? []).map((x) => ({ deviceId: x.deviceId, easyDrive: !!x.easyDrive })),
+    };
+  });
+  const isPad = (id) => /pad|gp/i.test(String(id));
+  /** One step of "get this machine into the race": seats (2 on the guest, Kid-Assist on so karts drive themselves), then OK. */
+  async function step(p, wantSeats) {
+    const s = await ui(p);
+    if (s.state !== 'menu' || !s.ready || !s.screen || ['net-waiting', 'online-lobby'].includes(s.screen)) return;
+    if (s.screen === 'join') {
+      const hasPad = s.players.some((x) => isPad(x.deviceId));
+      const hasKb = s.players.some((x) => !isPad(x.deviceId));
+      if (!hasKb && s.players.length < wantSeats) { await p.page.keyboard.press('Enter'); await waitFrames(p, 1); return; }
+      if (wantSeats > 1 && !hasPad) { await padTap(p, PAD.A); return; }
+      const kb = s.players.find((x) => !isPad(x.deviceId));
+      const pd = s.players.find((x) => isPad(x.deviceId));
+      if (kb && !kb.easyDrive) { await p.page.keyboard.press('Tab'); await waitFrames(p, 1); return; }
+      if (pd && !pd.easyDrive) { await padTap(p, PAD.Y); return; }
+      // P1 continues (the first joined device)
+      if (isPad(s.players[0]?.deviceId)) await padTap(p, PAD.A);
+      else { await p.page.keyboard.press('Enter'); await waitFrames(p, 1); }
+      return;
     }
+    // every other picking screen (mode, racers, track…): OK from every local device
+    await p.page.keyboard.press('Enter');
+    await waitFrames(p, 1);
+    if (wantSeats > 1) await padTap(p, PAD.A);
   }
-  await waitGame(host, inRace, null, T(60000), 'the host race');
-  await waitGame(guest, inRace, null, T(60000), 'the guest race');
-  for (const p of [host, guest]) await p.page.keyboard.down('ArrowUp');
-  await waitGame(host, () => window.__game?.race?.state === 'racing', null, T(60000), 'GO on the host');
+  async function intoRace(what) {
+    const deadline = Date.now() + T(180000);
+    while (Date.now() < deadline) {
+      const [h, g] = await Promise.all([host.page.evaluate(inRace), guest.page.evaluate(inRace)]);
+      if (h && g) return;
+      if (!h) await step(host, 1);
+      if (!g) await step(guest, 2);
+    }
+    throw new Error(`${what}: the two machines never both reached the race`);
+  }
+
+  await press(host, 'confirm', { until: () => window.__game?.menus?.screenId !== 'online-lobby', what: "Let's pick!" });
+  await intoRace('first race');
+  // seats: the guest house races with its 2 local players
+  const guestHumans = await host.page.evaluate(() => {
+    const l = window.__game?.menus?.net?.lobby?.();
+    return (l?.houses ?? []).filter((h) => !h.isHost).map((h) => h.players.length);
+  });
+  if (guestHumans[0] !== 2) r.problems.push(`the guest house races with ${guestHumans[0]} seat(s), expected 2`);
+  await waitGame(host, () => window.__game?.race?.state === 'racing' && window.__game.race.time > 2, null, T(90000), 'the host race running');
+  await waitGame(guest, () => (window.__game?.race?.time ?? 0) > 2, null, T(60000), 'the guest race running');
   await shot(host, `${sc.path}-race-host`);
   await shot(guest, `${sc.path}-race-guest`);
-  const done = () => !!window.__game?.lastResults || window.__game?.menus?.screenId === 'results';
-  await waitGame(host, done, null, T(300000), 'the host results');
-  await waitGame(guest, done, null, T(60000), 'the guest results');
-  for (const p of [host, guest]) await p.page.keyboard.up('ArrowUp');
+  await waitGame(host, atResults, null, T(400000), 'the host results');
+  await waitGame(guest, atResults, null, T(90000), 'the guest results');
   const standings = (p) => p.page.evaluate(() => {
-    const n = window.__game?.net;
-    const res = n?.results ?? window.__game?.lastResults;
-    return (res?.standings ?? res?.order ?? []).map((x) => (typeof x === 'object' ? { id: x.id ?? x.characterId, finishTimeMs: x.finishTimeMs ?? null } : { id: x }));
+    const res = window.__game?.lastResults;
+    const rows = res?.hostSummary?.standings ?? res?.standings ?? [];
+    return rows.map((x) => ({
+      id: `${x.characterId}#${x.playerIndex ?? 'cpu'}`,
+      finishTimeMs: Number.isFinite(x.finishTimeMs) ? x.finishTimeMs : Number.isFinite(x.finishTime) ? Math.round(x.finishTime * 1000) : null,
+    }));
   });
-  r.problems.push(...standingsProblems(await standings(host), await standings(guest)));
+  const [hs, gs] = [await standings(host), await standings(guest)];
+  r.problems.push(...standingsProblems(hs, gs));
+  r.notes.push(`standings: ${hs.map((x) => x.id.replace(/#.*/, '')).join(' > ')}`);
   await shot(host, `${sc.path}-results-host`);
   await shot(guest, `${sc.path}-results-guest`);
-  // rematch: the host's first results option is "Race again"
-  await press(host, 'confirm');
-  await waitGame(guest, inRace, null, T(120000), 'the rematch on the guest');
+  // rematch: "Race again" is the host's first results option (unlock celebrations first take their presses)
+  await chooseOnResults(host, 0, inRace, 'the rematch on the host');
+  await waitGame(guest, inRace, null, T(60000), 'the rematch on the guest');
   r.notes.push('rematch reached');
+  // back to the lobby after the rematch: results → "Back to the lobby" (third option)
+  await waitGame(host, atResults, null, T(400000), 'the rematch results');
+  await chooseOnResults(host, 2, () => window.__game?.menus?.screenId === 'online-lobby', 'the host back in the lobby');
+  await onScreen(guest, 'online-lobby', T(30000));
+}
+
+/**
+ * On the host's results screen: let every unlock reveal have its moment and close it (like smoke.mjs
+ * dismissUnlocks), then move to option `index` (0 Race again · 1 Next track · 2 Back to the lobby) and press A.
+ */
+async function chooseOnResults(p, index, done, what) {
+  const deadline = Date.now() + T(240000);
+  const trail = [];
+  let moved = false;
+  while (Date.now() < deadline) {
+    if (await p.page.evaluate(done)) return;
+    const s = await p.page.evaluate(() => {
+      const u = document.querySelector('.sk-unlock:not(.sk-leaving)');
+      const m = window.__game?.menus;
+      return { screen: m?.screenId, ready: !!m?.screen && m._cooldown <= 0, cd: Math.round((m?._cooldown ?? 0) * 10) / 10, has: !!m?.screen, reveal: !!u, canContinue: !!u?.classList.contains('sk-can-continue') };
+    });
+    trail.push(`${s.screen}${s.reveal ? (s.canContinue ? '+reveal(ok)' : '+reveal') : ''}${s.ready ? '' : `(busy cd=${s.cd} screen=${s.has})`}`);
+    if (s.reveal) {
+      if (s.canContinue) { await p.page.keyboard.press('Enter'); await waitFrames(p, 2); } else await waitFrames(p, 3);
+      continue;
+    }
+    if (!s.ready || s.screen !== 'results') { await waitFrames(p, 3); continue; }
+    // the next unlock reveal (if any) follows after a short game-time breath: give it 1.6 s to show up
+    const m0 = await p.page.evaluate(() => window.__game?.menus?.time ?? 0);
+    await waitGame(p, (t) => !!document.querySelector('.sk-unlock:not(.sk-leaving)') || (window.__game?.menus?.time ?? 0) >= t + 1.6, m0, T(30000), 'the next unlock reveal or none');
+    if (await p.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)'))) continue;
+    if (!moved) { for (let i = 0; i < index; i++) await press(p, 'right'); moved = true; }
+    await p.page.keyboard.press('Enter');
+    await waitFrames(p, 3);
+  }
+  throw new Error(`${p.name}: timed out waiting for ${what} (results trail: ${trail.slice(-10).join(' → ')})`);
 }
 
 /**
@@ -732,6 +814,8 @@ async function timingScenario(browser, sc, svc, r) {
         await guest.page.evaluate(() => window.__game.menus.online.leave()).catch(() => {});
       }
     }
+  } catch (err) {
+    r.problems.push(err.message);
   } finally {
     const t = timingSummary(samples, sc.path, PROFILE.timingRuns);
     r.timing = t;
@@ -797,6 +881,8 @@ async function checkScenario(browser, sc, svc, r) {
     }
     r.notes.push(rows.map((x) => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | '));
     await shot(p, `${sc.path}-check-connection-udp-blocked`);
+  } catch (err) {
+    r.problems.push(err.message);
   } finally {
     r.problems.push(...await hermeticProblems([p]));
     r.problems.push(...errorsOf([p]));
@@ -846,6 +932,8 @@ async function soakScenario(browser, sc, svc, r) {
     await sample();
     for (const who of ['host', 'guest']) r.problems.push(...heapProblems(heap[who], { who }));
     r.notes.push(`heap MB host ${heap.host.map((s) => s.usedMB.toFixed(1)).join(' → ')}; guest ${heap.guest.map((s) => s.usedMB.toFixed(1)).join(' → ')}`);
+  } catch (err) {
+    r.problems.push(err.message);
   } finally {
     r.problems.push(...await hermeticProblems(pages));
     r.problems.push(...errorsOf(pages));
