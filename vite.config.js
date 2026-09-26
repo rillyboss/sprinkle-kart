@@ -41,7 +41,12 @@ const LOGIC_THRESHOLDS = {
 export default defineConfig({
   base: './',
   server: { port: 5173 },
-  build: { chunkSizeWarningLimit: 1500 },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    // three.js in its own chunk: the game chunk stays under the warning limit (net review #21), and returning
+    // players keep the cached engine when only game code changed between deploys
+    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/ }] } } },
+  },
   define: { __SK_BUILD__: JSON.stringify(skBuildId()) },
   test: {
     environment: 'node',
