@@ -18,7 +18,7 @@
  *     phys: { boostTime, spinTime, shieldTime, hopTime, hopY, spinAngle, driftCharge, steerSmoothed, slide, pitch, roll,
  *             throttle, braking, reversing } }
  *   OwnerPhys = { driftHeld, prevAccel, driftWindow, hopLen, onPad, wallCooldown, accelPressedAt, slideDir, wrongWayTime,
- *     lastLapStart, driftTime, groundY, pendingItem, rouletteTime }
+ *     lastLapStart, driftTime, groundY, pendingItem, rouletteTime, driftSlip, driftOmega0, yawRate }
  * Decoded INPUT: { type, seq, newestTick, n, p, lastSnapTick, ticks: [{ tick, players: [PlayerTickInput] }] } newest first.
  * Decoded EVENTS: { type, firstSeq, baseTick, events: [{ seq, tick, type, kart, ...payload }] }.
  */
@@ -202,6 +202,8 @@ function encodeOwner(w, s, ownerIds = []) {
     w.i8(Math.sign(p.slideDir || 0)); w.u8(clampInt(p.wrongWayTime * 32, 0, 255)); w.u32(Math.round((p.lastLapStart || 0) * 1000));
     w.u16(clampInt(p.driftTime * 256, 0, 0xffff)); w.i16(q(p.groundY, 64)); w.u8(enumIndex(ITEMS, p.pendingItem));
     w.u8(clampInt(p.rouletteTime * 32, 0, 255)); w.u8(clampInt((k.aiSpeedMult ?? 1) * 128, 0, 255));
+    // v3.1 drift arc (so a replayed drift entry / slip matches the host)
+    w.i16(q(p.driftSlip, 16384)); w.i16(q(p.driftOmega0, 2048)); w.i16(q(p.yawRate, 2048));
   }
 }
 
@@ -273,12 +275,13 @@ function decodeSnapshot(r) {
     const apa = r.u8(); const slideDir = r.i8(); const wrongWayTime = r.u8() / 32; const lastLapStart = r.u32() / 1000;
     const driftTime = r.u16() / 256; const groundY = r.i16() / 64; const pendingItem = ITEMS[r.u8() & 7] ?? null;
     const rouletteTime = r.u8() / 32; const aiSpeedMult = r.u8() / 128;
+    const driftSlip = r.i16() / 16384; const driftOmega0 = r.i16() / 2048; const yawRate = r.i16() / 2048;
     owner.push({
       kart, aiSpeedMult,
       phys: {
         driftHeld: !!(bf & 1), prevAccel: !!(bf & 2), driftWindow: bf & 4 ? dw : 0, hopLen, onPad,
         wallCooldown: bf & 8 ? wc : 0, accelPressedAt: apa === 255 ? null : apa / 60, slideDir, wrongWayTime, lastLapStart,
-        driftTime, groundY, pendingItem, rouletteTime,
+        driftTime, groundY, pendingItem, rouletteTime, driftSlip, driftOmega0, yawRate,
       },
     });
   }

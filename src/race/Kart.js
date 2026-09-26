@@ -114,6 +114,9 @@ export function createKart({ id, participant, charDef, speedClass, lapsTotal, pa
       driftTime: 0, // seconds since the current drift started
       slide: 0, // 0 = full grip .. 1 = full drift slide (eases in / out)
       slideDir: 0, // direction of the drift that is easing out
+      driftSlip: 0, // current drift slip angle (rad, nose into the bend)
+      driftOmega0: 0, // turn rate (rad/s, + = right) the drift arc blends in from
+      yawRate: 0, // heading turn rate of the last step (rad/s, + = right)
       hopLen: T.hopDuration, // duration of the current hop (low gravity = floatier)
       steerSmoothed: 0,
       throttle: 0, // the accel actually applied last step (0..1, for engine sounds)
@@ -171,26 +174,43 @@ function cancelDrift(kart) {
   kart.driftDir = 0;
   kart.phys.driftCharge = 0;
   kart.phys.driftTime = 0;
+  kart.phys.driftSlip = 0;
 }
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 
 /**
- * How far into the full drift slide a kart is `t` seconds after the drift
- * started (0..1, smooth, no snap). Grip blends by this, drift yaw by its
- * square (so the first ~0.2 s turn no harder than normal steering).
+ * How far into the full drift a kart is `t` seconds after the drift started
+ * (0..1, smooth, no snap). The slip angle eases in by this (over
+ * `driftEaseIn`), the travel arc too (over `driftArcEaseIn`).
  */
 export function driftBlend(t, easeIn = T.driftEaseIn) {
   return smoothstep(easeIn > 0 ? t / easeIn : 1);
 }
 
 /**
- * Drift yaw multiplier (x turnRate x handling) for a steer value relative to
- * the drift direction: `into` 0 = pushing out (wide, forgiving arc), 0.5 =
- * neutral, 1 = pulling in (tight arc). Never turns against the drift.
+ * Smooth quadratic through three samples at x = 0, 0.5, 1 (monotonic for the
+ * tuning values used, so analog stick positions map smoothly).
  */
-export function driftTurnFactor(into) {
-  return T.driftTurnBase + T.driftTurnRange * clamp(into, 0, 1);
+export function quad3([a, b, c], x) {
+  x = clamp(x, 0, 1);
+  return a + (4 * b - 3 * a - c) * x + (2 * a + 2 * c - 4 * b) * x * x;
+}
+
+/**
+ * Travel turn rate while drifting (rad/s, before handling / low-speed
+ * scaling) for a steer value relative to the drift direction: `into` 0 =
+ * counter-steering (nearly straight, so a drift can be held through gentle
+ * bends and straights), 0.5 = neutral (a bit tighter than a normal bend),
+ * 1 = steering in (tight). Never turns against the drift.
+ */
+export function driftArcRate(into) {
+  return quad3(T.driftArc, into);
+}
+
+/** Slip angle (rad, nose into the bend) the drift settles at for `into` as above. */
+export function driftSlipAngle(into) {
+  return quad3(T.driftSlip, into);
 }
 
 /** Mini-turbo charge gained per second while drifting (`into` as above). */
@@ -331,10 +351,14 @@ export function stepKart(kart, input, env, dt) {
     kart.driftLevel = 0;
     p.driftCharge = 0;
     p.driftTime = 0;
+    // start the arc from the turn we already had and the slip we already have (no snap)
+    p.driftOmega0 = p.yawRate;
+    const vAngle = Math.atan2(kart.velocity.x, kart.velocity.z);
+    p.driftSlip = clamp(kart.driftDir * wrapAngle(vAngle - kart.heading), -0.2, 0.6);
     emit({ type: 'drift-start', kart, dir: kart.driftDir });
   }
   if (kart.drifting) {
-    if (kart.spinning || f < T.driftMinSpeed * 0.6) {
+    if (kart.spinning || Math.hypot(f, side) < T.driftMinSpeed * 0.6) {
       cancelDrift(kart);
     } else if (!driftBtn) {
       const lvl = kart.driftLevel;
@@ -354,64 +378,92 @@ export function stepKart(kart, input, env, dt) {
       }
     }
   }
-  // Slide amount: eases in over driftEaseIn, back to full grip over driftEaseOut.
-  const blend = kart.drifting ? driftBlend(p.driftTime) : 0;
-  p.slide = kart.drifting ? blend : Math.max(0, p.slide - dt / Math.max(1e-3, T.driftEaseOut));
-
   // ---- steering -----------------------------------------------------------
   p.steerSmoothed += (steer - p.steerSmoothed) * Math.min(1, dt * T.steerSmoothing);
-  const absF = Math.abs(f);
+  const travel = Math.hypot(f, side);
+  const absF = kart.drifting ? travel : Math.abs(f);
   const lowSpeed = clamp(absF / T.turnFullSpeed, 0, 1);
+  const handling = kart.stats.handling;
   const speedFactor = lowSpeed * (1 - T.highSpeedTurnDamp * clamp(absF / (kart.stats.maxSpeed * T.boostMult), 0, 1));
-  let yaw = p.steerSmoothed * T.turnRate * kart.stats.handling * speedFactor * (kart.easyDrive ? T.kidAssistTurn : 1);
+  let yaw = p.steerSmoothed * T.turnRate * handling * speedFactor * (kart.easyDrive ? T.kidAssistTurn : 1);
   if (kart.drifting) p.slideDir = kart.driftDir;
-  const arcDir = kart.drifting ? kart.driftDir : p.slide > 0 ? p.slideDir || 0 : 0;
-  if (arcDir !== 0) {
-    // Blend from normal steering into the drift arc (entry: blend^2, so no
-    // kick) and back out again as grip returns (exit: no snap either).
-    const into = (p.steerSmoothed * arcDir + 1) / 2;
-    const driftYaw = arcDir * T.turnRate * kart.stats.handling * lowSpeed * driftTurnFactor(into);
-    const w = kart.drifting ? blend * blend : p.slide * p.slide;
-    yaw += (driftYaw - yaw) * w;
-  }
-  if (f < -0.5) yaw = -yaw; // reversing steers like a real car
-  if (kart.spinning) yaw = 0;
-
-  // Re-compose world velocity, rotate heading, re-decompose (inertia -> slide).
-  let vx = fx * f + rx * side;
-  let vz = fz * f + rz * side;
-  h = wrapAngle(h - yaw * dt); // steer right (+) turns toward `right` => heading decreases
-  fx = Math.sin(h); fz = Math.cos(h);
-  rx = -fz; rz = fx;
-  let f2 = vx * fx + vz * fz;
-  let s2 = vx * rx + vz * rz;
-  const grip = kart.spinning ? 3 : T.grip + (T.driftGrip - T.grip) * p.slide;
-  const transfer = T.gripTransfer + (T.driftGripTransfer - T.gripTransfer) * p.slide;
-  let newSide = s2 * Math.exp(-grip * dt);
-  if (f2 > 0.5) {
-    // Scrubbed sideways speed flows back into forward speed, but never
-    // more than the kart already had (no free energy from wiggling).
-    const conserved = Math.sqrt(Math.max(0, f2 * f2 + s2 * s2 - newSide * newSide));
-    f2 += (conserved - f2) * transfer;
-  }
-  const hardMax = Math.max(max, kart.stats.maxSpeed * T.boostMult * T.starMult);
-  f2 = clamp(f2, -T.reverseMax - 2, hardMax);
-  // A slide never adds free speed: the total (forward + sideways) speed is
-  // eased back to the current top speed, like the forward part above.
-  if (f2 > 0.5 && p.slide > 0) {
-    const tot = Math.hypot(f2, newSide);
-    if (tot > max) {
-      const k = Math.max(max, tot - T.overSpeedDecel * dt) / tot;
-      f2 *= k;
-      newSide *= k;
+  const h0 = h;
+  let vx, vz, f2, newSide;
+  if (kart.drifting) {
+    // The drift arc: the kart TRAVELS along an arc whose turn rate the stick
+    // picks, blended in from the turn it already had, and its NOSE sits at a
+    // slip angle into the bend that eases in. Speed is kept (a slide never
+    // adds free speed either).
+    const dir = kart.driftDir;
+    const into = (p.steerSmoothed * dir + 1) / 2;
+    const arc = dir * driftArcRate(into) * handling * lowSpeed;
+    const omega = p.driftOmega0 + (arc - p.driftOmega0) * driftBlend(p.driftTime, T.driftArcEaseIn);
+    const ease = driftBlend(p.driftTime);
+    p.slide = ease;
+    let dSlip = (driftSlipAngle(into) - p.driftSlip) * (1 - Math.exp(-dt * T.driftSlipFollow * ease));
+    // The nose never swings faster than plain full-lock steering would turn it (no snap, even when
+    // a drift starts in the middle of a hard turn): arc + slip growth <= the normal full-lock yaw.
+    const yawCap = T.turnRate * handling * speedFactor;
+    dSlip = Math.min(dSlip, Math.max(0, yawCap - dir * omega) * dt);
+    p.driftSlip += dSlip;
+    let sp = travel;
+    if (sp > max) sp = Math.max(max, sp - T.overSpeedDecel * dt);
+    const theta = wrapAngle(Math.atan2(fx * f + rx * side, fz * f + rz * side) - omega * dt);
+    h = wrapAngle(theta - dir * p.driftSlip);
+    vx = Math.sin(theta) * sp;
+    vz = Math.cos(theta) * sp;
+    fx = Math.sin(h); fz = Math.cos(h);
+    rx = -fz; rz = fx;
+    f2 = sp;
+  } else {
+    // Back to full grip over driftEaseOut after a drift (no snap on release).
+    p.slide = Math.max(0, p.slide - dt / Math.max(1e-3, T.driftEaseOut));
+    const arcDir = p.slide > 0 ? p.slideDir || 0 : 0;
+    if (arcDir !== 0) {
+      const into = (p.steerSmoothed * arcDir + 1) / 2;
+      const driftYaw = arcDir * driftArcRate(into) * handling * lowSpeed;
+      const w = p.slide * p.slide;
+      yaw += (driftYaw - yaw) * w;
     }
+    if (f < -0.5) yaw = -yaw; // reversing steers like a real car
+    if (kart.spinning) yaw = 0;
+
+    // Re-compose world velocity, rotate heading, re-decompose (inertia -> slide).
+    vx = fx * f + rx * side;
+    vz = fz * f + rz * side;
+    h = wrapAngle(h - yaw * dt); // steer right (+) turns toward `right` => heading decreases
+    fx = Math.sin(h); fz = Math.cos(h);
+    rx = -fz; rz = fx;
+    f2 = vx * fx + vz * fz;
+    const s2 = vx * rx + vz * rz;
+    const grip = kart.spinning ? 3 : T.grip + (T.driftGrip - T.grip) * p.slide;
+    const transfer = T.gripTransfer + (T.driftGripTransfer - T.gripTransfer) * p.slide;
+    newSide = s2 * Math.exp(-grip * dt);
+    if (f2 > 0.5) {
+      // Scrubbed sideways speed flows back into forward speed, but never
+      // more than the kart already had (no free energy from wiggling).
+      const conserved = Math.sqrt(Math.max(0, f2 * f2 + s2 * s2 - newSide * newSide));
+      f2 += (conserved - f2) * transfer;
+    }
+    const hardMax = Math.max(max, kart.stats.maxSpeed * T.boostMult * T.starMult);
+    f2 = clamp(f2, -T.reverseMax - 2, hardMax);
+    // A slide never adds free speed: the total (forward + sideways) speed is
+    // eased back to the current top speed, like the forward part above.
+    if (f2 > 0.5 && p.slide > 0) {
+      const tot = Math.hypot(f2, newSide);
+      if (tot > max) {
+        const k = Math.max(max, tot - T.overSpeedDecel * dt) / tot;
+        f2 *= k;
+        newSide *= k;
+      }
+    }
+    vx = fx * f2 + rx * newSide;
+    vz = fz * f2 + rz * newSide;
   }
-  vx = fx * f2 + rx * newSide;
-  vz = fz * f2 + rz * newSide;
+  p.yawRate = wrapAngle(h0 - h) / dt; // + = turning right (for a smooth drift entry)
   kart.heading = h;
   kart.speed = f2;
   v.set(vx, 0, vz);
-
   // ---- integrate ----------------------------------------------------------
   kart.position.x += vx * dt;
   kart.position.z += vz * dt;

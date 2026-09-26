@@ -78,6 +78,9 @@ export function applyKartRecord(kart, rec, owner = null, path = null) {
     p.groundY = o.groundY;
     p.pendingItem = o.pendingItem;
     p.rouletteTime = o.rouletteTime;
+    if (Number.isFinite(o.driftSlip)) p.driftSlip = o.driftSlip;
+    if (Number.isFinite(o.driftOmega0)) p.driftOmega0 = o.driftOmega0;
+    if (Number.isFinite(o.yawRate)) p.yawRate = o.yawRate;
     if (Number.isFinite(owner.aiSpeedMult)) kart.aiSpeedMult = owner.aiSpeedMult;
   } else {
     p.groundY = rec.position[1] - rp.hopY;

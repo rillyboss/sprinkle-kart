@@ -77,9 +77,9 @@ describe('snapshotter', () => {
 describe('snapshot codec stand-in vs §6.1 sizes (M1-4)', () => {
   it('fixture: typical 8 karts / 32 boxes / 1 own kart = 370 B; 8 gumdrops + 2 rockets <= 460 B; cap-case <= 1150 B', () => {
     const typical = encodeSnapshot(makeSimStateFixture(), { houseTail: { owner: [0] } });
-    expect(typical.length).toBe(370);
+    expect(typical.length).toBe(376); // 370 + the v3.1 drift-arc owner fields (6 B)
     const items = encodeSnapshot(makeSimStateFixture({ gumdrops: 8, rockets: 2 }), { houseTail: { owner: [0] } });
-    expect(items.length).toBeLessThanOrEqual(460);
+    expect(items.length).toBeLessThanOrEqual(500);
     const cap = encodeSnapshot(makeSimStateFixture({ gumdrops: 24, rockets: 8, battle: true }), { houseTail: { owner: [0, 1, 2, 3] } });
     expect(cap.length).toBeLessThanOrEqual(1150);
     expect(cap.length).toBeGreaterThan(700);

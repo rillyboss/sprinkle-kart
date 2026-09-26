@@ -51,10 +51,24 @@ export function racingLineAt(line, s) {
   return line.lat[i0] * (1 - t) + line.lat[i1] * t;
 }
 
-/** Steering value (-1..1) that turns `kart` toward world point (tx, tz). */
+/**
+ * The direction a kart is really going: its heading, except mid-drift, where
+ * the nose sits at a slip angle into the bend and the kart travels along the
+ * drift arc (heading + driftDir x slip).
+ */
+export function travelHeading(kart) {
+  if (!kart.drifting) return kart.heading;
+  return wrapAngle(kart.heading + (kart.driftDir || 0) * (kart.phys?.driftSlip || 0));
+}
+
+/**
+ * Steering value (-1..1) that turns `kart` toward world point (tx, tz).
+ * Mid-drift it steers the travel arc (so a drifting CPU / Kid-Assist
+ * counter-steers on straights and pulls in on tight bends).
+ */
 export function steerToward(kart, tx, tz, gain = 2.4) {
   const desired = Math.atan2(tx - kart.position.x, tz - kart.position.z);
-  const diff = wrapAngle(desired - kart.heading);
+  const diff = wrapAngle(desired - travelHeading(kart));
   // steer right (+) decreases heading
   return clamp(-diff * gain, -1, 1);
 }
@@ -64,7 +78,7 @@ export function steerToward(kart, tx, tz, gain = 2.4) {
  * drifting; Cozy/Zippy CPUs drift rarely so non-drifting kids can keep up.
  */
 export function cpuDriftChance(skill, spicy = false) {
-  return spicy ? 0.25 + skill * 0.6 : 0.1 + skill * 0.4;
+  return spicy ? 0.25 + skill * 0.6 : 0.06 + skill * 0.3;
 }
 
 /**

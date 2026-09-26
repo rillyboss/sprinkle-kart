@@ -30,13 +30,19 @@ export const TUNING = {
   hopHeight: 0.32,
   driftStartWindow: 0.32, // after landing a hop you may still start the drift (forgiving)
   driftSteerStart: 0.3, // |steer| needed to pick a drift direction
-  driftEaseIn: 0.38, // seconds for grip + drift yaw to blend from normal to full slide
+  // v3.1 drift model (family feedback: "makes you almost immediately do a 90 degree turn"):
+  // while drifting the kart travels along an ARC whose turn rate the stick picks (counter-steer =
+  // nearly straight, neutral = a little tighter than a normal bend, steer in = tight), and the
+  // nose sits at a SLIP ANGLE into the bend that eases in. Speed is kept.
+  driftEaseIn: 0.42, // seconds for the slip angle to ease in (smooth, no snap)
+  driftArcEaseIn: 0.5, // seconds for the travel arc to blend from the turn you had to the drift arc
   driftEaseOut: 0.2, // seconds to regain full grip after letting go
-  driftGrip: 4.5, // sideways grip while sliding (steady slide angle ~30 deg, never a spin-out)
-  driftGripTransfer: 0.93, // speed kept while sliding (no sudden slow-down)
-  driftTurnBase: 0.36, // yaw multiplier when steering against the drift (wide, forgiving arc)
-  driftTurnRange: 0.9, // extra yaw when steering into the drift (tight arc)
-  driftCharge: [0.8, 0.55], // charge per second = a + b * into (0 = steering out, 1 = in)
+  driftSlip: [0.26, 0.36, 0.43], // slip angle (rad) when steering out / neutral / in (~15 / 21 / 25 deg)
+  driftSlipFollow: 9, // 1/s: how quickly the slip angle follows the stick (ramped in by the ease)
+  driftArc: [0.18, 0.88, 1.45], // travel turn rate (rad/s x handling) out / neutral / in (~10 / 50 / 83 deg/s)
+  driftGrip: 4.5, // sideways grip while the slide eases back out after letting go
+  driftGripTransfer: 0.93, // speed kept while the slide eases out (no sudden slow-down)
+  driftCharge: [0.7, 0.8], // charge per second = a + b * into (0 = steering out, 1 = in)
   driftLevels: [0.5, 1.35, 2.35], // charge needed for blue, pink, rainbow (blue comes quickly!)
   miniTurbo: [0, 0.6, 0.95, 1.4], // boost seconds per level
 

@@ -15,6 +15,7 @@
  * @property {number} shieldTime @property {number} hopTime @property {number} hopY @property {number} hopLen
  * @property {number} driftWindow @property {boolean} driftHeld @property {number} driftCharge
  * @property {number} driftTime @property {number} slide @property {number} slideDir
+ * @property {number} driftSlip @property {number} driftOmega0 @property {number} yawRate   v3.1 drift arc (slip angle, entry turn, last turn rate)
  * @property {number} steerSmoothed @property {number} throttle @property {boolean} braking
  * @property {boolean} reversing @property {number} groundY @property {number} pitch @property {number} roll
  * @property {number} onPad @property {number} wallCooldown @property {number} wrongWayTime
@@ -94,7 +95,7 @@ export const SIM_STATE_SHAPE = Object.freeze({
   phys: {
     boostTime: 'num', spinTime: 'num', spinAngle: 'num', shieldTime: 'num', hopTime: 'num', hopY: 'num',
     hopLen: 'num', driftWindow: 'num', driftHeld: 'bool', driftCharge: 'num', driftTime: 'num', slide: 'num',
-    slideDir: 'num', steerSmoothed: 'num', throttle: 'num', braking: 'bool', reversing: 'bool', groundY: 'num',
+    slideDir: 'num', driftSlip: 'num', driftOmega0: 'num', yawRate: 'num', steerSmoothed: 'num', throttle: 'num', braking: 'bool', reversing: 'bool', groundY: 'num',
     pitch: 'num', roll: 'num', onPad: 'int', wallCooldown: 'num', wrongWayTime: 'num', rouletteTime: 'num',
     pendingItem: 'str?', lastLapStart: 'num', accelPressedAt: 'num?', prevAccel: 'bool', frameStartX: 'num',
     frameStartZ: 'num', assist: 'assist?',
@@ -283,6 +284,9 @@ export function makeSimStateFixture({
         driftTime: round(between(0, 3)),
         slide: round(between(0, 1)),
         slideDir: 0,
+        driftSlip: id % 2 === 0 ? 0.3125 : 0,
+        driftOmega0: 0,
+        yawRate: id % 2 === 0 ? 0.875 : 0,
         steerSmoothed: round(between(-1, 1)),
         throttle: 1,
         braking: false,
