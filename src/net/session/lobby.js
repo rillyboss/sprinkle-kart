@@ -58,6 +58,15 @@ export function allPlayers(lobby) {
   return list.sort((a, b) => a.globalPi - b.globalPi);
 }
 
+/**
+ * Players of the houses that are really here: an `asleep` house (its connection dropped, waiting for the
+ * reconnect window) keeps its seats and globalPi, but never holds up "everyone ready" and never gets karts in
+ * a new race.
+ */
+export function activePlayers(lobby) {
+  return allPlayers({ houses: (lobby?.houses ?? []).filter((h) => h.net !== 'asleep') });
+}
+
 export const humanCount = (lobby) => allPlayers(lobby).length;
 export const seatsLeft = (lobby) => Math.max(0, (lobby?.capacity ?? MAX_HUMANS) - humanCount(lobby));
 export const getHouse = (lobby, houseId) => lobby?.houses?.find((h) => h.houseId === houseId) ?? null;
@@ -85,7 +94,7 @@ export function localCapacity(lobby, houseId) {
 
 /** Everyone picked a racer and pressed ready (at least one player). */
 export function lobbyAllReady(lobby) {
-  const ps = allPlayers(lobby);
+  const ps = activePlayers(lobby);
   return ps.length > 0 && ps.every((p) => p.ready && typeof p.characterId === 'string');
 }
 

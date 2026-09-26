@@ -12,7 +12,7 @@
  *
  * OWNER: WS6 (session, lobby & screens).
  */
-import { allPlayers } from './lobby.js';
+import { activePlayers } from './lobby.js';
 import { RACERS_PER_RACE } from '../../config.js';
 
 export const NET_SETUP_PROTOCOL = 1;
@@ -77,7 +77,7 @@ export function humanGridSlots(pis, { seed, cpuCount, gp = null }) {
  * @returns {object} NetRaceSetup
  */
 export function composeOnlineSetup(lobby, hostChoice, { seed, raceId, cpuIds = [], rules = {}, gp = null, cpuPaints = null } = /** @type {any} */ ({})) {
-  const humans = allPlayers(lobby);
+  const humans = activePlayers(lobby); // an asleep house (reconnect window) races only after it is back
   const C = cpuIds.length;
   const slots = humanGridSlots(humans.map((p) => p.globalPi), { seed, cpuCount: C, gp });
   const participants = [

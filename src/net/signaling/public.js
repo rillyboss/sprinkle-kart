@@ -24,6 +24,8 @@ import {
 export const PUBLIC_FALLBACK_AFTER_MS = 6000;
 export const ROLE_ACTION = 'sk-role';
 export const ROLE_TIMEOUT_MS = 8000;
+/** A locked host tells a knocking guest "closed" on the role channel, then closes the pair this much later. */
+export const REFUSE_CLOSE_MS = 600;
 const ROLE_VERSION = 1;
 
 /**
@@ -38,9 +40,10 @@ export function defaultTrysteroImporter(m) {
 }
 
 /**
- * Validate an incoming `sk-role` payload.
+ * Validate an incoming `sk-role` payload. A host may add `refused: 'locked'` (its room is closed): the guest
+ * then shows "The host's room is closed for now 🔒" instead of waiting for a connection that never comes.
  * @param {unknown} data
- * @returns {{ role: 'host'|'guest', id: string } | null}
+ * @returns {{ role: 'host'|'guest', id: string, refused?: 'locked' } | null}
  */
 export function parseRoleMessage(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -48,7 +51,7 @@ export function parseRoleMessage(data) {
   if (d.v !== ROLE_VERSION) return null;
   if (d.role !== 'host' && d.role !== 'guest') return null;
   if (!isPeerId(d.id)) return null;
-  return { role: d.role, id: d.id };
+  return d.role === 'host' && d.refused === 'locked' ? { role: d.role, id: d.id, refused: 'locked' } : { role: d.role, id: d.id };
 }
 
 /**
@@ -73,6 +76,7 @@ export function createPublicSignaling({
 } = {}) {
   const connL = createListeners();
   const leaveL = createListeners();
+  const refusedL = createListeners();
 
   /**
    * @typedef {object} Sub
@@ -119,8 +123,15 @@ export function createPublicSignaling({
     const t = sub.pending.get(tid);
     if (t) timers.clearTimeout(t);
     sub.pending.delete(tid);
-    if (sub.map.has(tid)) return;
     const msg = parseRoleMessage(data);
+    if (role === 'guest' && msg?.refused && msg.id !== selfId) {
+      // the host is here but its room is locked: say so (never the NAT tips)
+      sub.map.delete(tid);
+      closeTid(sub, tid);
+      refusedL.emit(msg.refused);
+      return;
+    }
+    if (sub.map.has(tid)) return;
     if (!msg || msg.id === selfId) {
       closeTid(sub, tid);
       return;
@@ -134,7 +145,12 @@ export function createPublicSignaling({
       return;
     }
     if (role === 'host' && (locked || dropped.has(msg.id))) {
-      closeTid(sub, tid);
+      try {
+        Promise.resolve(sub.action?.send({ v: ROLE_VERSION, role: 'host', id: selfId, refused: 'locked' }, { target: tid })).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+      timers.setTimeout(() => closeTid(sub, tid), REFUSE_CLOSE_MS);
       return;
     }
     if (role === 'guest') {
@@ -174,6 +190,7 @@ export function createPublicSignaling({
     const sub = { name, room, map: new Map(), pending: new Map(), blocked: new Set(), left: false };
     subs.push(sub);
     const action = room.makeAction(ROLE_ACTION);
+    sub.action = action;
     action.onMessage = (data, ctx) => onRole(sub, ctx?.peerId, data);
     room.onPeerJoin = (tid) => {
       if (sub.left || left) return;
@@ -274,6 +291,8 @@ export function createPublicSignaling({
     },
     onPeerConnection: (fn) => connL.add(fn),
     onPeerLeave: (fn) => leaveL.add(fn),
+    /** Guest: the host answered but its room is locked (`fn('locked')`). */
+    onRefused: (fn) => refusedL.add(fn),
     drop(peerId) {
       if (role !== 'host') return;
       dropped.add(peerId);
@@ -339,6 +358,7 @@ export function createPublicSignaling({
       hostId = null;
       connL.clear();
       leaveL.clear();
+      refusedL.clear();
     },
   };
   return api;

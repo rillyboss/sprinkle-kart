@@ -54,6 +54,9 @@ export const TEXT = Object.freeze({
   // §13.2 (M2)
   reconnecting: 'Reconnecting… 🔌',
   tapToReconnect: 'Tap to reconnect 👆',
+  // §13.2: this machine's own connection is down (not the host's fault)
+  netNap: 'Your internet took a nap 📶 Reconnecting… 🔌',
+  netNapEnd: 'Your internet took a nap 📶 Check the Wi-Fi, then join again!',
   // §1 rule 6 (acceptance M1-12): shown BEFORE online can be switched on
   privacy:
     'Online play sends no names, no chat, no accounts and no analytics. Like any video call, it shows your internet address '
