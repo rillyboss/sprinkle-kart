@@ -29,12 +29,14 @@
 import './hudWidgets.css';
 
 /**
- * Reserved HUD zones (see ARCHITECTURE.md §7). Built-in HUD: item slot + lap
- * pill (top corner on the item side), place badge (bottom corner), countdown /
- * final-lap banner / flashes / wrong-way (centre band 20–45%), minimap.
- *   top-center     race timer, lap splits                      modes + timing
- *   under-cluster  item name / hints under the item slot       power-up clarity
- *   callout        big centre callouts ("Incoming rocket!")    power-up clarity
+ * Reserved HUD zones (see ARCHITECTURE.md §7). Built-in HUD (Candy Arcade): item slot + lap
+ * plate (top corner on the item side), then the EDGE COLUMN under it (under-cluster zone,
+ * callout zone, toast lane — src/ui/kit/toastLane.js), place badge (bottom corner), minimap.
+ * Only the countdown, FINAL LAP and FINISH use the centre, briefly. Event popups go to the
+ * toast lane (`hud.toast(pi, msg)` / `laneFor(vpNode).push(msg)`), never mid-screen.
+ *   top-center     race timer, lap splits, mode pills          modes + timing
+ *   under-cluster  item name / hints under the item slot       power-up clarity   (edge column)
+ *   callout        status banners (online "Reconnecting…")     power-up / online  (edge column)
  *   bottom-center  drift / speed meters                        driving feel
  */
 export const HUD_ANCHORS = Object.freeze(['top-center', 'under-cluster', 'callout', 'bottom-center']);
@@ -44,9 +46,15 @@ const canDom = (node) => !!node && typeof node.appendChild === 'function' && typ
 function zoneFor(vpNode, anchor, zones) {
   let z = zones.get(anchor);
   if (!z) {
-    z = document.createElement('div');
-    z.className = `sk-wzone sk-wzone-${anchor}`;
-    vpNode.appendChild(z);
+    // the Hud may pre-build a zone in its layout (under-cluster + callout live in the edge column)
+    let pre = null;
+    try { pre = vpNode.querySelector?.(`.sk-wzone-${anchor}`) ?? null; } catch { pre = null; }
+    if (pre) z = pre;
+    else {
+      z = document.createElement('div');
+      z.className = `sk-wzone sk-wzone-${anchor}`;
+      vpNode.appendChild(z);
+    }
     zones.set(anchor, z);
   }
   return z;

@@ -1,0 +1,67 @@
+/* ==========================================================================
+   Candy Arcade — design tokens (src/ui/kit/). OWNER: UI art direction.
+   Few strong brand colours, used on purpose: raspberry = action / selection,
+   grape = outlines + text, mint = go / good, lemon = focus / reward,
+   sky = info / calm, cream = paper. Everything else is a shade of these.
+   Read src/ui/kit/README.md before adding a colour — you probably want a token.
+   ========================================================================== */
+:root {
+  /* brand */
+  --ck-raspberry: #ff3e8a;
+  --ck-raspberry-dk: #c81c63;
+  --ck-raspberry-lt: #ff8fbb;
+  --ck-grape: #2e1447;
+  --ck-grape-2: #4b2470;
+  --ck-grape-3: #7a5a96;
+  --ck-mint: #3fe0b5;
+  --ck-mint-dk: #17a883;
+  --ck-lemon: #ffd23f;
+  --ck-lemon-dk: #e0a400;
+  --ck-sky: #4fb3ff;
+  --ck-sky-dk: #1f7fd0;
+  --ck-cream: #fff6e8;
+  --ck-cream-2: #ffe9c9;
+  --ck-cream-3: #f3d6ae;
+  --ck-white: #ffffff;
+
+  /* semantic */
+  --ck-ink: var(--ck-grape);
+  --ck-ink-soft: var(--ck-grape-3);
+  --ck-paper: var(--ck-cream);
+  --ck-accent: var(--ck-raspberry);
+  --ck-go: var(--ck-mint);
+  --ck-focus: var(--ck-lemon);
+  --ck-info: var(--ck-sky);
+  --ck-locked: #5b4470;
+
+  /* player colours (match src/config.js PLAYER_COLORS order) */
+  --ck-p1: #ff5fb4;
+  --ck-p2: #4fa8ff;
+  --ck-p3: #4fd67a;
+  --ck-p4: #ffc933;
+
+  /* type */
+  --ck-font-display: 'Lilita One', 'Fredoka', 'Baloo 2', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  --ck-font-body: 'Fredoka', 'Nunito', 'Baloo 2', system-ui, sans-serif;
+
+  /* shape: thick grape outlines like the 3D toon outlines, chunky bevels */
+  --ck-ol: clamp(3px, 0.37vmin, 5px);
+  --ck-ol-thin: clamp(2px, 0.24vmin, 3px);
+  --ck-bevel: 0.28em;
+  --ck-r-sm: 0.35em;
+  --ck-r: 0.6em;
+  --ck-r-lg: 0.95em;
+  --ck-tilt: -2.5deg;
+  --ck-shadow-drop: 0 0.5em 0 rgba(46, 20, 71, 0.18);
+
+  /* motion: snappy + springy, never floaty */
+  --ck-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ck-snap: cubic-bezier(0.2, 0.9, 0.3, 1);
+  --ck-t-fast: 150ms;
+  --ck-t: 210ms;
+  --ck-t-slow: 260ms;
+
+  /* textures */
+  --ck-stripes: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.22) 0 0.55em, transparent 0.55em 1.1em);
+  --ck-sprinkles: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg stroke-linecap='round' stroke-width='5'%3E%3Cpath d='M14 20l10 -6' stroke='%23ff3e8a'/%3E%3Cpath d='M70 16l4 11' stroke='%233fe0b5'/%3E%3Cpath d='M100 52l-11 3' stroke='%23ffd23f'/%3E%3Cpath d='M36 64l7 8' stroke='%234fb3ff'/%3E%3Cpath d='M16 100l11 -2' stroke='%23ffd23f'/%3E%3Cpath d='M64 96l9 -7' stroke='%23ff3e8a'/%3E%3Cpath d='M104 104l-3 -11' stroke='%234fb3ff'/%3E%3C/g%3E%3C/svg%3E");
+}

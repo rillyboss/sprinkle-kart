@@ -1,0 +1,150 @@
+/* ==========================================================================
+   Candy Arcade — legacy bridge. Repaints the shared v1/v2 classes from
+   ui.css (frozen) in the kit look, so screens not yet rebuilt on the kit
+   (results, sticker book, settings, GP, online …) already read as the same
+   game. PAINT ONLY: colours, fonts, outlines, bevels — never sizes that could
+   move a layout. The wave-2 sweep replaces these with ck-* markup screen by
+   screen; delete a rule here once nothing uses its class.
+   ========================================================================== */
+
+.sk-menus, .sk-hud { font-family: var(--ck-font-body); color: var(--ck-ink); }
+.sk-menus button:focus-visible { outline: var(--ck-ol) solid var(--ck-lemon); outline-offset: 0.12em; }
+
+/* no slow floaty sprinkles drifting over the menus */
+.sk-floaties { display: none !important; }
+
+/* screens enter snappy, not floaty */
+.sk-screen { animation: ck-screen-in var(--ck-t) var(--ck-snap) both; }
+
+/* ---------- backgrounds ---------- */
+.sk-mode-full {
+  background-color: var(--ck-cream);
+  background-image:
+    linear-gradient(115deg, transparent 0 64%, rgba(255, 62, 138, 0.1) 64% 80%, transparent 80%),
+    var(--ck-sprinkles);
+  background-size: 100% 100%, 9em 9em;
+}
+.sk-mode-overlay {
+  background-color: rgba(46, 20, 71, 0.58);
+  background-image: var(--ck-stripes);
+  background-size: 2.4em 2.4em;
+  backdrop-filter: blur(3px) saturate(0.8);
+  -webkit-backdrop-filter: blur(3px) saturate(0.8);
+}
+.sk-mode-results {
+  background-color: var(--ck-cream);
+  background-image:
+    linear-gradient(115deg, var(--ck-grape) 0 22%, transparent 22%),
+    var(--ck-sprinkles);
+  background-size: 100% 100%, 9em 9em;
+}
+
+/* ---------- headings & text ---------- */
+.sk-h1 {
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.02em; color: var(--ck-cream);
+  text-shadow:
+    0.05em 0 0 var(--ck-grape), -0.05em 0 0 var(--ck-grape), 0 0.05em 0 var(--ck-grape), 0 -0.05em 0 var(--ck-grape),
+    0.035em 0.035em 0 var(--ck-grape), -0.035em 0.035em 0 var(--ck-grape), 0.035em -0.035em 0 var(--ck-grape), -0.035em -0.035em 0 var(--ck-grape),
+    0 0.12em 0 var(--ck-grape);
+}
+.sk-lead { color: var(--ck-ink); font-weight: 600; }
+.sk-wiggle { animation: none; }
+
+/* ---------- glyphs, keys, hints ---------- */
+.sk-g {
+  border: max(2px, 0.1em) solid var(--ck-grape); box-shadow: 0 0.1em 0 var(--ck-grape);
+  font-family: var(--ck-font-display); font-weight: 400; text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.4);
+}
+.sk-g-a { background: #2fc47a; }
+.sk-g-b { background: var(--ck-raspberry); }
+.sk-g-x { background: var(--ck-sky); }
+.sk-g-y { background: #f5b800; }
+.sk-g-dpad { background: var(--ck-grape-2); }
+.sk-kbd {
+  background: var(--ck-cream); color: var(--ck-grape); border-radius: 0.34em;
+  font-family: var(--ck-font-display); font-weight: 400;
+  box-shadow: 0 0 0 max(1.5px, 0.08em) var(--ck-grape), 0 0.16em 0 max(1.5px, 0.08em) var(--ck-grape);
+}
+.sk-hints {
+  align-self: stretch; margin: auto -2em -1em; padding: 0.5em 2em 0.55em; gap: 1.2em; justify-content: flex-end;
+  background: var(--ck-grape); clip-path: polygon(1.6em 0, 100% 0, 100% 100%, 0 100%);
+}
+.sk-hints-in { margin: 1em 0 0; align-self: auto; clip-path: none; border-radius: var(--ck-r); justify-content: center; padding: 0.45em 1em; }
+.sk-hint { background: none; box-shadow: none; color: var(--ck-cream); padding: 0.1em 0; font-weight: 600; }
+.sk-hint .ck-key, .sk-hint .sk-kbd { background: var(--ck-cream); }
+
+/* ---------- buttons ---------- */
+.sk-back {
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.02em; color: var(--ck-grape);
+  background: var(--ck-cream); border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r);
+  box-shadow: 0 0.2em 0 var(--ck-grape); padding: 0.3em 0.8em 0.35em 0.35em;
+  transition: transform var(--ck-t-fast) var(--ck-spring);
+}
+.sk-back:hover { transform: translateY(-58%); }
+.sk-back:active { transform: translateY(-40%); box-shadow: 0 0 0 var(--ck-grape); }
+
+.sk-listbtn {
+  font-family: var(--ck-font-display) !important; font-weight: 400 !important; letter-spacing: 0.02em; color: var(--ck-grape) !important;
+  background: var(--ck-cream) !important; border: var(--ck-ol) solid var(--ck-grape) !important; border-radius: var(--ck-r) !important;
+  box-shadow: 0 var(--ck-bevel) 0 var(--ck-grape);
+  transition: transform var(--ck-t-fast) var(--ck-spring), background-color var(--ck-t-fast);
+}
+.sk-listbtn:hover { transform: translateY(-0.08em); }
+.sk-listbtn:active { transform: translateY(var(--ck-bevel)); box-shadow: 0 0 0 var(--ck-grape); }
+.sk-listbtn.sk-sel {
+  background: var(--ck-raspberry) !important; color: var(--ck-cream) !important;
+  text-shadow: 0 0.07em 0 rgba(46, 20, 71, 0.4);
+  box-shadow: 0 var(--ck-bevel) 0 var(--ck-grape); outline: var(--ck-ol) solid var(--ck-lemon); outline-offset: 0.16em;
+  transform: none; animation: ck-bounce var(--ck-t) var(--ck-spring);
+}
+.sk-listbtn .ck-icon { width: 1.35em; height: 1.35em; }
+
+.sk-pill {
+  font-family: var(--ck-font-display) !important; font-weight: 400 !important; color: var(--ck-grape) !important;
+  background: var(--ck-cream) !important; border-radius: var(--ck-r) !important;
+  box-shadow: 0 0 0 var(--ck-ol-thin) var(--ck-grape), 0 0.2em 0 var(--ck-ol-thin) var(--ck-grape);
+}
+.sk-pill.sk-sel { background: var(--ck-raspberry) !important; color: var(--ck-cream) !important; box-shadow: 0 0 0 var(--ck-ol-thin) var(--ck-grape), 0 0.2em 0 var(--ck-ol-thin) var(--ck-grape); }
+
+.sk-bigbtn {
+  font-family: var(--ck-font-display) !important; font-weight: 400 !important; letter-spacing: 0.03em;
+  color: var(--ck-grape) !important; background: var(--ck-mint) !important; border: var(--ck-ol) solid var(--ck-grape) !important;
+  border-radius: var(--ck-r) !important; box-shadow: 0 var(--ck-bevel) 0 var(--ck-grape); text-shadow: 0 0.06em 0 rgba(255, 255, 255, 0.5);
+  animation: none;
+}
+.sk-bigbtn.sk-disabled { background: #d9cbe3 !important; color: var(--ck-grape-3) !important; box-shadow: 0 var(--ck-bevel) 0 var(--ck-grape); }
+.sk-go-k { background: rgba(46, 20, 71, 0.12); }
+
+.sk-title-entry {
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.02em; color: var(--ck-grape);
+  background: var(--ck-cream); border: var(--ck-ol-thin) solid var(--ck-grape); border-radius: var(--ck-r);
+  box-shadow: 0 0.18em 0 var(--ck-grape);
+}
+.sk-title-entry.sk-focus, .sk-title-entry:hover {
+  background: var(--ck-white); box-shadow: 0 0.18em 0 var(--ck-grape); outline: var(--ck-ol) solid var(--ck-lemon); outline-offset: 0.12em;
+}
+
+/* ---------- panels, cards, tags ---------- */
+.sk-card-pop {
+  background: var(--ck-cream); border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r-lg);
+  box-shadow: 0 0.4em 0 var(--ck-grape); animation: ck-pop-in var(--ck-t) var(--ck-spring) both;
+}
+.sk-tag {
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.03em;
+  border: max(2px, 0.1em) solid var(--ck-grape); border-radius: var(--ck-r-sm);
+  box-shadow: 0 0.1em 0 var(--ck-grape); text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.45);
+}
+.sk-chooser {
+  background: var(--ck-lemon); color: var(--ck-grape); border: var(--ck-ol-thin) solid var(--ck-grape); border-radius: var(--ck-r-sm);
+  box-shadow: 0 0.14em 0 var(--ck-grape); font-weight: 600; transform: translateY(-50%) rotate(-2deg);
+}
+.sk-row-focus.sk-optrow, .sk-row-focus.sk-cards, .sk-row-focus.sk-track-row {
+  background: rgba(255, 210, 63, 0.18); box-shadow: 0 0 0 var(--ck-ol) var(--ck-lemon);
+}
+.sk-row-focus.sk-optrow::before, .sk-row-focus.sk-cards::before, .sk-row-focus.sk-track-row::before { color: var(--ck-raspberry); animation: ck-nudge-x 0.6s var(--ck-snap) infinite; }
+
+/* ---------- results / unlock accents (wave 2 rebuilds these) ---------- */
+.sk-results-title, .sk-unlock-kicker { font-family: var(--ck-font-display); font-weight: 400; }
+.sk-unlock-name { font-family: var(--ck-font-display); font-weight: 400; border: var(--ck-ol) solid var(--ck-grape); background: var(--ck-raspberry); box-shadow: 0 0.18em 0 var(--ck-grape); }
+.sk-row { box-shadow: inset 0 0 0 max(2px, 0.14em) var(--pc), 0 0.14em 0 rgba(46, 20, 71, 0.25); }
+.sk-row-place, .sk-step-block { font-family: var(--ck-font-display); font-weight: 400; }

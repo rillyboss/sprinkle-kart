@@ -2,13 +2,14 @@
  * Small DOM helpers shared by Menus and Hud.
  */
 import { cssColor, lighten } from './hudLogic.js';
+import { glyphHtml, keyHtml } from './kit/components.js';
 
-const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap';
+const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Lilita+One&display=swap';
 
-/** Inject the Fredoka Google Font <link> once (no-op if index.html already has it). */
+/** Inject the kit Google Fonts <link> (Fredoka + Lilita One) once (no-op if index.html already has them). */
 export function ensureFont() {
   if (typeof document === 'undefined') return;
-  const has = [...document.querySelectorAll('link[rel="stylesheet"]')].some((l) => /family=Fredoka/i.test(l.href));
+  const has = [...document.querySelectorAll('link[rel="stylesheet"]')].some((l) => /family=Lilita/i.test(l.href));
   if (has) return;
   for (const href of ['https://fonts.googleapis.com', 'https://fonts.gstatic.com']) {
     const pc = document.createElement('link');
@@ -52,17 +53,17 @@ export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/** Controller button glyph: coloured circle with the letter. */
+/** Controller button glyph (Candy Arcade SVG: 'A' | 'B' | 'X' | 'Y' | 'LB' | 'RB' | 'START' | 'DPAD'). */
 export function glyph(letter) {
-  return `<span class="sk-g sk-g-${letter.toLowerCase()}">${letter}</span>`;
+  return glyphHtml(letter);
 }
 
-/** Keyboard key hint. */
+/** Keyboard keycap (Candy Arcade). */
 export function kbd(text) {
-  return `<span class="sk-kbd">${escapeHtml(text)}</span>`;
+  return keyHtml(text);
 }
 
-/** Hint pill: glyphs + keys + label. */
+/** Button prompt: glyph + key + label (Candy Arcade; kept on .sk-hint for older styles). */
 export function hint(letter, key, label) {
   return `<span class="sk-hint">${glyph(letter)}${key ? kbd(key) : ''}<span class="sk-hint-t">${escapeHtml(label)}</span></span>`;
 }

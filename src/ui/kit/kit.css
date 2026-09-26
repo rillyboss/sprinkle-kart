@@ -1,0 +1,254 @@
+/* ==========================================================================
+   Candy Arcade — components (src/ui/kit/components.js builds the markup).
+   Every class is prefixed `ck-`. States: .is-focus (controller focus),
+   .is-selected, .is-disabled, .is-locked, .is-pressed. See ?uikit=1.
+   ========================================================================== */
+
+.ck-root { font-family: var(--ck-font-body); color: var(--ck-ink); }
+.ck-root *, .ck-root *::before, .ck-root *::after { box-sizing: border-box; }
+
+/* ---------- motion ---------- */
+@keyframes ck-pop-in { 0% { opacity: 0; transform: scale(0.82); } 65% { opacity: 1; transform: scale(1.04); } 100% { opacity: 1; transform: none; } }
+@keyframes ck-screen-in { 0% { opacity: 0; transform: translateY(0.5em) scale(0.985); } 100% { opacity: 1; transform: none; } }
+@keyframes ck-slide-l { 0% { opacity: 0; transform: translateX(-1.2em); } 70% { opacity: 1; transform: translateX(0.15em); } 100% { transform: none; } }
+@keyframes ck-slide-r { 0% { opacity: 0; transform: translateX(1.2em); } 70% { opacity: 1; transform: translateX(-0.15em); } 100% { transform: none; } }
+@keyframes ck-slide-up { 0% { opacity: 0; transform: translateY(0.8em); } 70% { opacity: 1; transform: translateY(-0.08em); } 100% { transform: none; } }
+@keyframes ck-bounce { 0% { transform: scale(1); } 40% { transform: scale(1.08); } 100% { transform: scale(1); } }
+@keyframes ck-throb { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes ck-nudge-x { 0%, 100% { translate: 0 0; } 50% { translate: 0.18em 0; } }
+@keyframes ck-shake { 0%, 100% { translate: 0 0; } 20% { translate: -0.3em 0; } 40% { translate: 0.3em 0; } 60% { translate: -0.18em 0; } 80% { translate: 0.18em 0; } }
+@keyframes ck-stripes-move { to { background-position: 2.2em 0; } }
+
+/* ---------- icons & glyphs ---------- */
+.ck-icon { display: inline-block; width: 1.25em; height: 1.25em; flex: none; vertical-align: -0.25em; overflow: visible; }
+.ck-glyph { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; line-height: 1; }
+.ck-glyph .ck-icon { width: 1.4em; height: 1.4em; vertical-align: 0; }
+.ck-glyph-lb .ck-icon, .ck-glyph-rb .ck-icon, .ck-glyph-start .ck-icon { width: 1.8em; }
+.ck-key {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.6em; height: 1.45em; padding: 0 0.38em;
+  font: 400 0.78em/1 var(--ck-font-display); letter-spacing: 0.02em; color: var(--ck-grape);
+  background: var(--ck-cream); border: var(--ck-ol-thin) solid var(--ck-grape); border-radius: 0.34em;
+  box-shadow: 0 0.16em 0 var(--ck-grape);
+  vertical-align: middle; white-space: nowrap; transform: translateY(-0.08em);
+}
+.ck-inputs { display: inline-flex; align-items: center; gap: 0.2em; }
+.ck-inputs-or { font-size: 0.7em; opacity: 0.7; font-weight: 600; }
+
+/* ---------- display text ---------- */
+.ck-title {
+  margin: 0; font: 400 2.2em/1 var(--ck-font-display); letter-spacing: 0.02em; color: var(--ck-cream);
+  text-shadow:
+    0.05em 0 0 var(--ck-grape), -0.05em 0 0 var(--ck-grape), 0 0.05em 0 var(--ck-grape), 0 -0.05em 0 var(--ck-grape),
+    0.035em 0.035em 0 var(--ck-grape), -0.035em 0.035em 0 var(--ck-grape), 0.035em -0.035em 0 var(--ck-grape), -0.035em -0.035em 0 var(--ck-grape),
+    0 0.12em 0 var(--ck-grape);
+}
+.ck-title--sticker {
+  display: inline-block; padding: 0.18em 0.55em 0.26em; border-radius: var(--ck-r);
+  background: var(--ck-raspberry); border: var(--ck-ol) solid var(--ck-grape);
+  box-shadow: 0 0.14em 0 var(--ck-grape); transform: rotate(var(--ck-tilt));
+}
+.ck-title--lemon { color: var(--ck-lemon); }
+.ck-title--raspberry { color: var(--ck-raspberry); }
+.ck-sub { font: 600 1em/1.2 var(--ck-font-body); color: var(--ck-ink-soft); }
+
+/* ---------- buttons ---------- */
+.ck-btn {
+  --ck-bg: var(--ck-raspberry); --ck-fg: var(--ck-cream);
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 0.45em;
+  padding: 0.5em 1.05em 0.55em; min-height: 2.4em;
+  font: 400 1.05em/1 var(--ck-font-display); letter-spacing: 0.03em; color: var(--ck-fg);
+  background: var(--ck-bg); border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r);
+  box-shadow: 0 var(--ck-bevel) 0 var(--ck-grape);
+  text-shadow: 0 0.07em 0 rgba(46, 20, 71, 0.35);
+  cursor: pointer; user-select: none; white-space: nowrap;
+  transition: transform var(--ck-t-fast) var(--ck-spring), box-shadow var(--ck-t-fast) var(--ck-snap), background-color var(--ck-t-fast), filter var(--ck-t-fast);
+}
+.ck-btn:hover { transform: translateY(-0.08em); filter: brightness(1.05); }
+.ck-btn:active, .ck-btn.is-pressed { transform: translateY(var(--ck-bevel)); box-shadow: 0 0 0 var(--ck-grape); transition-duration: 60ms; }
+.ck-btn.is-focus, .ck-btn:focus-visible, .ck-btn.is-selected {
+  outline: var(--ck-ol) solid var(--ck-lemon); outline-offset: 0.16em;
+  animation: ck-bounce var(--ck-t) var(--ck-spring);
+}
+.ck-btn.is-selected { --ck-bg: var(--ck-raspberry); }
+.ck-btn.is-disabled, .ck-btn:disabled { --ck-bg: #d9cbe3; --ck-fg: var(--ck-grape-3); text-shadow: none; cursor: default; filter: none; transform: none; }
+.ck-btn .ck-icon { width: 1.35em; height: 1.35em; }
+.ck-btn--go { --ck-bg: var(--ck-mint); --ck-fg: var(--ck-grape); text-shadow: 0 0.06em 0 rgba(255, 255, 255, 0.5); }
+.ck-btn--lemon { --ck-bg: var(--ck-lemon); --ck-fg: var(--ck-grape); text-shadow: 0 0.06em 0 rgba(255, 255, 255, 0.5); }
+.ck-btn--sky { --ck-bg: var(--ck-sky); }
+.ck-btn--cream { --ck-bg: var(--ck-cream); --ck-fg: var(--ck-grape); text-shadow: none; }
+.ck-btn--grape { --ck-bg: var(--ck-grape-2); --ck-fg: var(--ck-cream); }
+.ck-btn--lg { font-size: 1.55em; padding: 0.45em 1.2em 0.5em; }
+.ck-btn--sm { font-size: 0.82em; min-height: 2.1em; padding: 0.35em 0.75em 0.4em; }
+.ck-btn--icon { padding: 0.35em; min-width: 2.4em; }
+.ck-btn--block { display: flex; width: 100%; }
+.ck-btn--stripes { background-image: var(--ck-stripes); background-size: 2.2em 2.2em; animation: ck-stripes-move 0.9s linear infinite; }
+.ck-btn--stripes.is-focus, .ck-btn--stripes.is-selected { animation: ck-stripes-move 0.9s linear infinite, ck-bounce var(--ck-t) var(--ck-spring); }
+
+/* ---------- tab bar ---------- */
+.ck-tabbar { position: relative; display: flex; align-items: flex-end; gap: 0.5em; }
+.ck-tabs {
+  position: relative; display: flex; align-items: flex-end; gap: 0.3em; flex: 1; min-width: 0;
+  padding: 0 0.4em; border-bottom: var(--ck-ol) solid var(--ck-grape);
+}
+.ck-tab {
+  position: relative; display: inline-flex; align-items: center; gap: 0.35em; flex: 0 1 auto; min-width: 0;
+  padding: 0.42em 0.8em 0.46em; margin-bottom: calc(var(--ck-ol) * -1);
+  font: 400 0.95em/1 var(--ck-font-display); letter-spacing: 0.02em; color: var(--ck-grape);
+  background: var(--ck-cream-2); border: var(--ck-ol) solid var(--ck-grape); border-bottom-width: 0;
+  border-radius: var(--ck-r) var(--ck-r) 0 0; cursor: pointer; white-space: nowrap;
+  transform: translateY(0.22em); transform-origin: 50% 100%;
+  transition: transform var(--ck-t-fast) var(--ck-spring), background-color var(--ck-t-fast);
+}
+.ck-tab:hover { transform: translateY(0.05em); }
+.ck-tab .ck-icon { width: 1.3em; height: 1.3em; }
+.ck-tab-label { overflow: hidden; text-overflow: ellipsis; }
+.ck-tab.is-selected {
+  z-index: 2; color: var(--ck-cream); background: var(--ck-raspberry);
+  text-shadow: 0 0.07em 0 rgba(46, 20, 71, 0.4); transform: translateY(0) scale(1.06);
+  padding-bottom: 0.62em; animation: ck-bounce var(--ck-t) var(--ck-spring);
+}
+.ck-tab.is-locked { color: var(--ck-grape-3); }
+.ck-tab-nav { flex: none; display: inline-flex; align-items: center; gap: 0.15em; padding: 0.2em 0.35em; margin-bottom: 0.35em; border-radius: var(--ck-r-sm); cursor: pointer; font: 400 0.8em/1 var(--ck-font-display); color: var(--ck-grape); background: none; border: 0; }
+.ck-tab-nav:hover { background: rgba(46, 20, 71, 0.08); }
+.ck-tab-nav .ck-glyph .ck-icon { width: 2em; height: 2em; }
+
+/* ---------- panels & cards ---------- */
+.ck-panel {
+  position: relative; padding: 0.9em 1em; color: var(--ck-ink);
+  background: var(--ck-cream); border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r-lg);
+  box-shadow: 0 0.35em 0 var(--ck-grape);
+}
+.ck-panel--dark { background: var(--ck-grape); color: var(--ck-cream); border-color: var(--ck-grape); box-shadow: 0 0.35em 0 rgba(46, 20, 71, 0.35); }
+.ck-panel--raspberry { background: var(--ck-raspberry); color: var(--ck-cream); }
+.ck-panel--tilt { transform: rotate(-1.2deg); }
+.ck-panel--sprinkles { background-image: var(--ck-sprinkles); background-size: 7em 7em; }
+.ck-panel-head { display: flex; align-items: center; gap: 0.5em; margin: -0.2em 0 0.5em; font: 400 1.15em/1 var(--ck-font-display); }
+
+.ck-card {
+  position: relative; display: flex; flex-direction: column; text-align: left; cursor: pointer;
+  padding: 0.35em; color: var(--ck-ink);
+  background: var(--ck-cream); border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r);
+  box-shadow: 0 var(--ck-bevel) 0 var(--ck-grape);
+  transition: transform var(--ck-t-fast) var(--ck-spring), box-shadow var(--ck-t-fast), background-color var(--ck-t-fast);
+}
+.ck-card:hover { transform: translateY(-0.12em); }
+.ck-card.is-selected, .ck-card.is-focus {
+  z-index: 2; background: var(--ck-white);
+  transform: translateY(-0.3em) rotate(-1.2deg) scale(1.04);
+  box-shadow: 0 0 0 calc(var(--ck-ol) * 1.3) var(--ck-lemon), 0 calc(var(--ck-bevel) + 0.1em) 0 calc(var(--ck-ol) * 1.3) var(--ck-grape);
+  animation: ck-bounce var(--ck-t) var(--ck-spring);
+}
+.ck-card.is-locked .ck-card-art { filter: saturate(0.25) brightness(0.8); }
+
+/* ---------- badges & stickers ---------- */
+.ck-badge {
+  --ck-bg: var(--ck-lemon); --ck-fg: var(--ck-grape);
+  display: inline-flex; align-items: center; gap: 0.25em; padding: 0.16em 0.5em 0.2em;
+  font: 400 0.8em/1 var(--ck-font-display); letter-spacing: 0.03em; color: var(--ck-fg);
+  background: var(--ck-bg); border: var(--ck-ol-thin) solid var(--ck-grape); border-radius: var(--ck-r-sm);
+  box-shadow: 0 0.12em 0 var(--ck-grape); white-space: nowrap; transform: rotate(var(--ck-tilt));
+}
+.ck-badge .ck-icon { width: 1.15em; height: 1.15em; }
+.ck-badge--raspberry { --ck-bg: var(--ck-raspberry); --ck-fg: var(--ck-cream); }
+.ck-badge--mint { --ck-bg: var(--ck-mint); }
+.ck-badge--sky { --ck-bg: var(--ck-sky); --ck-fg: var(--ck-cream); }
+.ck-badge--grape { --ck-bg: var(--ck-grape); --ck-fg: var(--ck-cream); }
+.ck-badge--cream { --ck-bg: var(--ck-cream); }
+.ck-badge--player { --ck-bg: var(--pc, var(--ck-p1)); --ck-fg: var(--ck-white); text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.4); }
+.ck-badge--flat { transform: none; }
+
+/* ---------- segmented control (speed / laps) ---------- */
+.ck-seg { display: inline-flex; align-items: stretch; border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r); background: var(--ck-cream-2); box-shadow: 0 0.2em 0 var(--ck-grape); overflow: hidden; }
+.ck-seg-opt {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.35em; padding: 0.38em 0.8em;
+  font: 400 0.95em/1 var(--ck-font-display); color: var(--ck-grape); background: none; border: 0; cursor: pointer;
+  transition: background-color var(--ck-t-fast), color var(--ck-t-fast);
+}
+.ck-seg-opt + .ck-seg-opt { border-left: var(--ck-ol-thin) solid rgba(46, 20, 71, 0.35); }
+.ck-seg-opt:hover { background: rgba(255, 255, 255, 0.6); }
+.ck-seg-opt.is-selected { background: var(--ck-raspberry); color: var(--ck-cream); text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.4); }
+.ck-seg-opt small { display: block; font: 600 0.62em/1 var(--ck-font-body); opacity: 0.85; }
+.ck-seg.is-focus { outline: var(--ck-ol) solid var(--ck-lemon); outline-offset: 0.14em; animation: ck-bounce var(--ck-t) var(--ck-spring); }
+
+/* ---------- meters, stars ---------- */
+.ck-meter { display: inline-flex; gap: 0.16em; }
+.ck-meter i { width: 0.9em; height: 0.62em; border-radius: 0.16em; background: rgba(46, 20, 71, 0.16); border: var(--ck-ol-thin) solid transparent; }
+.ck-meter i.on { background: var(--ck-meter, var(--ck-raspberry)); border-color: var(--ck-grape); }
+.ck-stars { display: inline-flex; gap: 0.08em; }
+.ck-stars .ck-icon { width: 1.05em; height: 1.05em; }
+.ck-stars .off { opacity: 0.25; filter: grayscale(1); }
+
+/* ---------- toast (menus: fixed corner; HUD: see hud.css lanes) ---------- */
+.ck-toast {
+  --ck-tone: var(--ck-raspberry);
+  display: inline-flex; align-items: center; gap: 0.45em; max-width: 100%;
+  padding: 0.22em 0.75em 0.26em 0.22em;
+  color: var(--ck-grape); background: var(--ck-cream);
+  border: max(2px, 0.12em) solid var(--ck-grape); border-radius: 0.55em;
+  box-shadow: 0 0.16em 0 var(--ck-grape);
+  font: 400 1em/1.05 var(--ck-font-display); letter-spacing: 0.02em;
+}
+.ck-toast-chip {
+  flex: none; display: grid; place-items: center; width: 1.9em; height: 1.9em;
+  background: var(--ck-tone); border: max(2px, 0.1em) solid var(--ck-grape); border-radius: 0.4em;
+  transform: rotate(-4deg); font-size: 0.95em;
+}
+.ck-toast-chip .ck-icon { width: 1.45em; height: 1.45em; }
+.ck-toast-chip .ck-emoji { font-size: 1.15em; line-height: 1; }
+.ck-toast-text { display: flex; flex-direction: column; min-width: 0; }
+.ck-toast-text b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-toast-text small { font: 600 0.72em/1.1 var(--ck-font-body); color: var(--ck-grape-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-toast--mint { --ck-tone: var(--ck-mint); }
+.ck-toast--lemon { --ck-tone: var(--ck-lemon); }
+.ck-toast--sky { --ck-tone: var(--ck-sky); }
+.ck-toast--grape { --ck-tone: var(--ck-grape-3); }
+.ck-toast--alert { --ck-tone: var(--ck-raspberry); background: #ffe3ee; }
+.ck-toast.is-in { animation: ck-slide-l var(--ck-t) var(--ck-spring) both; }
+.ck-toast.is-out { transition: opacity var(--ck-t-fast), transform var(--ck-t-fast); opacity: 0; transform: scale(0.85); }
+
+/* ---------- modal ---------- */
+.ck-scrim {
+  position: absolute; inset: 0; display: grid; place-items: center; z-index: 30;
+  background: rgba(46, 20, 71, 0.55); background-image: var(--ck-stripes); background-size: 2.2em 2.2em;
+}
+.ck-modal { position: relative; min-width: min(22em, 90%); max-width: min(38em, 92%); animation: ck-pop-in var(--ck-t) var(--ck-spring) both; }
+.ck-modal-title { position: absolute; top: -1.05em; left: 0.9em; }
+.ck-modal-body { padding-top: 0.7em; }
+
+/* ---------- hint (button prompt) + foot bar ---------- */
+.ck-hint { display: inline-flex; align-items: center; gap: 0.3em; font: 600 0.9em/1 var(--ck-font-body); white-space: nowrap; }
+.ck-hint-t { margin-left: 0.1em; }
+.ck-footbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+  display: flex; align-items: center; justify-content: flex-end; gap: 1.3em;
+  padding: 0.5em 1.6em 0.55em 3.2em; color: var(--ck-cream);
+  background: var(--ck-grape); clip-path: polygon(1.8em 0, 100% 0, 100% 100%, 0 100%);
+}
+.ck-footbar .ck-hint { color: var(--ck-cream); }
+.ck-footbar .ck-key { background: var(--ck-cream); }
+.ck-footbar-note { margin-right: auto; font: 600 0.85em/1.1 var(--ck-font-body); color: var(--ck-lemon); }
+
+/* ---------- screen chrome ---------- */
+.ck-bg {
+  background-color: var(--ck-cream);
+  background-image:
+    linear-gradient(115deg, transparent 0 62%, rgba(255, 62, 138, 0.10) 62% 78%, transparent 78%),
+    var(--ck-sprinkles);
+  background-size: 100% 100%, 9em 9em;
+}
+.ck-topbar {
+  position: relative; z-index: 2; width: 100%; display: flex; align-items: center; gap: 1em;
+  min-height: 3.2em; padding: 0 0 0 0.2em;
+}
+.ck-topbar::before {
+  content: ''; position: absolute; left: -2.4em; top: -2.2em; bottom: -0.5em; width: min(60%, 34em); z-index: -1;
+  background: var(--ck-grape); clip-path: polygon(0 0, 100% 0, calc(100% - 2.6em) 100%, 0 100%);
+}
+.ck-topbar .ck-title { font-size: 2.1em; transform: rotate(-2deg); }
+.ck-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.6em; }
+.ck-backbtn { flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-root *, .ck-hudlane * { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}

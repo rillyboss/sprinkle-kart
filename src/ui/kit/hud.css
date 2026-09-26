@@ -1,0 +1,274 @@
+/* ==========================================================================
+   Candy Arcade — in-race HUD. Compact, corner/edge-anchored, one framed style.
+   Viewport font-size scales with the viewport (Hud.layout), so everything
+   here is in em and auto-scales for 1-4 player split-screen.
+
+   Layout per viewport (item side = left for P1/P3, right for P2/P4):
+     top corner      .sk-cluster   P-badge · item slot · lap plate
+     under it        .sk-edgecol   item card · callout zone (net banner) · toast lane (max 2)
+     top centre      timer / mode pills (top-center widget zone)
+     bottom corner   .sk-place     place + portrait (chatter bubble next to it)
+     centre (brief)  countdown · FINAL LAP ribbon · FINISH (then it tucks to the top)
+   Nothing else may cover the centre of the view or the road ahead.
+   ========================================================================== */
+
+.sk-hud { --hud-ol: max(2px, 0.13em); --hud-bevel: 0.16em; }
+.sk-hud .sk-vp-multi{ box-shadow: inset 0 0 0 max(2px, 0.12em) var(--ck-grape); border-radius: 0; }
+
+/* ---------- player badge ---------- */
+.sk-hud .sk-pchip{
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.04em; font-size: 0.8em;
+  padding: 0.1em 0.45em 0.14em; border-radius: 0.35em;
+  border: var(--hud-ol) solid var(--ck-grape); box-shadow: 0 var(--hud-bevel) 0 var(--ck-grape);
+  text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.45); transform: rotate(-4deg);
+}
+
+/* ---------- item slot ---------- */
+.sk-hud .sk-item.ski-slot{
+  width: 3.6em; height: 3.6em; border-radius: 0.7em;
+  background: var(--ck-cream) radial-gradient(circle at 50% 42%, #fff 0 38%, transparent 70%);
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.22em 0 var(--hud-ol) var(--ck-grape);
+}
+.sk-hud .sk-item.ski-slot.sk-has{
+  background: var(--ck-cream) radial-gradient(circle at 50% 42%, #fff 0 30%, color-mix(in srgb, var(--ic, var(--ck-lemon)) 35%, var(--ck-cream)) 75%);
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.22em 0 var(--hud-ol) var(--ck-grape), 0 0 0 calc(var(--hud-ol) * 2.6) var(--ck-lemon);
+  animation: ck-throb 0.9s ease-in-out infinite;
+}
+.sk-hud .sk-item-inner .ck-icon{ width: 2.5em; height: 2.5em; }
+.sk-hud .sk-item-empty{ font-family: var(--ck-font-display); font-weight: 400; color: rgba(46, 20, 71, 0.25); }
+.sk-hud .ski-count{
+  font-family: var(--ck-font-display); font-weight: 400; color: var(--ck-cream); background: var(--ck-raspberry);
+  border-radius: 0.35em; box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape); padding: 0 0.3em; text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.4);
+}
+
+/* ---------- lap plate ---------- */
+.sk-hud .sk-lap{
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.03em;
+  padding: 0.1em 0.55em 0.16em; border-radius: 0.45em; color: var(--ck-cream);
+  background: var(--ck-grape); box-shadow: 0 var(--hud-bevel) 0 rgba(46, 20, 71, 0.45);
+  text-shadow: none;
+}
+.sk-hud .sk-lap b{ font-weight: 400; font-size: 1.45em; color: var(--ck-lemon); }
+.sk-hud .sk-lap small{ font-size: 0.8em; opacity: 0.9; }
+.sk-hud .sk-lap-final{ background: var(--ck-raspberry); background-image: var(--ck-stripes); background-size: 1.6em 1.6em; box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 var(--hud-bevel) 0 var(--hud-ol) var(--ck-grape); }
+.sk-hud .sk-lap-final b{ color: var(--ck-cream); }
+
+/* ---------- edge column: item card, callouts, toast lane ---------- */
+.sk-hud .sk-edgecol{
+  position: absolute; top: 5.2em; display: flex; flex-direction: column; gap: 0.3em;
+  max-width: min(15em, 46%); pointer-events: none; z-index: 2;
+}
+.sk-hud .sk-vp[data-item-side='left'] .sk-edgecol{ left: 0.9em; align-items: flex-start; }
+.sk-hud .sk-vp[data-item-side='right'] .sk-edgecol{ right: 0.9em; align-items: flex-end; }
+.sk-hud .sk-edgecol > .sk-wzone{ position: static; transform: none; top: auto; left: auto; right: auto; align-items: inherit; }
+.sk-hud .sk-edgecol > .sk-wzone-callout:empty, .sk-hud .sk-edgecol > .sk-wzone-under-cluster:empty{ display: none; }
+
+.sk-hud .ck-hudlane{ display: flex; flex-direction: column; align-items: inherit; gap: 0.28em; font-size: 0.74em; max-width: 100%; }
+.sk-hud .sk-vp:not(.sk-vp-multi) .ck-hudlane{ font-size: 0.66em; }
+.sk-hud .ck-hudlane-pin, .sk-hud .ck-hudlane-list{ display: flex; flex-direction: column; align-items: inherit; gap: 0.28em; max-width: 100%; }
+.sk-hud .ck-hudlane-pin:empty{ display: none; }
+.sk-hud .ck-hudlane-item{ max-width: 100%; }
+.sk-hud .ck-hudlane-item .ck-toast{ opacity: 0.96; }
+.sk-hud .sk-vp[data-item-side='right'] .ck-hudlane-item.is-in .ck-toast{ animation-name: ck-slide-r; }
+.sk-hud .ck-hudlane-item.is-in .ck-toast{ animation: ck-slide-l var(--ck-t) var(--ck-spring) both; }
+.sk-hud .ck-hudlane-item.is-bump .ck-toast{ animation: ck-bounce var(--ck-t) var(--ck-spring) both; }
+.sk-hud .ck-hudlane-item.is-out{ transition: opacity var(--ck-t-fast) ease-in, transform var(--ck-t-fast) ease-in; opacity: 0; transform: scale(0.8); }
+.sk-hud .ck-hudlane-item.is-pinned .ck-toast{ animation: ck-throb var(--beat, 0.6s) ease-in-out infinite; }
+
+/* item card (name + "Press LB") under the slot */
+.sk-hud .ski-card{
+  margin-top: 0.1em; padding: 0.18em 0.6em 0.22em; border-radius: 0.45em;
+  background: var(--ck-cream); box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 var(--hud-bevel) 0 var(--hud-ol) var(--ck-grape);
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.02em; font-size: 0.82em;
+}
+.sk-hud .ski-name{ color: var(--ck-grape); font-size: 1em; }
+.sk-hud .ski-hint{ font-family: var(--ck-font-body); font-weight: 600; color: var(--ck-grape-3); font-size: 0.8em; }
+.sk-hud .ski-key{ background: var(--ck-grape); color: var(--ck-cream); border-radius: 0.3em; box-shadow: 0 0.12em 0 rgba(46, 20, 71, 0.5); font-family: var(--ck-font-display); font-weight: 400; animation: none; }
+.sk-hud .ski-card[data-state='rolling'] .ski-name{ color: var(--ck-raspberry); animation: none; }
+.sk-hud .ski-pips i{ background: rgba(46, 20, 71, 0.15); }
+.sk-hud .ski-pips i.on{ box-shadow: 0 0 0 max(1.5px, 0.08em) var(--ck-grape); }
+.sk-hud .ski-ring circle{ fill: var(--ck-cream); }
+.sk-hud .ski-ring circle.bg{ stroke: var(--ck-grape); }
+.sk-hud .ski-ring span .ck-icon{ width: 1.4em; height: 1.4em; }
+
+/* legacy callout nodes (if any other module still draws one) never sit mid-screen */
+.sk-hud .ski-callout-box{ transform: none !important; }
+
+/* ---------- place badge ---------- */
+.sk-hud .sk-place{
+  bottom: 0.7em; gap: 0.25em; padding: 0.15em 0.6em 0.15em 0.2em; border-radius: 0.7em;
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.24em 0 var(--hud-ol) var(--ck-grape);
+}
+.sk-hud .sk-place-portrait .sk-portrait{ width: 2.3em; border: var(--hud-ol) solid var(--ck-grape); }
+.sk-hud .sk-place-text{ font-family: var(--ck-font-display); font-weight: 400; color: var(--ck-cream); }
+.sk-hud .sk-place-text b{
+  font-weight: 400; font-size: 2.3em;
+  text-shadow: 0.05em 0 0 var(--ck-grape), -0.05em 0 0 var(--ck-grape), 0 0.05em 0 var(--ck-grape), 0 -0.05em 0 var(--ck-grape), 0 0.1em 0 var(--ck-grape);
+}
+.sk-hud .sk-place-text small{ text-shadow: 0.06em 0 0 var(--ck-grape), -0.06em 0 0 var(--ck-grape), 0 0.06em 0 var(--ck-grape), 0 -0.06em 0 var(--ck-grape); }
+.sk-hud .sk-medal-gold { background: var(--ck-lemon); }
+.sk-hud .sk-medal-silver { background: #cfd6ea; }
+.sk-hud .sk-medal-bronze { background: #f19a62; }
+.sk-hud .sk-medal-candy { background: var(--ck-sky); }
+
+/* ---------- countdown (centre, brief) ---------- */
+.sk-hud .sk-count span{
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 5.2em; color: var(--cd, var(--ck-raspberry));
+  text-shadow:
+    0.06em 0 0 var(--ck-grape), -0.06em 0 0 var(--ck-grape), 0 0.06em 0 var(--ck-grape), 0 -0.06em 0 var(--ck-grape),
+    0.045em 0.045em 0 var(--ck-grape), -0.045em 0.045em 0 var(--ck-grape), 0.045em -0.045em 0 var(--ck-grape), -0.045em -0.045em 0 var(--ck-grape),
+    0 0.14em 0 var(--ck-grape);
+  opacity: 0.94;
+}
+.sk-hud .sk-count{ place-items: start center; padding-top: 16%; }
+.sk-hud .sk-count[data-n='3']{ --cd: var(--ck-raspberry); }
+.sk-hud .sk-count[data-n='2']{ --cd: var(--ck-lemon); }
+.sk-hud .sk-count[data-n='1']{ --cd: var(--ck-sky); }
+.sk-hud .sk-count[data-n='go']{ --cd: var(--ck-mint); }
+.sk-hud .sk-count[data-n='go'] span{ font-size: 6.2em; }
+.sk-hud .sk-count.show{ animation: ck-count 0.85s var(--ck-snap) both; }
+@keyframes ck-count {
+  0% { opacity: 0; transform: scale(1.9) rotate(-8deg); }
+  22% { opacity: 1; transform: scale(0.92) rotate(3deg); }
+  36% { transform: scale(1.04) rotate(-1deg); }
+  50%, 78% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.85) translateY(-0.4em); }
+}
+
+/* ---------- FINAL LAP ribbon (centre band, brief, see-through) ---------- */
+.sk-hud .sk-banner{ top: 20%; }
+.sk-hud .sk-banner span{
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 1.6em; letter-spacing: 0.04em;
+  color: var(--ck-grape); padding: 0.14em 0.9em 0.2em; border-radius: 0.4em;
+  background: var(--ck-lemon); background-image: var(--ck-stripes); background-size: 1.8em 1.8em;
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.22em 0 var(--hud-ol) var(--ck-grape);
+  text-shadow: 0 0.06em 0 rgba(255, 255, 255, 0.55); transform: rotate(-2deg);
+  animation: ck-stripes-move 0.8s linear infinite; opacity: 0.93;
+}
+.sk-hud .sk-banner.show{ animation: ck-banner 1.6s var(--ck-snap) both; }
+@keyframes ck-banner {
+  0% { opacity: 0; transform: translateX(-35%) skewX(-12deg); }
+  14% { opacity: 1; transform: translateX(2%) skewX(4deg); }
+  22%, 78% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateX(30%) skewX(-8deg); }
+}
+.sk-hud .sk-banner .ck-icon{ width: 1.1em; height: 1.1em; margin: 0 0.25em; vertical-align: -0.18em; }
+
+/* ---------- FINISH: pops centre-top, then tucks up under the timer ---------- */
+.sk-hud .sk-finish{ justify-content: flex-start; padding-top: 14%; gap: 0.15em; }
+.sk-hud .sk-finish.show{ animation: ck-finish 2.6s var(--ck-snap) both; }
+@keyframes ck-finish {
+  0% { opacity: 0; transform: scale(0.5) rotate(-6deg); }
+  10% { opacity: 1; transform: scale(1.06) rotate(1deg); }
+  16%, 62% { opacity: 1; transform: none; }
+  100% { opacity: 0.95; transform: translateY(-13%) scale(0.55); }
+}
+.sk-hud .sk-finish-top{
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 2.2em; letter-spacing: 0.03em; color: var(--ck-cream);
+  padding: 0.08em 0.6em 0.14em; border-radius: 0.4em; background: var(--ck-raspberry); background-image: var(--ck-stripes); background-size: 1.8em 1.8em;
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.2em 0 var(--hud-ol) var(--ck-grape);
+  text-shadow: 0 0.07em 0 rgba(46, 20, 71, 0.45); transform: rotate(-3deg);
+}
+.sk-hud .sk-finish-place{
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 1.8em; color: var(--ck-grape);
+  border-radius: 0.4em; padding: 0 0.5em 0.06em; animation: none;
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.18em 0 var(--hud-ol) var(--ck-grape); text-shadow: 0 0.06em 0 rgba(255, 255, 255, 0.5);
+}
+.sk-hud .sk-finish-sub{ font-family: var(--ck-font-body); font-weight: 600; font-size: 0.9em; color: var(--ck-cream); background: var(--ck-grape); border-radius: 0.4em; padding: 0.12em 0.7em; }
+
+/* ---------- wrong way: a sticker under the timer, never over the road ---------- */
+.sk-hud .sk-wrongway{ top: 13%; }
+.sk-hud .sk-wrongway span{
+  display: inline-flex; align-items: center; gap: 0.3em;
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 1.2em; letter-spacing: 0.02em;
+  color: var(--ck-grape); background: var(--ck-lemon); padding: 0.14em 0.7em 0.18em 0.35em; border-radius: 0.45em;
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.2em 0 var(--hud-ol) var(--ck-grape);
+}
+.sk-hud .sk-wrongway span .ck-icon{ width: 1.35em; height: 1.35em; }
+.sk-hud .sk-wrongway.show span{ animation: ck-throb 0.7s ease-in-out infinite; }
+
+/* ---------- minimap frame ---------- */
+.sk-hud .sk-minimap{
+  border-radius: 18%; background: rgba(255, 246, 232, 0.72);
+  box-shadow: 0 0 0 max(2px, 0.28vmin) var(--ck-grape), 0 max(3px, 0.5vmin) 0 max(2px, 0.28vmin) var(--ck-grape);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+
+/* ---------- race timer (top-center widget) ---------- */
+.sk-hud .sk-timer-main{
+  border-radius: 0.45em; background: var(--ck-cream);
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 var(--hud-bevel) 0 var(--hud-ol) var(--ck-grape);
+}
+.sk-hud .sk-timer-ico .ck-icon{ width: 1.1em; height: 1.1em; }
+.sk-hud .sk-timer-t{ font-family: var(--ck-font-body); font-weight: 700; color: var(--ck-grape); }
+.sk-hud .sk-timer-sub{
+  font-family: var(--ck-font-display); font-weight: 400; letter-spacing: 0.03em; border-radius: 0.35em;
+  background: var(--pc, var(--ck-raspberry)); box-shadow: 0 0 0 max(1.5px, 0.1em) var(--ck-grape); text-shadow: 0 0.06em 0 rgba(46, 20, 71, 0.4);
+}
+.sk-hud .sk-split{ border-radius: 0.35em; background: var(--ck-cream); color: var(--ck-grape-3); box-shadow: 0 0 0 max(1.5px, 0.08em) var(--ck-grape); }
+.sk-hud .sk-split small{ color: var(--ck-raspberry); }
+.sk-hud .sk-split-best{ background: var(--ck-lemon); color: var(--ck-grape); }
+.sk-hud .sk-timer-ghost, .sk-hud .sk-timer-boosts{ border-radius: 0.35em; box-shadow: 0 0 0 max(1.5px, 0.08em) var(--ck-grape); }
+.sk-hud .sk-timer-done .sk-timer-main{ background: var(--ck-lemon); }
+
+/* ---------- mode pills (battle / team / daily / tutorial coach) ---------- */
+.sk-hud .skb-hud-top, .sk-hud .skt-hud, .sk-hud .skd-hud{
+  border-radius: 0.45em; background: var(--ck-cream);
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 var(--hud-bevel) 0 var(--hud-ol) var(--ck-grape);
+}
+.sk-hud .skb-hud-clock, .sk-hud .skt-hud, .sk-hud .skd-hud{ color: var(--ck-grape); }
+.sk-hud .skb-hurry .skb-hud-top{ background: #ffe3ee; }
+.sk-hud .skd-hud b{ color: var(--ck-raspberry); }
+.sk-hud .skd-hud.skd-hud-done{ background: var(--ck-mint); color: var(--ck-grape); }
+.sk-hud .skd-hud.skd-hud-done b{ color: var(--ck-grape); }
+.sk-hud .skh-coach{ border: var(--ck-ol) solid var(--ck-grape); border-radius: var(--ck-r-lg); background: var(--ck-cream); color: var(--ck-grape); box-shadow: 0 0.3em 0 var(--ck-grape); font-family: var(--ck-font-display); font-weight: 400; }
+.sk-hud .skh-coach-k{ background: var(--ck-raspberry); border: var(--ck-ol-thin) solid var(--ck-grape); box-shadow: 0 0.14em 0 var(--ck-grape); }
+.sk-hud .skh-coach.skh-cheer{ background: var(--ck-lemon); color: var(--ck-grape); border-color: var(--ck-grape); }
+.sk-hud .skh-coach.skh-done{ background: var(--ck-mint); color: var(--ck-grape); border-color: var(--ck-grape); }
+
+/* ---------- online status (net-hud, callout zone in the edge column) ---------- */
+.sk-hud .sk-net-hud{
+  font-family: var(--ck-font-display) !important; font-weight: 400 !important; font-size: 0.85em !important;
+  color: var(--ck-cream) !important; background: var(--ck-grape) !important; border-radius: 0.45em !important;
+  box-shadow: 0 var(--hud-bevel) 0 rgba(46, 20, 71, 0.45) !important; padding: 0.3em 0.7em !important; text-align: left !important;
+}
+
+/* ---------- chatter bubbles: small, edge-anchored by the place badge ---------- */
+.sk-hud .skx-bubble-wrap{ bottom: 4.3em; max-width: min(12em, 44%); }
+.sk-hud .skx-bubble{
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 0.72em; letter-spacing: 0.02em; line-height: 1.1;
+  padding: 0.35em 0.65em; border-radius: 0.55em; background: var(--ck-cream); color: var(--ck-grape);
+  box-shadow: 0 0 0 var(--hud-ol) var(--ck-grape), 0 0.16em 0 var(--hud-ol) var(--ck-grape);
+}
+.sk-hud .skx-bubble::after{ background: var(--ck-cream); box-shadow: 0.14em 0.14em 0 0 var(--ck-grape); }
+.sk-hud .sk-vp[data-place-v='top'] .skx-bubble::after{ box-shadow: -0.14em -0.14em 0 0 var(--ck-grape); }
+.sk-hud .skx-k-bonked, .sk-hud .skx-k-star, .sk-hud .skx-k-rainbow-turbo, .sk-hud .skx-k-finish-win{ background: var(--ck-cream); }
+.sk-hud .skx-k-finish-win{ background: var(--ck-lemon); }
+
+/* ---------- track intro card (countdown only) ---------- */
+#ui .skx-intro{ font-family: var(--ck-font-body); color: var(--ck-grape); }
+#ui .skx-intro-card{
+  border-radius: var(--ck-r-lg); background: var(--ck-cream);
+  box-shadow: 0 0 0 var(--ck-ol) var(--ck-grape), 0 0.4em 0 var(--ck-ol) var(--ck-grape);
+  animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) both;
+}
+#ui .skx-intro-kicker{ background: var(--ck-raspberry); border-radius: var(--ck-r-sm); box-shadow: 0 0 0 var(--ck-ol-thin) var(--ck-grape), 0 0.14em 0 var(--ck-ol-thin) var(--ck-grape); font-family: var(--ck-font-display); font-weight: 400; transform: rotate(-3deg); }
+#ui .skx-intro-title{
+  font-family: var(--ck-font-display); font-weight: 400; color: var(--ck-cream); -webkit-text-stroke: 0;
+  text-shadow: 0.05em 0 0 var(--ck-grape), -0.05em 0 0 var(--ck-grape), 0 0.05em 0 var(--ck-grape), 0 -0.05em 0 var(--ck-grape), 0 0.12em 0 var(--ck-grape);
+}
+#ui .skx-intro-sub{ color: var(--ck-grape-3); }
+
+/* ---------- sticker toasts (Fun Goals; on results / standings screens) ---------- */
+body .skg-toasts{ font-family: var(--ck-font-display); }
+body .skg-toast{
+  border-radius: 0.6em; background: var(--ck-cream); color: var(--ck-grape);
+  box-shadow: 0 0 0 max(2px, 0.14em) var(--ck-grape), 0 0.22em 0 max(2px, 0.14em) var(--ck-grape);
+  animation: ck-slide-l var(--ck-t) var(--ck-spring) both;
+}
+body .skg-toast.skg-leaving{ animation: none; transition: opacity var(--ck-t-fast), transform var(--ck-t-fast); opacity: 0; transform: scale(0.85); }
+body .skg-sticker{ border-radius: 0.45em; background: var(--ck-lemon); box-shadow: 0 0 0 max(2px, 0.12em) var(--ck-grape); }
+body .skg-sticker .ck-icon{ width: 1.3em; height: 1.3em; }
+body .skg-text small{ color: var(--ck-raspberry); font-family: var(--ck-font-display); font-weight: 400; }
+body .skg-text b{ font-weight: 400; }
+body .skg-text i{ font-family: var(--ck-font-body); color: var(--ck-grape-3); }

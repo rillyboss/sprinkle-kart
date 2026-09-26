@@ -18,6 +18,7 @@
  * per-player widget from any module (see ./hudWidgets.js) — no edit to this file.
  */
 import './ui.css';
+import './kit/index.js';
 import { PLAYER_COLORS } from '../config.js';
 import { ensureFont, el, escapeHtml, portraitHtml } from './dom.js';
 import {
@@ -28,24 +29,29 @@ import { createWidgetHost } from './hudWidgets.js';
 import { playerLabel } from '../net/session/playerLabel.js';
 import './widgets/items.css';
 import { itemSlotView } from './widgets/itemHudLogic.js';
-import { ITEM_CATALOG } from '../race/itemCatalog.js';
+import { icon, itemIcon } from './kit/icons.js';
+import { createToastLane, LANE_MAX } from './kit/toastLane.js';
 
-/** Flashes ("Mini-Turbo!", "Lap 2!") shown at once per player; a newer one retires the oldest. */
-export const MAX_FLASHES = 2;
+/** Minimap palette (Candy Arcade tokens; canvas can't read CSS variables cheaply). */
+const MM = Object.freeze({ grape: '#2e1447', cream: '#fff6e8', raspberry: '#ff3e8a' });
+
+/** Toasts ("Mini-Turbo!", "Lap 2!", item callouts) shown at once per player; a newer one retires the oldest. */
+export const MAX_FLASHES = LANE_MAX;
+
+/** Viewport HUD font size (px) for a viewport of w × h CSS px: every HUD size is in em of this. */
+export function hudFontSize(w, h) {
+  return Math.max(11, Math.min(36, Math.sqrt(Math.max(0, w) * Math.max(0, h)) / 36));
+}
 
 /**
- * Item slot glyph. One big readable icon per item; Triple Sprinkle shows a
- * "×N" charge badge (pass `pips` = { total, left }).
+ * Item slot glyph: one big Candy Arcade SVG sticker per item; Triple Sprinkle
+ * shows a "×N" charge badge (pass `pips` = { total, left }).
  */
-function itemHtml(id, pips = null) {
-  const it = ITEM_ICONS[id];
-  if (!it) return '';
-  if (it.gumdrop) return '<span class="sk-gumdrop"><i></i></span>';
-  const main = `<span class="sk-item-e">${ITEM_CATALOG[id]?.emoji ?? it.emoji}</span>`;
-  const extra = it.extra ? `<span class="sk-item-x">${it.extra}</span>` : '';
+export function itemHtml(id, pips = null) {
+  if (!ITEM_ICONS[id]) return '';
   // the 3 pips themselves live on the item card under the slot (itemWidgets.js)
   const dots = pips ? `<span class="ski-count">×${pips.left}</span>` : '';
-  return `${main}${extra}${dots}`;
+  return `${icon(itemIcon(id), { title: ITEM_ICONS[id].label })}${dots}`;
 }
 
 export class Hud {
@@ -83,7 +89,7 @@ export class Hud {
     const list = normalizeRects(rects, W, H);
     const keep = new Set(list.map((r) => r.playerIndex));
     for (const [pi, vp] of this.vps) {
-      if (!keep.has(pi)) { this.widgets.detach(pi); vp.node.remove(); this.vps.delete(pi); }
+      if (!keep.has(pi)) { this.widgets.detach(pi); vp.lane?.destroy(); vp.node.remove(); this.vps.delete(pi); }
     }
     for (const r of list) {
       let vp = this.vps.get(r.playerIndex);
@@ -94,7 +100,7 @@ export class Hud {
         this.widgets.attach(r.playerIndex, vp.node);
       }
       const sides = hudSides(r, W);
-      const fs = Math.max(12, Math.min(44, Math.sqrt(r.w * r.h) / 30));
+      const fs = hudFontSize(r.w, r.h);
       Object.assign(vp.node.style, {
         left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${fs.toFixed(1)}px`,
       });
@@ -128,13 +134,18 @@ export class Hud {
       (refs.place = el('div.sk-place', {},
         (refs.placePortrait = el('div.sk-place-portrait')),
         (refs.placeText = el('div.sk-place-text')))),
+      // edge column under the cluster: item card zone, callout zone (net banner) and the toast lane
+      (refs.edge = el('div.sk-edgecol', {},
+        el('div.sk-wzone.sk-wzone-under-cluster'),
+        el('div.sk-wzone.sk-wzone-callout'))),
       (refs.count = el('div.sk-count')),
-      (refs.banner = el('div.sk-banner', { html: '<span>🏁 FINAL LAP! 🏁</span>' })),
+      (refs.banner = el('div.sk-banner', { html: `<span>${icon('flag')}FINAL LAP!${icon('flag')}</span>` })),
       (refs.finish = el('div.sk-finish')),
-      (refs.wrong = el('div.sk-wrongway', { html: '<span>Oops! Turn around 🔄</span>' })),
-      (refs.flashes = el('div.sk-flashes')),
+      (refs.wrong = el('div.sk-wrongway', { html: `<span>${icon('uturn')}Oops! Turn around</span>` })),
     );
-    return { node, refs, pi, cache: {} };
+    const lane = createToastLane(refs.edge, { now: () => this._now(), register: node });
+    refs.lane = lane.node;
+    return { node, refs, pi, cache: {}, lane };
   }
 
   update(race, path, { playerIndices = null, portraits = null } = {}) {
@@ -150,6 +161,7 @@ export class Hud {
         this._updateViewport(vp, kart, cd, t, portraits, race);
         this.widgets.update(pi, kart, race, t);
       }
+      vp.lane?.update(t);
     }
     if (path) this._drawMinimap(race, path);
   }
@@ -237,9 +249,9 @@ export class Hud {
     if (fin !== cache.fin) {
       cache.fin = fin;
       if (kart.finished) {
-        refs.finish.innerHTML = `<div class="sk-finish-top">Finished! 🎉</div>`
+        refs.finish.innerHTML = '<div class="sk-finish-top">FINISH!</div>'
           + `<div class="sk-finish-place sk-medal-${medalFor(place)}">${ordinal(place)}</div>`
-          + '<div class="sk-finish-sub">Cheer on your friends! 📣</div>';
+          + '<div class="sk-finish-sub">Cheer on your friends!</div>';
         this._retrigger(refs.finish, 'show');
         refs.banner.classList.remove('show');
       } else {
@@ -254,17 +266,23 @@ export class Hud {
     node.classList.add(cls);
   }
 
+  /**
+   * A short event toast for one player ("Mini-Turbo! 🔥", "Lap 2! 🍭") in that viewport's
+   * toast lane (edge column; max MAX_FLASHES at once, ~1.5 s). A trailing / leading emoji
+   * becomes the toast's icon chip. Returns the toast id (or null without that viewport).
+   */
   flash(playerIndex, text) {
+    return this.toast(playerIndex, String(text ?? ''));
+  }
+
+  /**
+   * Any toast for one player: a string or { title, sub?, iconName? | emoji?, tone?, key?, ttl? }
+   * (tone: 'raspberry' | 'mint' | 'lemon' | 'sky' | 'grape' | 'alert'; same `key` refreshes in place).
+   */
+  toast(playerIndex, msg) {
     const vp = this.vps.get(playerIndex);
-    if (!vp) return;
-    const box = vp.refs.flashes;
-    // at most MAX_FLASHES at once (the oldest goes early), so the lane never grows into the callouts
-    while (box.childElementCount >= MAX_FLASHES) box.firstElementChild?.remove();
-    [...box.children].forEach((c, i) => c.style.setProperty('--k', i));
-    const f = el('div.sk-flash', {}, String(text));
-    f.style.setProperty('--k', box.childElementCount);
-    box.appendChild(f);
-    setTimeout(() => f.remove(), 1400);
+    if (!vp?.lane) return null;
+    return vp.lane.push(msg);
   }
 
   _drawMinimap(race, path) {
@@ -295,29 +313,31 @@ export class Hud {
       b.lineJoin = 'round';
       b.lineCap = 'round';
       const u = size / 100;
-      b.strokeStyle = 'rgba(122, 64, 140, 0.25)';
+      // Candy Arcade: grape outline + drop, cream road, raspberry centre dashes
+      b.strokeStyle = MM.grape;
       b.lineWidth = 11 * u;
-      b.save(); b.translate(0, 1.4 * u); trace(); b.stroke(); b.restore();
-      b.strokeStyle = '#ffffff';
-      b.lineWidth = 9.5 * u;
+      b.save(); b.translate(0, 1.6 * u); trace(); b.stroke(); b.restore();
       trace(); b.stroke();
-      b.strokeStyle = '#ffb3dc';
-      b.lineWidth = 5.5 * u;
+      b.strokeStyle = MM.cream;
+      b.lineWidth = 6.4 * u;
       trace(); b.stroke();
-      b.setLineDash([2 * u, 3 * u]);
-      b.strokeStyle = 'rgba(255,255,255,0.9)';
-      b.lineWidth = 1.2 * u;
+      b.setLineDash([2.2 * u, 3 * u]);
+      b.strokeStyle = MM.raspberry;
+      b.lineWidth = 1.5 * u;
       trace(); b.stroke();
       b.setLineDash([]);
-      // Start line marker
+      // Start line marker: a little chequered flag tile
       if (pts.length) {
         const [sx, sy] = mm.fit.map(pts[0][0], pts[0][1]);
-        b.fillStyle = '#6b3a7a';
-        b.beginPath(); b.arc(sx, sy, 3.2 * u, 0, Math.PI * 2); b.fill();
-        b.fillStyle = '#fff';
-        b.font = `${5 * u}px sans-serif`;
-        b.textAlign = 'center'; b.textBaseline = 'middle';
-        b.fillText('🏁', sx, sy - 0.2 * u);
+        const s = 3.2 * u;
+        b.fillStyle = MM.grape;
+        b.fillRect(sx - s - 1.2 * u, sy - s - 1.2 * u, 2 * s + 2.4 * u, 2 * s + 2.4 * u);
+        for (let gx = 0; gx < 2; gx++) {
+          for (let gy = 0; gy < 2; gy++) {
+            b.fillStyle = (gx + gy) % 2 ? MM.grape : '#ffffff';
+            b.fillRect(sx - s + gx * s, sy - s + gy * s, s, s);
+          }
+        }
       }
     }
     ctx.clearRect(0, 0, size, size);
@@ -331,21 +351,20 @@ export class Hud {
       const [x, y] = mm.fit.map(k.position.x, k.position.z);
       const def = this.characters.find((c) => c.id === k.characterId);
       ctx.fillStyle = cssColor(def?.colors?.primary, '#c9a7ff');
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.2 * u;
+      ctx.strokeStyle = MM.grape;
+      ctx.lineWidth = 1.3 * u;
       ctx.beginPath(); ctx.arc(x, y, 2.6 * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     for (const k of humans) {
       const [x, y] = mm.fit.map(k.position.x, k.position.z);
       const r = 4.4 * u;
-      ctx.fillStyle = 'rgba(80, 30, 90, 0.25)';
-      ctx.beginPath(); ctx.arc(x, y + 0.8 * u, r + 1.2 * u, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(x, y, r + 1.2 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = MM.grape;
+      ctx.beginPath(); ctx.arc(x, y + 1 * u, r + 1.4 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, r + 1.4 * u, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = PLAYER_COLORS[k.playerIndex] ?? '#ff5fb4';
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.font = `700 ${5.2 * u}px Fredoka, sans-serif`;
+      ctx.font = `${5.4 * u}px 'Lilita One', Fredoka, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(k.playerIndex + 1), x, y + 0.3 * u);
     }
@@ -359,7 +378,7 @@ export class Hud {
   reset() {
     for (const vp of this.vps.values()) {
       vp.cache = {};
-      vp.refs.flashes.innerHTML = '';
+      vp.lane?.clear();
       vp.refs.banner.classList.remove('show');
       vp.refs.finish.classList.remove('show');
       vp.refs.count.classList.remove('show');
@@ -370,6 +389,7 @@ export class Hud {
   }
 
   dispose() {
+    for (const vp of this.vps.values()) vp.lane?.destroy();
     this.el.remove();
     this.vps.clear();
   }

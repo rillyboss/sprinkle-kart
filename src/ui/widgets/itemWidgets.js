@@ -3,7 +3,8 @@
  *
  *   item-card     (anchor under-cluster)  item NAME + "Press LB" hint, Triple Sprinkle pips,
  *                                         Bubble Shield / Rainbow Star timer rings
- *   item-callout  (anchor callout)        "🧁 Rocket coming!" warning + big friendly callouts
+ *   item-callout  (anchor callout)        "Rocket coming!" warning + friendly callouts, as toasts in
+ *                                         the viewport's toast lane (src/ui/kit/toastLane.js)
  *   item-edge     (viewport overlay)      edge arrow pointing at an incoming rocket, soft warning
  *                                         vignette, boost speed lines, rainbow star frame
  *
@@ -13,52 +14,13 @@
 import './items.css';
 import { TUNING } from '../../race/tuning.js';
 import { escapeHtml } from '../dom.js';
+import { icon, itemIcon, iconForEmoji } from '../kit/icons.js';
+import { laneFor, createToastLane, LANE_TTL_MAX } from '../kit/toastLane.js';
 import {
   itemSlotView, activeTimers, ringDashOffset, threatsFor, edgeArrowPlacement, threatMessage,
 } from './itemHudLogic.js';
 
 const RING_C = 2 * Math.PI * 16; // svg circle r=16
-/** Callouts end this far down the viewport (0..1): just above the chase-cam kart. */
-export const CALLOUT_BOTTOM = 0.4;
-/** Pixels kept free between the callout stack and whatever sits above it. */
-export const CALLOUT_GAP = 6;
-
-/**
- * Which callouts fit (pure): the stack grows UP from just above the kart and
- * may use `room` px. The newest (last) always shows; older ones that would
- * poke above the room (over the race timer or the Mini-Turbo / Lap flashes)
- * are hidden until there is space again.
- * @param {number[]} heights  callout heights, oldest first
- * @param {number} room  px available above the kart
- * @param {number} [reserved] px already used (the pinned rocket warning)
- * @returns {boolean[]} hidden flags, same order
- */
-export function fitCallouts(heights, room, reserved = 0, gap = CALLOUT_GAP) {
-  const hidden = heights.map(() => false);
-  let used = reserved;
-  for (let i = heights.length - 1; i >= 0; i--) {
-    const h = (heights[i] || 0) + gap;
-    if (i < heights.length - 1 && used + h > room) hidden[i] = true;
-    else used += h;
-  }
-  return hidden;
-}
-
-/**
- * How far down the viewport the HUD above the callouts reaches (px from the
- * viewport top): the top-center zone (race timer + lap splits) and the
- * flashes lane ("Mini-Turbo!", "Lap 2!") while any flash is showing.
- */
-export function calloutCeiling(vpNode) {
-  let y = 0;
-  try {
-    const top = vpNode?.querySelector?.('.sk-wzone-top-center');
-    if (top && top.offsetHeight) y = Math.max(y, top.offsetTop + top.offsetHeight);
-    const fl = vpNode?.querySelector?.('.sk-flashes');
-    if (fl) for (const f of fl.children) y = Math.max(y, fl.offsetTop + f.offsetTop + f.offsetHeight);
-  } catch { /* measuring is best effort */ }
-  return y;
-}
 
 function div(cls, html = '') {
   const n = document.createElement('div');
@@ -78,7 +40,7 @@ function ringHtml(t) {
   return `<div class="ski-ring${t.ending ? ' ski-ending' : ''}" data-item="${t.item}">`
     + '<svg viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/>'
     + `<circle class="fg" cx="20" cy="20" r="16" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${ringDashOffset(t.frac, RING_C).toFixed(2)}"/></svg>`
-    + `<span>${t.emoji}</span></div>`;
+    + `<span>${icon(itemIcon(t.item))}</span></div>`;
 }
 
 /** @param {{feed, devices: Map}} state */
@@ -136,81 +98,73 @@ export function itemCardWidget(state) {
   };
 }
 
-/** @param {{feed}} state */
+/** Item-feed tones -> Candy Arcade toast tones. */
+export const CALLOUT_TONES = Object.freeze({ use: 'raspberry', good: 'mint', oops: 'lemon', block: 'sky', info: 'grape' });
+
+/**
+ * A feed callout ({ id, emoji, title, sub, tone, at, until }) as a toast-lane message (pure).
+ * Item emoji become the kit's SVG item icons; the lane keeps each one ≤ LANE_TTL_MAX.
+ */
+export function calloutToast(m) {
+  const ic = iconForEmoji(m?.emoji);
+  const life = Number.isFinite(m?.until) && Number.isFinite(m?.at) ? m.until - m.at : undefined;
+  return {
+    title: String(m?.title ?? ''),
+    sub: m?.sub ? String(m.sub) : '',
+    iconName: ic ?? '',
+    emoji: ic ? '' : (m?.emoji ?? ''),
+    tone: CALLOUT_TONES[m?.tone] ?? 'raspberry',
+    ttl: life !== undefined ? Math.min(LANE_TTL_MAX, Math.max(0.8, life)) : undefined,
+  };
+}
+
+/** The pinned "Rocket coming!" warning as a lane message (pure). */
+export function threatToast(th) {
+  const m = threatMessage(th);
+  return { title: m.title, sub: m.sub, iconName: 'cupcake-rocket', tone: 'alert' };
+}
+
+/**
+ * Item callouts + the rocket warning, drawn as toasts in the viewport's toast lane
+ * (src/ui/kit/toastLane.js: edge column, max 2, never mid-screen). Without a Hud lane
+ * (tests, other hosts) it makes its own lane inside its zone box.
+ * @param {{feed}} state
+ */
 export function itemCalloutWidget(state) {
   return {
     id: 'item-callout',
     anchor: 'callout',
     order: 10,
     create(node, pi, vpNode) {
-      const threat = div('ski-threat');
-      threat.hidden = true;
-      const list = div('ski-callouts');
-      node.append(list, threat);
-      node.classList.add('ski-callout-box');
-      const cache = { ids: '', threat: '', h: -1, measuredAt: -9, fitAt: -9, fitIds: '' };
-      // keep the stack out of the timer / flash lane: hide older callouts that don't fit
-      const fit = (now) => {
-        if (cache.fitIds === cache.ids && Math.abs(now - cache.fitAt) < 0.2) return;
-        cache.fitAt = now;
-        cache.fitIds = cache.ids;
-        const kids = [...list.children];
-        const h = vpNode?.clientHeight || 0;
-        if (!kids.length || !h) return;
-        for (const k of kids) k.classList.remove('ski-squeezed');
-        const room = CALLOUT_BOTTOM * h - calloutCeiling(vpNode) - CALLOUT_GAP;
-        const hidden = fitCallouts(kids.map((k) => k.offsetHeight), room, threat.hidden ? 0 : threat.offsetHeight + CALLOUT_GAP);
-        kids.forEach((k, i) => k.classList.toggle('ski-squeezed', hidden[i]));
-      };
-      // The callout zone starts at 50% of the viewport, right on top of the
-      // player's kart. Lift the stack so its bottom edge sits just above the
-      // kart (CALLOUT_BOTTOM of the viewport height) and it grows upward.
-      const place = (now) => {
-        if (Math.abs(now - cache.measuredAt) < 0.5) return;
-        cache.measuredAt = now;
-        const h = vpNode?.clientHeight || 0;
-        if (h === cache.h) return;
-        cache.h = h;
-        node.style.transform = `translateY(calc(${(-(0.5 - CALLOUT_BOTTOM) * h).toFixed(1)}px - 100%))`;
-      };
+      let clock = 0;
+      const hudLane = laneFor(vpNode);
+      const lane = hudLane ?? createToastLane(node, { now: () => clock });
+      const own = !hudLane;
+      const shown = new Set(); // feed ids already pushed
+      const cache = { threat: '' };
       return {
         update(kart, race) {
           const now = race?.clock ?? 0;
-          place(now);
+          clock = now;
           // pinned rocket warning
           const th = threatsFor(kart, race?.items?.rockets)[0] ?? null;
           const tsig = th ? `${th.closeness > 0.8}|${th.from}` : '';
           if (tsig !== cache.threat) {
             cache.threat = tsig;
-            threat.hidden = !th;
-            if (th) {
-              const m = threatMessage(th);
-              threat.innerHTML = `<span class="e">${m.emoji}</span><div><b>${escapeHtml(m.title)}</b><small>${escapeHtml(m.sub)}</small></div>`;
-            }
+            if (th) lane.pin('rocket', threatToast(th)); else lane.unpin('rocket');
           }
-          if (th) threat.style.setProperty('--beat', `${th.interval.toFixed(2)}s`);
-          // friendly callouts
+          // friendly callouts: each feed message becomes one toast, once
           const msgs = state.feed.active(pi, now);
-          const ids = msgs.map((m) => m.id).join(',');
-          if (ids !== cache.ids) {
-            cache.ids = ids;
-            const keep = new Set(msgs.map((m) => String(m.id)));
-            for (const c of [...list.children]) if (!keep.has(c.dataset.id)) c.remove();
-            const have = new Set([...list.children].map((c) => c.dataset.id));
-            for (const m of msgs) {
-              if (have.has(String(m.id))) continue;
-              const c = div(`ski-callout ski-tone-${m.tone}`,
-                `${m.emoji ? `<span class="e">${m.emoji}</span>` : ''}<div><b>${escapeHtml(m.title)}</b>${m.sub ? `<small>${escapeHtml(m.sub)}</small>` : ''}</div>`);
-              c.dataset.id = String(m.id);
-              if (m.color) c.style.setProperty('--ic', m.color);
-              c.style.setProperty('--ttl', `${Math.max(0.5, m.until - m.at).toFixed(2)}s`);
-              list.appendChild(c);
-            }
+          for (const m of msgs) {
+            if (shown.has(m.id)) continue;
+            shown.add(m.id);
+            lane.push(calloutToast(m));
           }
-          fit(now);
+          if (shown.size > 64) for (const id of [...shown].slice(0, shown.size - 32)) shown.delete(id);
+          if (own) lane.update();
         },
-        reset() { list.innerHTML = ''; threat.hidden = true; cache.ids = ''; cache.threat = ''; },
-        destroy() { threat.remove(); list.remove(); },
+        reset() { shown.clear(); cache.threat = ''; lane.unpin('rocket'); },
+        destroy() { lane.unpin('rocket'); if (own) lane.destroy(); },
       };
     },
   };
@@ -225,7 +179,7 @@ export function itemEdgeWidget() {
       const vignette = div('ski-vignette');
       const speed = div('ski-speed', Array.from({ length: 12 }, (_, i) => `<i style="--i:${i}"></i>`).join(''));
       const star = div('ski-star-frame');
-      const arrow = div('ski-arrow', '<i class="tip"></i><span class="e">🧁</span>');
+      const arrow = div('ski-arrow', `<i class="tip"></i><span class="e">${icon('cupcake-rocket')}</span>`);
       root.append(vignette, speed, star, arrow);
       vpNode.appendChild(root);
       const cache = {};

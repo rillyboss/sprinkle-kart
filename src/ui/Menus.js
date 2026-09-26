@@ -22,6 +22,7 @@
  *   ctx.isTrackLocked(trackDef) · ctx.devices() · ctx.setCooldown(seconds) · ctx.time
  */
 import './ui.css';
+import './kit/index.js';
 import * as S from './menuState.js';
 import { ensureFont, el } from './dom.js';
 import { SCREENS } from './screens/index.js';

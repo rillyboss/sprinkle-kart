@@ -3,7 +3,7 @@
 // auto-installed system on recording fakes. The human uses each of the 6 items through
 // the normal input path (useItem), and we check what a child actually gets:
 //   (a) the item's own "use" sound from the catalog (cueFor('use', item).sfx) is played,
-//   (b) a friendly callout shows up in P1's item-callout HUD widget (rendered on a fake DOM),
+//   (b) a friendly callout shows up as a toast from P1's item-callout HUD widget (rendered on a fake DOM),
 //   (c) the 3D side reacts (kart model state, KartFx star aura, item bursts, gumdrop/rocket),
 //   (d) when it runs out, the "end" sound + callout follow,
 // and a CPU using the same item makes none of P1's sounds or callouts.
@@ -81,7 +81,8 @@ function wiredRace({ trackId = 'gumdrop-meadow' } = {}) {
   const hudUpdate = () => { for (const m of mounted) m.inst?.update?.(me, race); };
   const callouts = () => {
     const box = mounted.find((m) => m.id === 'item-callout');
-    return box ? box.node.querySelectorAll('.ski-callout').map((c) => c.innerHTML) : [];
+    // callouts are toasts in the viewport's toast lane (src/ui/kit/toastLane.js); leaving ones don't count
+    return box ? box.node.querySelectorAll('.ck-hudlane-item').filter((c) => !c.classList.contains('is-out')).map((c) => c.innerHTML) : [];
   };
 
   const step = (inputs = [{ accel: 1, steer: 0 }]) => {
