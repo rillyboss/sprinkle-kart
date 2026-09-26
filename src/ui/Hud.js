@@ -25,6 +25,7 @@ import {
   normalizeRects, hudSides, minimapRect, fitMinimap, cssColor,
 } from './hudLogic.js';
 import { createWidgetHost } from './hudWidgets.js';
+import { playerLabel } from '../net/session/playerLabel.js';
 import './widgets/items.css';
 import { itemSlotView } from './widgets/itemHudLogic.js';
 import { ITEM_CATALOG } from '../race/itemCatalog.js';
@@ -121,7 +122,7 @@ export class Hud {
     const refs = {};
     const node = el('div.sk-vp', { '--pc': color },
       (refs.cluster = el('div.sk-cluster', {},
-        el('div.sk-pchip', {}, `P${pi + 1}`),
+        el('div.sk-pchip', {}, playerLabel(pi)),
         (refs.item = el('div.sk-item.ski-slot', {}, (refs.itemInner = el('div.sk-item-inner')))),
         (refs.lap = el('div.sk-lap')))),
       (refs.place = el('div.sk-place', {},

@@ -16,7 +16,7 @@
  * pointer-only actions the DOM layer synthesises for mouse clicks
  * ('pick', 'set', 'select').
  */
-import { MAX_PLAYERS, DEFAULT_LAPS } from '../config.js';
+import { MAX_PLAYERS, MAX_LOCAL_PLAYERS, DEFAULT_LAPS } from '../config.js';
 
 export const LAP_OPTIONS = [1, 2, 3, 5];
 export const SPEED_ORDER = ['cozy', 'zippy', 'zoomy'];
@@ -50,15 +50,18 @@ const reindex = (players) => players.map((p, i) => ({ ...p, playerIndex: i }));
  *  - toggle (Y / Tab) flips that player's Kid-Assist (easyDrive).
  *  - back from a joined player leaves (everyone behind them slides up a slot).
  *  - back from a non-joined device when nobody has joined goes back to the title.
+ * `opts.capacity` (online: seats left in the room for this house, NETWORKING.md §10.3)
+ * lowers the cap below MAX_LOCAL_PLAYERS; offline it is not passed and nothing changes.
  */
-export function joinReduce(state, ev) {
+export function joinReduce(state, ev, { capacity = MAX_LOCAL_PLAYERS } = {}) {
   const { players } = state;
+  const cap = Math.max(0, Math.min(MAX_LOCAL_PLAYERS, Number.isFinite(capacity) ? Math.floor(capacity) : MAX_LOCAL_PLAYERS));
   const i = players.findIndex((p) => p.deviceId === ev.deviceId);
   switch (ev.action) {
     case 'confirm':
     case 'start': {
       if (i === -1) {
-        if (players.length >= MAX_PLAYERS) return out(state, ['back']);
+        if (players.length >= cap) return out(state, ['back']);
         const np = [...players, { playerIndex: players.length, deviceId: ev.deviceId, easyDrive: false }];
         return out({ ...state, players: np }, ['join'], null, { joined: np.length - 1 });
       }

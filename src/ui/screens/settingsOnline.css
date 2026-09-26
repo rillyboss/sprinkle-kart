@@ -1,0 +1,21 @@
+/* Grown-ups corner: extra room for the online rows (NETWORKING.md §10.1). OWNER: WS6. */
+.skp-set-list.skn-many {
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(var(--rows, 4), auto); grid-auto-flow: column; gap: 0.5em 0.8em; width: min(66em, 100%);
+  max-height: calc(100% - 8.5em); overflow-y: auto; padding: 0.4em 0.6em; box-sizing: border-box;
+}
+.skp-set-list.skn-many .skp-set-row { padding: 0.45em 0.9em !important; min-width: 0; }
+.skp-set-list.skn-many .skp-set-t { font-size: 1em; }
+.skp-set-list.skn-many .skp-set-row.sk-sel { transform: scale(1.02); }
+.skp-set-list.skn-many .skp-set-back { grid-column: 1 / -1; justify-self: center; width: min(22em, 100%); }
+.skp-set-online.skp-set-row, .skp-set-approvalGate.skp-set-row, .skp-set-relayOnly.skp-set-row { background: rgba(236, 246, 255, 0.92) !important; }
+.skn-privacy { max-width: 40em; }
+.skn-privacy-t { max-width: 34em; font-size: 0.98em; line-height: 1.35; text-align: left; }
+@media (max-height: 520px) {
+  .skp-set-list.skn-many .skp-set-t small { display: none; }
+  .skp-set-list.skn-many .skp-set-e { font-size: 1.3em; }
+  .skn-privacy-t { font-size: 0.85em; }
+}
+@media (max-width: 720px) {
+  .skp-set-list.skn-many { grid-template-columns: 1fr; grid-auto-flow: row; grid-template-rows: none; }
+  .skp-set-list.skn-many .skp-set-back { grid-row: auto !important; }
+}

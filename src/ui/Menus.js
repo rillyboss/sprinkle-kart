@@ -29,6 +29,40 @@ import { flowOrder, nextInFlow, prevInFlow, flowStart } from './screenFlow.js';
 import { INPUT_COOLDOWN } from './screens/_shared.js';
 import { isAvailable } from '../progress/access.js';
 
+/**
+ * The net-waiting ScreenDef when an online guest must not drive screen `def`
+ * (ScreenDef.net.role === 'host'), else null. Offline (ctx.net null) always null.
+ */
+export function netWaitingFor(ctx, def) {
+  if (!ctx?.net || ctx.net.role !== 'guest') return null;
+  if (netRoleOf(def) !== 'host') return null;
+  return ctx.screens?.get?.('net-waiting') ?? null;
+}
+
+/**
+ * Online roles of the built-in screens (NETWORKING.md §10.4) for screens that do
+ * not declare `ScreenDef.net` themselves: 'host' = only the host drives it (guests
+ * see net-waiting), 'all' = every machine at once, 'local' = this machine only.
+ */
+export const DEFAULT_NET_ROLES = Object.freeze({
+  'mode-select': 'host',
+  'track-select': 'host',
+  'cup-select': 'host',
+  'arena-select': 'host',
+  'my-cup': 'host',
+  'character-select': 'all',
+  join: 'local',
+  results: 'all',
+  'gp-standings': 'all',
+});
+
+/** 'host' | 'all' | 'local' for a ScreenDef. */
+export function netRoleOf(def) {
+  const r = def?.net?.role;
+  if (r === 'host' || r === 'all' || r === 'local') return r;
+  return DEFAULT_NET_ROLES[def?.id] ?? 'local';
+}
+
 export class Menus {
   constructor(root, { input = null, audio = null, portraits = null, characters = [], tracks = [], progress = null, screens = SCREENS } = {}) {
     ensureFont();
@@ -49,6 +83,16 @@ export class Menus {
     this.time = 0;
     this._resolveRun = null;
     this._resolveOpen = null;
+    /**
+     * Online session hooks (NETWORKING.md §10.1), null offline — every net hook below is a
+     * no-op then, so offline paths are unchanged. Set by the online flow (WS7) to
+     *   { role: 'host'|'guest', composeSetup(localSetup) → NetRaceSetup, waitingParams?(screenId) → params,
+     *     lobby?() → LobbyState, dispatch?(ev), seatsLeft?() → how many local players this machine may have now
+     *     (its current seats + the room's free seats; the join screen caps at it), ... }
+     */
+    this.net = null;
+    /** Online flow actions for the online screens (host(), join(secret), leave() …), set by WS7. */
+    this.online = null;
   }
 
   /** Swap in new portraits (e.g. when they finish rendering later). */
@@ -133,12 +177,28 @@ export class Menus {
 
   /* ---------------- router ---------------- */
 
+  /**
+   * Resolve whatever one-off screen is open (results, standings …) as if it had
+   * picked `value` — e.g. a host CHOICE closing a guest's copy of that screen.
+   */
+  resolveCurrent(value) {
+    this._resolveOpened(value);
+  }
+
   /** Mount screen `id` (with optional params). */
   goto(id, params = {}) {
-    const def = this.screens.get(id);
+    let def = this.screens.get(id);
     if (!def) {
       console.warn(`[menus] no screen "${id}"`);
       return;
+    }
+    // Online guests wait while the host drives host-only screens (ScreenDef.net.role === 'host').
+    const waiting = netWaitingFor(this, def);
+    if (waiting) {
+      const extra = (() => { try { return this.net.waitingParams?.(id) ?? {}; } catch { return {}; } })();
+      params = { forId: id, ...extra, ...params };
+      id = 'net-waiting';
+      def = waiting;
     }
     const nav = {
       next: () => this._next(id),
@@ -169,8 +229,13 @@ export class Menus {
   _finish(setup) {
     const resolve = this._resolveRun;
     this._resolveRun = null;
+    // Online host: merge the local flow's choices with the lobby roster into a NetRaceSetup.
+    let result = setup;
+    if (this.net && typeof this.net.composeSetup === 'function') {
+      try { result = this.net.composeSetup(setup) ?? setup; } catch (err) { console.warn('[menus] composeSetup', err); }
+    }
     this.hide();
-    resolve?.(setup);
+    resolve?.(result);
   }
 
   _resolveOpened(value) {

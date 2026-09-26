@@ -70,22 +70,49 @@ export function gateReduce(g, ev) {
 export const SETTINGS_ROWS = Object.freeze(['music', 'sfx', 'kidAssist', 'unlockAll', 'reset', 'back']);
 export const VOLUME_STEPS = 10;
 
-/** @param {{music:number, sfx:number, kidAssistDefault:boolean}} settings  @param {boolean} unlockAll */
-export function createSettingsState(settings = {}, unlockAll = false, { seed = Date.now() } = {}) {
+/**
+ * Online rows of the Grown-ups corner (NETWORKING.md §1 rules 1/3/6, §10.1), added when
+ * the screen passes `{ online: { relayAvailable } }`. "relayOnly" only shows when our relay exists.
+ */
+export const ONLINE_ROWS = Object.freeze(['online', 'approvalGate', 'relayOnly']);
+
+/** Row list for a settings screen (the offline list is SETTINGS_ROWS, unchanged). */
+export function settingsRows({ online = null } = {}) {
+  if (!online) return SETTINGS_ROWS;
+  const extra = online.relayAvailable ? ONLINE_ROWS : ONLINE_ROWS.filter((r) => r !== 'relayOnly');
+  return Object.freeze([...SETTINGS_ROWS.slice(0, -1), ...extra, 'back']);
+}
+
+/**
+ * @param {{music:number, sfx:number, kidAssistDefault:boolean, onlineEnabled?:boolean, approvalGate?:boolean, relayOnly?:boolean}} settings
+ * @param {boolean} unlockAll
+ * @param {{ seed?: number, online?: { relayAvailable?: boolean } | null }} [opts]
+ */
+export function createSettingsState(settings = {}, unlockAll = false, { seed = Date.now(), online = null } = {}) {
   const step = (v, d) => clamp(Math.round((Number.isFinite(v) ? v : d) * VOLUME_STEPS), 0, VOLUME_STEPS);
-  return {
+  const base = {
     row: 0,
     music: step(settings.music, 0.7),
     sfx: step(settings.sfx, 0.85),
     kidAssist: !!settings.kidAssistDefault,
     unlockAll: !!unlockAll,
-    modal: null,          // null | 'gate' | 'confirm-reset' | 'done'
+    modal: null,          // null | 'gate' | 'confirm-reset' | 'done' | 'privacy'
     gate: null,
-    gateFor: null,        // 'unlockAll' | 'reset'
-    confirmIndex: 0,      // 0 = "Keep it!", 1 = "Reset"
+    gateFor: null,        // 'unlockAll' | 'reset' | 'online' | 'approvalGate' | 'relayOnly'
+    confirmIndex: 0,      // 0 = "Keep it!" / "Okay, turn it on", 1 = "Reset" / "Not now"
     seed,
   };
+  if (!online) return base;
+  return {
+    ...base,
+    rows: settingsRows({ online }),
+    online: settings.onlineEnabled === true,
+    approvalGate: settings.approvalGate === true,
+    relayOnly: settings.relayOnly === true,
+  };
 }
+
+const rowsOf = (s) => s.rows ?? SETTINGS_ROWS;
 
 const volumeEffect = (s) => ({ type: 'volume', music: s.music / VOLUME_STEPS, sfx: s.sfx / VOLUME_STEPS });
 
@@ -98,7 +125,11 @@ function openGate(s, gateFor) {
  * Settings reducer. Directions move rows / change the focused value, confirm
  * acts, back leaves (or closes a modal). Returns `effects` for the screen to
  * apply: { type: 'volume', music, sfx } | { type: 'kidAssist', on } |
- * { type: 'unlockAll', on } | { type: 'reset' }.
+ * { type: 'unlockAll', on } | { type: 'reset' } | (online rows, see ONLINE_ROWS)
+ * { type: 'online', on } | { type: 'approvalGate', on } | { type: 'relayOnly', on }.
+ * Online play turns ON only after the privacy sentence ('privacy' modal, "Okay, turn it on")
+ * AND the parent gate; turning "Only a grown-up can let houses in" / "Use the relay" OFF
+ * also needs the gate (switching the safer choice on does not).
  * Pointer: { action:'select', index } focuses a row and confirms it;
  * { action:'set', key:'music'|'sfx', value:0..10 } sets a volume.
  */
@@ -112,6 +143,15 @@ export function settingsReduce(s, ev) {
     fx.push(...r.fx);
     if (r.go === 'cancel') return done({ ...s, modal: null, gate: null, gateFor: null });
     if (r.go === 'pass') {
+      if (s.gateFor === 'online') {
+        effects.push({ type: 'online', on: true });
+        fx.push('unlock');
+        return done({ ...s, modal: 'done', gate: null, online: true });
+      }
+      if (s.gateFor === 'approvalGate' || s.gateFor === 'relayOnly') {
+        effects.push({ type: s.gateFor, on: false });
+        return done({ ...s, modal: null, gate: null, gateFor: null, [s.gateFor]: false });
+      }
       if (s.gateFor === 'unlockAll') {
         effects.push({ type: 'unlockAll', on: true });
         fx.push('unlock');
@@ -129,6 +169,26 @@ export function settingsReduce(s, ev) {
       return done({ ...s, modal: null, gateFor: null });
     }
     return done(s);
+  }
+
+  // "Online play with friends": the privacy sentence first, then "Okay, turn it on" opens the gate.
+  if (s.modal === 'privacy') {
+    switch (ev.action) {
+      case 'left': case 'right': case 'up': case 'down':
+        fx.push('move');
+        return done({ ...s, confirmIndex: 1 - s.confirmIndex });
+      case 'select':
+        if (ev.index !== 0 && ev.index !== 1) return done(s);
+        return settingsReduce({ ...s, confirmIndex: ev.index }, { ...ev, action: 'confirm' });
+      case 'confirm': case 'start':
+        if (s.confirmIndex === 0) { fx.push('confirm'); return done(openGate({ ...s, confirmIndex: 0 }, 'online')); }
+        fx.push('back');
+        return done({ ...s, modal: null, confirmIndex: 0 });
+      case 'back':
+        fx.push('back');
+        return done({ ...s, modal: null, confirmIndex: 0 });
+      default: return done(s);
+    }
   }
 
   if (s.modal === 'confirm-reset') {
@@ -150,7 +210,8 @@ export function settingsReduce(s, ev) {
     }
   }
 
-  const key = SETTINGS_ROWS[s.row];
+  const ROWS = rowsOf(s);
+  const key = ROWS[s.row];
   const adjust = (d) => {
     if (key === 'music' || key === 'sfx') {
       const v = clamp(s[key] + d, 0, VOLUME_STEPS);
@@ -169,8 +230,25 @@ export function settingsReduce(s, ev) {
     return done(s);
   };
   const act = (st) => {
-    const k = SETTINGS_ROWS[st.row];
+    const k = ROWS[st.row];
     switch (k) {
+      case 'online':
+        if (st.online) {
+          fx.push('back');
+          effects.push({ type: 'online', on: false });
+          return done({ ...st, online: false });
+        }
+        fx.push('confirm');
+        return done({ ...st, modal: 'privacy', confirmIndex: 0 });
+      case 'approvalGate':
+      case 'relayOnly':
+        if (!st[k]) { // switching the safer choice ON needs no gate
+          fx.push('confirm');
+          effects.push({ type: k, on: true });
+          return done({ ...st, [k]: true });
+        }
+        fx.push('confirm');
+        return done(openGate(st, k));
       case 'kidAssist': {
         const ns = { ...st, kidAssist: !st.kidAssist };
         fx.push('confirm');
@@ -197,17 +275,17 @@ export function settingsReduce(s, ev) {
   };
 
   switch (ev.action) {
-    case 'up': fx.push('move'); return done({ ...s, row: wrap(s.row - 1, SETTINGS_ROWS.length) });
-    case 'down': fx.push('move'); return done({ ...s, row: wrap(s.row + 1, SETTINGS_ROWS.length) });
+    case 'up': fx.push('move'); return done({ ...s, row: wrap(s.row - 1, ROWS.length) });
+    case 'down': fx.push('move'); return done({ ...s, row: wrap(s.row + 1, ROWS.length) });
     case 'left': return adjust(-1);
     case 'right': return adjust(+1);
     case 'confirm': case 'start': return act(s);
     case 'select':
-      if (!(ev.index >= 0 && ev.index < SETTINGS_ROWS.length)) return done(s);
+      if (!(ev.index >= 0 && ev.index < ROWS.length)) return done(s);
       return act({ ...s, row: ev.index });
     case 'set': {
       if ((ev.key !== 'music' && ev.key !== 'sfx') || !Number.isFinite(ev.value)) return done(s);
-      const ns = { ...s, row: SETTINGS_ROWS.indexOf(ev.key), [ev.key]: clamp(Math.round(ev.value), 0, VOLUME_STEPS) };
+      const ns = { ...s, row: ROWS.indexOf(ev.key), [ev.key]: clamp(Math.round(ev.value), 0, VOLUME_STEPS) };
       fx.push('move');
       effects.push(volumeEffect(ns));
       return done(ns);

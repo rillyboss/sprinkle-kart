@@ -538,7 +538,13 @@ export default {
   as a button row under "Press A" (Down focuses it, Left/Right choose, A opens it with params `{ returnTo: 'title' }`,
   Up/B go back to "Press A"; Start always plays). The screen returns with `nav.goto(params.returnTo ?? 'title')`.
   Other hubs (e.g. mode select) list their own with `menuEntries(ctx.screens, '<their id>')` (`src/ui/screenFlow.js`).
-  With no entries the title screen looks exactly as before.
+  With no entries the title screen looks exactly as before. An entry may add `when: (ctx) => boolean` (the Online
+  entry only shows once a grown-up turned online play on).
+- **Online hooks** (NETWORKING.md §10.1, all no-ops while `ctx.net` is null, i.e. offline): `ScreenDef.net = { role:
+  'host' | 'all' | 'local' }` (defaults in `Menus.js` `DEFAULT_NET_ROLES`) — an online guest sees `net-waiting` for
+  `host` screens; `_finish()` passes the flow's setup through `ctx.net.composeSetup()` on the host;
+  `menus.resolveCurrent(value)` closes the open one-off screen (a host CHOICE on a guest). Remote players are
+  labelled with `playerLabel(pi)` (`src/net/session/playerLabel.js`; offline it is exactly `P1`…`P4`).
 - Keep screen logic in **pure reducers** (like `src/ui/menuState.js`) and test them in node.
 - Character select and track select are data-driven over the registries: locked entries show a `?`
   silhouette / padlock with `describeUnlock(rule)` (or `def.unlockHint`; big rosters use the compact

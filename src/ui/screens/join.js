@@ -105,7 +105,8 @@ export default {
         nav.back();
         return;
       }
-      const res = S.joinReduce(d.joinState, ev);
+      // online: this house may only take the seats left in the room (NETWORKING.md §10.4); offline unchanged
+      const res = S.joinReduce(d.joinState, ev, ctx.net?.seatsLeft ? { capacity: ctx.net.seatsLeft() } : undefined);
       d.joinState = res.state;
       ctx.fx(res);
       if (res.shake != null) shake(slotEls[res.shake]);

@@ -6,6 +6,7 @@
  * OWNER: modes + timing workstream.
  */
 import { SPEED_ORDER } from '../ui/menuState.js';
+import { ONLINE_MODES } from '../net/session/modes.js';
 
 const out = (state, fx = [], go = null, extra = {}) => ({ state, fx, go, ...extra });
 const wrap = (i, n) => ((i % n) + n) % n;
@@ -23,15 +24,32 @@ export const MODE_CARDS = Object.freeze([
 ]);
 
 /**
+ * The mode cards to show: all of them offline; online (a `ctx.net`) only the
+ * modes whose milestone is done (`ONLINE_MODES`, src/net/session/modes.js,
+ * NETWORKING.md §10.1 / §11), in MODE_CARDS order.
+ * @param {object|null} net ctx.net (null offline)
+ * @param {string[]} [onlineModes]
+ */
+export function modeCardsFor(net, onlineModes = ONLINE_MODES) {
+  if (!net) return MODE_CARDS;
+  return MODE_CARDS.filter((m) => onlineModes.includes(m.id));
+}
+
+/**
  * @param {object} o
  * @param {string|null} [o.mode] previously picked mode (focus starts there)
  * @param {number} [o.entryCount] menu-entry buttons under the cards (Records ...)
  * @param {string|null} [o.controllerId] only this device (and the mouse) may drive it
+ * @param {ReadonlyArray<{id:string}>} [o.cards] the cards on screen (default MODE_CARDS; online: modeCardsFor(net))
  */
-export function createModeSelectState({ mode = null, entryCount = 0, controllerId = null } = {}) {
-  const i = MODE_CARDS.findIndex((m) => m.id === mode);
-  return { index: i < 0 ? 0 : i, row: 'cards', entry: 0, entryCount, controllerId };
+export function createModeSelectState({ mode = null, entryCount = 0, controllerId = null, cards = null } = {}) {
+  const list = cards ?? MODE_CARDS;
+  const i = list.findIndex((m) => m.id === mode);
+  const state = { index: i < 0 ? 0 : i, row: 'cards', entry: 0, entryCount, controllerId };
+  return cards ? { ...state, cardIds: list.map((m) => m.id) } : state;
 }
+
+const cardIdsOf = (state) => state.cardIds ?? MODE_CARDS.map((m) => m.id);
 
 /**
  * Left/right choose a card (or an entry), Down/Up move between the cards and
@@ -41,7 +59,8 @@ export function createModeSelectState({ mode = null, entryCount = 0, controllerI
  */
 export function modeSelectReduce(state, ev) {
   if (state.controllerId && ev.deviceId !== state.controllerId && ev.deviceId !== 'mouse') return out(state);
-  const n = MODE_CARDS.length;
+  const ids = cardIdsOf(state);
+  const n = ids.length;
   const onCards = state.row === 'cards' || !state.entryCount;
   switch (ev.action) {
     case 'left':
@@ -58,14 +77,14 @@ export function modeSelectReduce(state, ev) {
       return out(state);
     case 'confirm':
     case 'start':
-      if (onCards) return out(state, ['confirm'], 'mode', { mode: MODE_CARDS[state.index].id });
+      if (onCards) return out(state, ['confirm'], 'mode', { mode: ids[state.index] });
       return out(state, ['confirm'], 'entry', { entry: state.entry });
     case 'set':
     case 'select': {
       const pick = ev.action === 'select';
       if (ev.key === 'index' && ev.value >= 0 && ev.value < n) {
         const s = { ...state, row: 'cards', index: ev.value };
-        return pick ? out(s, ['confirm'], 'mode', { mode: MODE_CARDS[ev.value].id }) : out(s, ['move']);
+        return pick ? out(s, ['confirm'], 'mode', { mode: ids[ev.value] }) : out(s, ['move']);
       }
       if (ev.key === 'entry' && ev.value >= 0 && ev.value < state.entryCount) {
         const s = { ...state, row: 'entries', entry: ev.value };
