@@ -217,6 +217,24 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | **Peppermint Village** | A candy-cane shaped road through a snowy gingerbread village at twilight, with twinkly lights, a village tree, snowmen and a skating pond | Do 15 drift mini-turbos |
 | **Pillow Fort Dreamland** | Bedtime! A cloud-shaped pajama road over blanket hills, through a pillow-fort tunnel, past counting sheep and a sleepy crescent-moon night-light | Finish 6 races |
 
+### 🌋 Adventure Cup
+
+| Track | What's there | Unlock |
+|---|---|---|
+| **Jellybean Jungle** | A figure-eight through a candy jungle: a vine bridge over the start, gummy frogs and the Great Jellybean Tree | Win on any Bubble Cup track |
+| **Cocoa Canyon** | Layered chocolate rocks, a slot canyon, the Cocoa Arch, a cocoa waterfall and marshmallow cacti | Finish a Time Trial |
+| **Lemonade Volcano** | A fizzy lemonade island with a smiling volcano, geysers and a giant glass of lemonade | Win 4 races |
+| **Donut Downtown** | A twinkly night city of bakeries, a neon arch tunnel and a giant donut to drive through | Play 3 races with 2+ players |
+
+### 🌟 Superstar Cup
+
+| Track | What's there | Unlock |
+|---|---|---|
+| **Cupcake Carnival** 🧁 | A funfair shaped like a cupcake: game booths and bunting, roller-coaster humps under rainbow hoops, a turning ferris wheel with cupcake gondolas, a carousel of candy ponies and a big-top tent you drive right through | Win any Grand Prix cup |
+| **Aurora Ice Palace** 🏰 | A snowy night under dancing northern lights: an ice bridge over a frozen river, two zig-zag switchbacks, glowing crystal arches, the Crystal Palace, snowmen and a huddle of hopping penguins | Win on any Cozy Cup track |
+| **Moonbounce Base** 🌙 | A crescent-moon road with boing-boing moon moguls, a glass tube tunnel, a friendly rocket in the big crater and moon bunnies doing floaty hops. Low gravity makes your hops extra floaty! | Win 8 races |
+| **Ribbon Sky Rally** 🎀 | The grand finale: a rainbow ribbon road over the clouds that twirls over and under itself, with hot-air balloons, giant bows, rainbow gates and the Superstar Trophy | Win on 6 different tracks |
+
 ---
 
 ## For developers
