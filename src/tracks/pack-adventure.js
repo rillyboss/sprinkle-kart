@@ -8,6 +8,9 @@
  * props live in src/tracks/props/adventure-*.js.
  */
 import jellybeanJungle from './jellybean-jungle.js';
+import cocoaCanyon from './cocoa-canyon.js';
+import lemonadeVolcano from './lemonade-volcano.js';
+import donutDowntown from './donut-downtown.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [jellybeanJungle];
+export default [jellybeanJungle, cocoaCanyon, lemonadeVolcano, donutDowntown];
