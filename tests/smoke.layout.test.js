@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   LAYOUT_TOLERANCE, intersection, rectsOverlap, isInside, sticksOut,
   overlapProblems, crossOverlapProblems, insideProblems, clippedTextProblems, collectRects,
+  visibleFraction, marksOfVisibleOwners,
 } from '../scripts/smoke-layout.mjs';
 
 const R = (left, top, w, h, label) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h, label });
@@ -56,10 +57,26 @@ describe('problem lists', () => {
   it('inside problems use a shared container or each rect\'s own', () => {
     const vp = R(0, 0, 800, 450, 'the viewport');
     expect(insideProblems([R(790, 10, 30, 30, 'P1')], vp, { what: 'tags' })).toEqual(['tags: "P1" sticks out of the viewport {"right":20}']);
-    const own = { ...R(10, -6, 20, 12, 'P2'), container: R(0, 0, 100, 100, 'its tile') };
+    const own = { ...R(10, 10, 20, 12, 'P2'), container: R(0, 16, 100, 100, 'its tile') };
     expect(insideProblems([own], null, { what: 'tags' })).toEqual(['tags: "P2" sticks out of its tile {"top":6}']);
     expect(insideProblems([own], null, { sides: ['left', 'right'] })).toEqual([]);
     expect(insideProblems([R(0, 0, 5, 5)], null)).toEqual([]); // no container: nothing to check
+    // an explicit container wins over the rect's own (tags vs the viewport, not their grid)
+    expect(insideProblems([own], vp, { what: 'tags' })).toEqual([]);
+  });
+
+  it('visible fraction and marks of visible owners (tags of scrolled-away tiles are not "clipped")', () => {
+    const grid = R(0, 100, 400, 200, 'grid');
+    expect(visibleFraction(R(0, 100, 100, 100), grid)).toBe(1);
+    expect(visibleFraction(R(0, 50, 100, 100), grid)).toBe(0.5);
+    expect(visibleFraction(R(0, 0, 100, 50), grid)).toBe(0);
+    expect(visibleFraction(R(0, 0, 0, 0), grid)).toBe(0);
+    const shown = { ...R(10, 110, 100, 120, 'Rocco'), container: grid };
+    const hidden = { ...R(150, -200, 100, 120, 'Lenny'), container: grid };
+    const tagShown = R(40, 95, 30, 20, 'P1');
+    const tagHidden = R(180, -215, 30, 20, 'P2');
+    const stray = R(600, 95, 30, 20, 'P3');
+    expect(marksOfVisibleOwners([tagShown, tagHidden, stray], [shown, hidden]).map((m) => m.label)).toEqual(['P1']);
   });
 
   it('clipped text only counts boxes that really clip', () => {

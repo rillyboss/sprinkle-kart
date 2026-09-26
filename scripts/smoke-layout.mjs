@@ -45,6 +45,26 @@ export function sticksOut(inner, outer, tol = LAYOUT_TOLERANCE) {
 
 const label = (r, i) => r?.label || `#${i}`;
 
+/** How much of `r` (0..1 of its area) is inside `box` (e.g. a tile inside a scrolled grid). */
+export function visibleFraction(r, box) {
+  const area = Math.max(0, r.right - r.left) * Math.max(0, r.bottom - r.top);
+  return area > 0 ? intersection(r, box).area / area : 0;
+}
+
+/**
+ * The rects of `marks` (e.g. P1/P2 cursor tags) that belong to an `owners` rect (e.g. the
+ * hot tile under each tag: same column, just above / on top of it) which is at least
+ * `minVisible` inside its container: marks of a tile scrolled out of view are hidden on
+ * purpose and are not "clipped".
+ */
+export function marksOfVisibleOwners(marks = [], owners = [], { minVisible = 0.5 } = {}) {
+  return marks.filter((m) => {
+    const cx = (m.left + m.right) / 2;
+    const owner = owners.find((o) => cx >= o.left && cx <= o.right && m.bottom >= o.top - 4 && m.top <= o.bottom);
+    return !!owner && (!owner.container || visibleFraction(owner, owner.container) >= minVisible);
+  });
+}
+
 /**
  * Pairwise overlap inside one group of rects (e.g. every tile of a grid).
  * @param {Array<{left:number,top:number,right:number,bottom:number,label?:string}>} rects
@@ -86,7 +106,7 @@ export function crossOverlapProblems(as = [], bs = [], { what = 'elements', tol 
 export function insideProblems(rects = [], container = null, { what = 'elements', tol = LAYOUT_TOLERANCE, max = 5, sides = null } = {}) {
   const out = [];
   rects.forEach((r, i) => {
-    const box = r.container ?? container;
+    const box = container ?? r.container;
     if (!box) return;
     let s = sticksOut(r, box, tol);
     if (sides) s = Object.fromEntries(Object.entries(s).filter(([k]) => sides.includes(k)));

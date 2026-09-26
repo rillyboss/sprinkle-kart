@@ -42,6 +42,9 @@ import { chromium } from 'playwright';
 import {
   ORIGINAL_TRACK_IDS, resolveProfile, timeoutFor, planScenarios, stalledKarts, isIgnorableError,
 } from './smoke-plan.mjs';
+import {
+  collectRects, overlapProblems, crossOverlapProblems, insideProblems, marksOfVisibleOwners,
+} from './smoke-layout.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'smoke-out');
@@ -294,6 +297,37 @@ function checkErrors(t) {
   t.check(!errs.length, `errors:\n    ${errs.slice(0, 8).join('\n    ')}`);
 }
 
+/**
+ * Layout check (scripts/smoke-layout.mjs): measure `groups` (name -> selector) in the page,
+ * then `rules(rects)` returns problem strings; each one fails the scenario with `where`
+ * as a prefix. Screenshots are not diffed by anyone, so overlap/clipping must be asserted.
+ * `t.layoutChecks` counts the checks run (reported in the scenario detail).
+ */
+async function checkLayout(t, where, groups, rules, containerOf = {}) {
+  const rects = await t.page.evaluate(collectRects, { groups, containerOf });
+  for (const [name, sel] of Object.entries(groups)) {
+    if (!rects[name]?.length && !String(name).startsWith('opt')) t.check(false, `${where}: nothing visible for ${name} (${sel})`);
+  }
+  const problems = rules(rects);
+  for (const p of problems) t.check(false, `${where}: ${p}`);
+  t.layoutChecks = (t.layoutChecks ?? 0) + 1;
+  return rects;
+}
+
+/** Run a layout check at the scenario viewport AND at the other smoke profile's size (800x450 <-> 1280x720). */
+async function checkLayoutBothSizes(t, where, groups, rules, containerOf = {}) {
+  await checkLayout(t, `${where} @${PROFILE.viewport.width}x${PROFILE.viewport.height}`, groups, rules, containerOf);
+  const other = PROFILE.viewport.width > 1000 ? { width: 800, height: 450 } : { width: 1280, height: 720 };
+  await t.page.setViewportSize(other);
+  try {
+    await waitFrames(t.page, 3); // let the resize reflow (and the HUD / menus re-layout)
+    await checkLayout(t, `${where} @${other.width}x${other.height}`, groups, rules, containerOf);
+  } finally {
+    await t.page.setViewportSize(PROFILE.viewport);
+    await waitFrames(t.page, 2);
+  }
+}
+
 /** Screenshot + console dump + game state for a failed attempt. */
 async function writeDiagnostics(t, attempt, problems) {
   const suffix = attempt > 1 ? `-try${attempt}` : '';
@@ -307,6 +341,102 @@ async function writeDiagnostics(t, attempt, problems) {
   ].join('\n');
   writeFileSync(path.join(OUT, `${t.name}${suffix}-FAIL.log`), text);
 }
+
+/* ---------------- layout rule sets (see checkLayout) ---------------- */
+
+/** Racer select: tiles never overlap or stick out sideways, P1/P2 cursor tags are never clipped by the grid. */
+const CHAR_SELECT_LAYOUT = {
+  groups: { tiles: '.sk-grid .sk-tile', hot: '.sk-grid .sk-tile-hot', tags: '.sk-grid .sk-tag', grid: '.sk-grid', panels: '.sk-panel' },
+  containerOf: { tiles: '.sk-grid', hot: '.sk-grid', tags: '.sk-grid' },
+  rules: (r) => [
+    ...overlapProblems(r.tiles, { what: 'racer tiles' }),
+    ...insideProblems(r.tiles, null, { what: 'racer tiles', sides: ['left', 'right'] }),
+    // a tag on a tile the grid shows must not be cut off by the grid's scroll box
+    // (the tag of a tile scrolled out of view is hidden on purpose)
+    ...insideProblems(marksOfVisibleOwners(r.tags, r.hot), null, { what: 'cursor tags (clipped by the grid)' }),
+    ...insideProblems(marksOfVisibleOwners(r.tags, r.hot), r.viewport, { what: 'cursor tags' }),
+    ...overlapProblems(r.panels, { what: 'player panels' }),
+    ...insideProblems(r.panels, r.viewport, { what: 'player panels' }),
+    ...crossOverlapProblems(r.grid, r.panels, { what: 'racer grid vs player panels' }),
+  ],
+};
+
+/** Track select: the cup's cards and the cup tabs sit side by side, inside the screen. */
+const TRACK_SELECT_LAYOUT = {
+  groups: { cards: '.sk-cards .sk-card', tabs: '.sk-cup-tab' },
+  rules: (r) => [
+    ...overlapProblems(r.cards, { what: 'track cards' }),
+    ...insideProblems(r.cards, r.viewport, { what: 'track cards' }),
+    ...overlapProblems(r.tabs, { what: 'cup tabs' }),
+    ...insideProblems(r.tabs, r.viewport, { what: 'cup tabs' }),
+  ],
+};
+
+/** Sticker Book racer page: stickers in a clean grid, inside the page, names inside their sticker. */
+const STICKER_BOOK_LAYOUT = {
+  groups: { stickers: '.skp-page-racers .skp-sticker', names: '.skp-page-racers .skp-sticker-name', pages: '.skp-pages', detail: '.skp-detail', tabs: '.skp-tab' },
+  containerOf: { stickers: '.skp-pages', names: '.skp-sticker' },
+  rules: (r) => [
+    ...overlapProblems(r.stickers, { what: 'stickers' }),
+    ...insideProblems(r.stickers, null, { what: 'stickers', sides: ['left', 'right'] }),
+    ...insideProblems(r.names, null, { what: 'sticker names', sides: ['left', 'right'] }),
+    ...crossOverlapProblems(r.pages, r.detail, { what: 'book page vs detail card' }),
+    ...overlapProblems(r.tabs, { what: 'book tabs' }),
+    ...insideProblems([...r.detail, ...r.tabs], r.viewport, { what: 'book' }),
+  ],
+};
+
+/** Race results: podium, standings rows, the "Next sticker" teaser and the buttons never overlap. */
+const RESULTS_LAYOUT = {
+  groups: {
+    head: '.sk-results .sk-results-head', steps: '.sk-results .sk-step', stepText: '.sk-results .sk-step-name, .sk-results .sk-step-block',
+    rows: '.sk-results .sk-row', optTeaser: '.sk-results .skp-teaser', buttons: '.sk-results .sk-listbtn',
+  },
+  rules: (r) => {
+    const blocks = [...r.head, ...r.rows, ...r.optTeaser, ...r.buttons];
+    return [
+      ...overlapProblems(r.steps, { what: 'podium steps' }),
+      ...overlapProblems(r.stepText, { what: 'podium names' }),
+      ...overlapProblems(r.rows, { what: 'standings rows' }),
+      ...overlapProblems(r.buttons, { what: 'result buttons' }),
+      ...crossOverlapProblems(r.optTeaser, [...r.rows, ...r.buttons, ...r.stepText, ...r.head], { what: 'next-sticker teaser' }),
+      ...crossOverlapProblems(r.buttons, [...r.rows, ...r.stepText], { what: 'result buttons' }),
+      ...insideProblems([...blocks, ...r.stepText], r.viewport, { what: 'results' }),
+    ];
+  },
+};
+
+/** GP trophy ceremony: podium names/points and the headline never overlap each other or the buttons. */
+const CEREMONY_LAYOUT = {
+  groups: {
+    head: '.sk-cer .sk-results-head', steps: '.sk-cer-step', text: '.sk-cer-name, .sk-cer-block',
+    optButtons: '.sk-gp-opts.sk-show button',
+  },
+  rules: (r) => [
+    ...overlapProblems(r.steps, { what: 'podium steps' }),
+    ...overlapProblems(r.text, { what: 'podium names / points' }),
+    ...crossOverlapProblems(r.head, r.text, { what: 'ceremony headline vs podium' }),
+    ...crossOverlapProblems(r.optButtons, [...r.text, ...r.head], { what: 'ceremony buttons' }),
+    ...insideProblems([...r.head, ...r.text, ...r.optButtons], r.viewport, { what: 'ceremony' }),
+  ],
+};
+
+/** Unlock reveal card: its own texts stack without overlapping and it fits the screen. */
+const UNLOCK_REVEAL_LAYOUT = {
+  groups: {
+    card: '.sk-unlock:not(.sk-leaving) .sk-unlock-inner',
+    text: '.sk-unlock:not(.sk-leaving) .sk-unlock-kicker, .sk-unlock:not(.sk-leaving) .sk-unlock-name, .sk-unlock:not(.sk-leaving) .sk-unlock-tag, .sk-unlock:not(.sk-leaving) .sk-unlock-sub',
+  },
+  containerOf: { text: '.sk-unlock-inner' },
+  rules: (r) => [
+    ...overlapProblems(r.text, { what: 'unlock reveal texts' }),
+    ...insideProblems(r.text, null, { what: 'unlock reveal texts', sides: ['left', 'right'] }),
+    ...insideProblems(r.card, r.viewport, { what: 'unlock reveal card' }),
+  ],
+};
+
+/** Shorthand: run one of the rule sets at both smoke sizes. */
+const layoutAt = (t, where, L) => checkLayoutBothSizes(t, where, L.groups, L.rules, L.containerOf);
 
 /* ---------------- scenarios ---------------- */
 
@@ -362,11 +492,21 @@ async function menuFlowTest(t) {
   if (t.check(me, 'no P1 kart in the race')) {
     t.check(me.progress > start + 3, `P1 did not drive forward with W (progress ${start.toFixed(1)} → ${me.progress.toFixed(1)})`);
   }
-  // pause and resume
+  // pause and resume: the race clock (and the HUD timer) freeze while paused
   await pressKey(t, 'Escape', { inRace: true, ...inState('paused', 'Esc to pause') });
   await waitMenusReady(t.page);
+  const clock = () => t.page.evaluate(() => ({ time: window.__game.race.time, frames: window.__game.frames, timer: document.querySelector('.sk-timer-t')?.textContent ?? null }));
+  const p0 = await clock();
+  await waitFrames(t.page, 60); // the game loop keeps running (and rendering) while paused
+  const p1 = await clock();
+  t.check(p1.frames >= p0.frames + 60, `game loop stopped while paused (${p0.frames} → ${p1.frames} frames)`);
+  t.check(p1.time === p0.time, `race clock ran while paused (${p0.time.toFixed(3)} → ${p1.time.toFixed(3)})`);
+  t.check(p0.timer !== null && p1.timer === p0.timer, `HUD timer changed while paused (${p0.timer} → ${p1.timer})`);
   await shot('7-pause');
   await pressKey(t, 'Escape', inState('race', 'Esc to resume'));
+  await waitRaceTime(t.page, p1.time + 0.5); // …and runs again after resuming
+  const p2 = await clock();
+  t.check(p2.timer !== p1.timer, `HUD timer did not move after resuming (${p2.timer})`);
   checkErrors(t);
 }
 
@@ -389,9 +529,11 @@ async function menuScaleTest(t) {
   const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
   t.check(locked === 13, `expected 13 locked racer tiles, got ${locked}`);
   await shot('1-characters');
+  await layoutAt(t, 'racer select', CHAR_SELECT_LAYOUT);
   await pressKey(t, 'KeyS');                 // P1 down two rows (grid scrolls)
   await pressKey(t, 'KeyS');
   await shot('2-characters-scrolled');
+  await layoutAt(t, 'racer select (scrolled)', CHAR_SELECT_LAYOUT);
   await pressKey(t, 'Enter');                // a locked racer: nope-wiggle, not ready
   await waitFrames(t.page, 2);
   t.check(!(await t.page.evaluate(() => !!document.querySelector('.sk-panel-ready'))), 'a locked racer was picked');
@@ -406,6 +548,7 @@ async function menuScaleTest(t) {
   const tabs = await t.page.evaluate(() => document.querySelectorAll('.sk-cup-tab').length);
   t.check(tabs === 5, `expected 5 cup tabs, got ${tabs}`);
   await shot('3-tracks');
+  await layoutAt(t, 'track select', TRACK_SELECT_LAYOUT);
   for (let i = 0; i < 4; i++) await pressKey(t, 'KeyD'); // → first Bubble Cup track (locked)
   await shot('4-tracks-bubble-cup');
   await pressKey(t, 'Enter');
@@ -440,7 +583,15 @@ async function gamepadFlowTest(t) {
   t.check(setup.trackId === 'gumdrop-meadow', `expected gumdrop-meadow, got ${setup.trackId}`);
   t.check(setup.players[0]?.characterId === 'lenny', `expected lenny, got ${setup.players[0]?.characterId}`);
   await waitGame(t.page, () => window.__game?.race?.state === 'racing', null, T(60000), 'GO');
-  const start = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).progress);
+  // Kid-Assist presses the gas by itself: NO buttons, NO stick for 2.5 s of race time
+  const me = () => t.page.evaluate(() => { const k = window.__game.race.getPlayerKart(0); return { progress: k.progress, speed: k.speed, top: k.stats.maxSpeed, easy: k.easyDrive }; });
+  const k0 = await me();
+  t.check(k0.easy, 'P1 kart has no Kid-Assist');
+  await driveFor(t.page, 2.5);
+  const k1 = await me();
+  t.check(k1.progress > k0.progress + 3, `Kid-Assist did not drive with no input (progress ${k0.progress.toFixed(1)} → ${k1.progress.toFixed(1)})`);
+  t.check(k1.speed > 0.6 * k1.top, `Kid-Assist is crawling with no input (speed ${k1.speed.toFixed(1)} of ${k1.top.toFixed(1)})`);
+  const start = k1.progress;
   await t.page.evaluate(() => window.__pad.set(7, true)); // hold RT
   await driveFor(t.page, 2.5);
   const after = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).progress);
@@ -493,9 +644,10 @@ async function resultsTest(t) {
   await waitGame(t.page, () => window.__game?.state === 'results', null, T(240000), 'results screen');
   await waitMenusReady(t.page);
   await t.shot('results.png');
-  await waitGame(t.page, () => !!document.querySelector('.sk-unlock'), null, T(30000), 'unlock celebration');
-  await waitFrames(t.page, 3);
+  await checkLayout(t, 'results', RESULTS_LAYOUT.groups, RESULTS_LAYOUT.rules);
+  await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, T(30000), 'unlock celebration');
   await t.shot('results-unlock.png');
+  await layoutAt(t, 'unlock reveal', UNLOCK_REVEAL_LAYOUT);
   const info = await gameInfo(t.page);
   t.check(info.lastResults?.newlyUnlocked === 'cotton-candy-girl', `unlock not recorded: ${JSON.stringify(info.lastResults)}`);
   const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}'));
@@ -509,6 +661,7 @@ async function resultsTest(t) {
   await dismissUnlocks(t);
   await waitMenusReady(t.page);
   await t.shot('results-after.png');
+  await layoutAt(t, 'results + next-sticker teaser', RESULTS_LAYOUT);
   await pressKey(t, 'Enter', { ...inState('race', 'next race after results'), timeout: T(15000) });
   checkErrors(t);
 }
@@ -544,6 +697,7 @@ async function progressionTest(t) {
   // the book shows the whole v2 lineup (21 racers, 20 tracks), registered or not
   t.check(counts[0] === 21 && counts[1] === 20, `expected 21 racer + 20 track stickers, got ${counts.slice(0, 2)}`);
   await shot('1-book');
+  await layoutAt(t, 'sticker book', STICKER_BOOK_LAYOUT);
   await pressKey(t, 'Tab');
   await waitFrames(t.page, 2);
   await shot('2-book-tracks');
@@ -593,6 +747,7 @@ async function progressionTest(t) {
   });
   await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue:not(.sk-leaving)'), null, T(30000), 'first reveal');
   await shot('6-reveal');
+  await layoutAt(t, 'unlock reveal 1 of 3', UNLOCK_REVEAL_LAYOUT);
   const seen = (await dismissUnlocks(t, 3)).map((k) => k.split(':').slice(0, 2).join(':'));
   const want = ['character:Surprise 1 of 3!', 'track:Surprise 2 of 3!', 'character:Surprise 3 of 3!'];
   t.check(JSON.stringify(seen) === JSON.stringify(want), `reveal sequence ${JSON.stringify(seen)}`);
@@ -682,6 +837,7 @@ async function grandPrixTest(t) {
   await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
   await waitFrames(t.page, 3);
   await shot('3-ceremony');
+  await layoutAt(t, 'trophy ceremony', CEREMONY_LAYOUT);
   const info = await t.page.evaluate(() => ({ ev: window.__gpEvents, gp: window.__game.lastGp, cer: !!document.querySelector('.sk-cer-podium'), cups: document.querySelectorAll('.sk-trophy').length }));
   const want = JSON.stringify([['race', 0, false], ['race', 1, false], ['race', 2, false], ['race', 3, true], ['end', 3, 8]]);
   t.check(JSON.stringify(info.ev) === want, `GP events ${JSON.stringify(info.ev)} != ${want}`);
@@ -1114,7 +1270,7 @@ async function runScenario(browser, sc) {
       t.problems.push(err.message);
     }
     if (t.problems.length) await writeDiagnostics(t, attempt, t.problems);
-    detail = t.detail || '';
+    detail = [t.detail, t.layoutChecks ? `layout checks=${t.layoutChecks}` : ''].filter(Boolean).join(' ');
     lastProblems = t.problems;
     await t.ctx.close().catch(() => {});
     if (!lastProblems.length) {
