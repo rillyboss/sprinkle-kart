@@ -100,6 +100,10 @@ export default {
       for (const k of ['lead', 'counter', 'arp', 'pad', 'bass', 'drums']) full[k] = LAYERS[name][k] ?? 1;
       return full;
     };
+    let mix = 'full';
+    if (app.game) {
+      app.game.music = () => ({ song: app.audio?.currentMusic ?? null, mix, layers: app.audio?.musicLayers ?? null });
+    }
     const queue = (state, song) => { if (song === VICTORY_SONG) swaps.delete(state); else swaps.set(state, song); };
     const offs = [
       bus.on('race-start', () => { finalLap = false; swaps.clear(); }),
@@ -124,15 +128,19 @@ export default {
             if (want) audio.playMusic(want);
           }
           // 2) the layers
+          const name = layersFor({ state, screenId, raceState: game?.race?.state ?? null, finalLap });
+          mix = name;
           if (typeof audio.setMusicLayers !== 'function') return;
           const current = audio.musicLayers;
           if (!current) return; // no song yet (audio still locked)
-          const name = layersFor({ state, screenId, raceState: game?.race?.state ?? null, finalLap });
           const want = wantFull(name);
           if (!sameLayers(current, want)) audio.setMusicLayers(want, name === 'full' && state === 'race' ? 0.35 : 0.8);
         } catch { /* music is decoration; never break a frame */ }
       }),
     ];
-    return () => offs.forEach((off) => off());
+    return () => {
+      offs.forEach((off) => off());
+      if (app.game?.music) app.game.music = () => null;
+    };
   },
 };

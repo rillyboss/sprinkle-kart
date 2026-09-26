@@ -730,6 +730,8 @@ async function showcaseTest(t) {
   await shot('1-title-show');
   const show = await t.page.evaluate(() => window.__game.attract());
   t.check(show.racers >= 2 && show.time > 0, `title show not racing: ${JSON.stringify(show)}`);
+  const titleMusic = await t.page.evaluate(() => window.__game.music?.());
+  t.check(titleMusic?.song === 'skx-title', `title theme not playing: ${JSON.stringify(titleMusic)}`);
   // Effects & comfort: open from the title row, switch on colour-friendly shapes, back
   await waitMenusReady(t.page);
   const idx = await t.page.evaluate(() => [...document.querySelectorAll('.sk-title-entry')].findIndex((b) => /Effects/.test(b.textContent)));
@@ -740,6 +742,8 @@ async function showcaseTest(t) {
   for (let i = 0; i < 5; i++) await pressKey(t, 'KeyS'); // down to "Colour-friendly shapes"
   await pressKey(t, 'Enter', { until: () => document.body.classList.contains('skx-cb'), what: 'colour-friendly shapes on' });
   await shot('2-effects');
+  const calm = await t.page.evaluate(() => window.__game.music?.());
+  t.check(calm?.song === 'menu' && calm.mix === 'calm', `effects screen music should be the calm menu mix: ${JSON.stringify(calm)}`);
   const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-presentation-v1') || '{}'));
   t.check(saved.colorAssist === true, `effects pref not saved: ${JSON.stringify(saved)}`);
   await pressKey(t, 'Escape', onScreen('title', 'back to the title'));
@@ -755,6 +759,8 @@ async function showcaseTest(t) {
   const opts = await t.page.evaluate(() => [...document.querySelectorAll('.sk-pause .sk-listbtn')].map((b) => b.textContent));
   const photoAt = opts.findIndex((o) => /Photo/.test(o));
   t.check(photoAt >= 0, `no Photo mode in the pause menu: ${JSON.stringify(opts)}`);
+  const pausedMusic = await t.page.evaluate(() => window.__game.music?.());
+  t.check(pausedMusic?.mix === 'paused' && pausedMusic.song === 'bubblegum-bay', `pause music mix: ${JSON.stringify(pausedMusic)}`);
   for (let i = 0; i < photoAt; i++) await pressKey(t, 'KeyS');
   await pressKey(t, 'Enter', onScreen('photo-mode'));
   await pressKey(t, 'KeyD');
@@ -774,10 +780,12 @@ async function showcaseTest(t) {
   await waitMenusReady(t.page);
   await waitFrames(t.page, 3);
   await shot('5-podium');
+  const endMusic = await t.page.evaluate(() => window.__game.music?.());
+  t.check(['victory', 'skx-goodtry'].includes(endMusic?.song), `results music: ${JSON.stringify(endMusic)}`);
   const podium = await t.page.evaluate(() => window.__game.podium());
   t.check(podium.racers.length === 3 && podium.racers.every((r) => r.visible), `podium racers: ${JSON.stringify(podium)}`);
   t.check(await t.page.evaluate(() => document.body.classList.contains('skx-podium3d')), 'podium class not on the page');
-  t.detail = `track=${show.trackId} podium=${podium.racers.map((r) => r.dance).join('/')}`;
+  t.detail = `track=${show.trackId} podium=${podium.racers.map((r) => r.dance).join('/')} music=${endMusic.song}`;
   checkErrors(t);
 }
 

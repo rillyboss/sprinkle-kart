@@ -249,6 +249,7 @@ describe('menu-music system', () => {
     frame();
     expect(app.audio.musicLayers.lead).toBe(0);
     expect(app.audio.musicLayers.drums).toBeCloseTo(LAYERS.countdown.drums);
+    expect(game.music()).toMatchObject({ song: 'castle', mix: 'countdown', layers: { lead: 0 } }); // window.__game.music()
     race.state = 'racing';
     frame();
     expect(app.audio.musicLayers).toEqual(normalizeLayers({}));
@@ -264,6 +265,7 @@ describe('menu-music system', () => {
     frame();
     expect(app.audio.musicLayers.drums).toBe(0);
     expect(app.audio.musicLayers.lead).toBeCloseTo(LAYERS.paused.lead);
+    expect(game.music().mix).toBe('paused');
     game.state = 'race';
     frame();
     expect(app.audio.musicLayers.drums).toBeCloseTo(LAYERS.finalLap.drums);
@@ -273,6 +275,7 @@ describe('menu-music system', () => {
     frame();
     expect(app.audio.musicLayers.drums).toBe(1);
     uninstall();
+    expect(game.music()).toBe(null);
     expect(app.bus.errors).toEqual([]);
   });
 
