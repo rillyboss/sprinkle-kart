@@ -851,6 +851,67 @@ async function dailyTest(t) {
   checkErrors(t);
 }
 
+/** "My Cup": build a custom cup in the menus (4 tracks + a name), then race a 2-track custom cup to the ceremony. */
+async function myCupTest(t) {
+  const shot = (n) => t.shot(`mycup-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
+  await t.page.evaluate(() => { try { localStorage.removeItem('sprinkle-kart-my-cup-v1'); } catch { /* ignore */ } });
+  await pressKey(t, 'Enter', onScreen('join', 'join screen'));
+  await pressKey(t, 'Enter', onScreen('mode-select', 'mode select'));
+  await pressKey(t, 'KeyD');                                            // → Grand Prix
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select (Grand Prix)'));
+  await pressKey(t, 'Enter', onScreen('cup-select', 'cup select'));
+  const n = await t.page.evaluate(() => document.querySelectorAll('.sk-cupcard').length);
+  t.check(await t.page.evaluate(() => !!document.querySelector('.skc-cupcard')), 'no My Cup card on cup select');
+  for (let i = 0; i < n - 1; i++) await pressKey(t, 'KeyD');
+  await shot('1-cups');
+  await pressKey(t, 'Enter', onScreen('my-cup', 'My Cup builder'));
+  await waitMenusReady(t.page);
+  const open = await t.page.evaluate(() => document.querySelectorAll('.skc-card').length);
+  t.check(open >= 4, `builder should list at least 4 unlocked tracks, got ${open}`);
+  await shot('2-empty');
+  for (let i = 0; i < 4; i++) {
+    await pressKey(t, 'Enter', { until: (k) => document.querySelectorAll('.skc-slot-full').length > k, arg: i, what: `pick ${i + 1}` });
+    if (i < 3) await pressKey(t, 'KeyD');
+  }
+  const focus = await t.page.evaluate(() => !!document.querySelector('.skc-go.sk-sel.skc-ready'));
+  t.check(focus, 'the Start button should be focused once 4 tracks are in');
+  await pressKey(t, 'KeyA');                                            // ← name chip
+  await pressKey(t, 'Enter');                                           // next name
+  const name = await t.page.evaluate(() => document.querySelector('.skc-cupname')?.textContent?.replace('🔄', '').trim());
+  t.check(!!name && name !== 'My Cup', `cup name should change, got "${name}"`);
+  await pressKey(t, 'KeyD');                                            // → Start
+  await shot('3-full');
+  await pressKey(t, 'Enter', { ...inState('race', 'My Cup to start'), timeout: T(30000) });
+  const info = await t.page.evaluate(() => ({ setup: window.__game.setup, gp: window.__game.gp?.trackIds, saved: localStorage.getItem('sprinkle-kart-my-cup-v1') }));
+  t.check(info.setup.mode === 'grand-prix' && info.setup.cupId === 'my-cup' && info.setup.customTrackIds?.length === 4, `bad My Cup setup ${JSON.stringify(info.setup)}`);
+  t.check(JSON.stringify(info.gp) === JSON.stringify(info.setup.customTrackIds), `GP tracks ${JSON.stringify(info.gp)} != picks`);
+  t.check(info.setup.customCup?.name === name, `cup name ${info.setup.customCup?.name} != ${name}`);
+  t.check(JSON.parse(info.saved || '{}').trackIds?.length === 4, `My Cup not remembered (${info.saved})`);
+
+  // a 2-track custom cup, all the way to the trophy ceremony
+  const ids = info.setup.customTrackIds.slice(0, 2);
+  await t.page.goto(`${BASE}?mode=gp&cup=my-cup&mycup=${ids.join(',')}&autodrive=1&fastfinish=1&simspeed=8&speed=zoomy&unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race', null, T(60000), 'My Cup race 1');
+  for (let r = 0; r < 2; r++) {
+    await waitGame(t.page, () => window.__game?.state === 'results', null, T(240000), `My Cup race ${r + 1} results`);
+    await waitMenusReady(t.page);
+    await pressThrough(t, () => window.__game?.menus?.screenId === 'gp-standings', `standings after race ${r + 1}`);
+    await waitGame(t.page, () => !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), `standings ${r + 1} options`);
+    if (r === 0) await pressThrough(t, () => window.__game?.state === 'race', 'My Cup race 2 to start');
+    else await pressThrough(t, () => !!document.querySelector('.sk-cer-podium'), 'trophy ceremony');
+  }
+  await waitGame(t.page, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'ceremony options');
+  await waitFrames(t.page, 3);
+  await shot('4-ceremony');
+  const end = await t.page.evaluate(() => ({ gp: window.__game.lastGp, kicker: document.querySelector('.sk-gp-kicker')?.textContent }));
+  t.check(end.gp?.finished && end.gp.cupId === 'my-cup' && end.gp.races.length === 2, `custom cup not finished: ${JSON.stringify({ cup: end.gp?.cupId, n: end.gp?.races?.length })}`);
+  t.check(/My Cup/.test(end.kicker || ''), `ceremony should name My Cup (${end.kicker})`);
+  t.detail = `name="${name}" tracks=${info.setup.customTrackIds.join(',')}`;
+  checkErrors(t);
+}
+
 /**
  * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
  * To add one, append your function above and one line here — nothing else to edit.
@@ -867,6 +928,7 @@ const FLOW_TESTS = {
   'modes-battle': battleTest,
   'modes-team': teamTest,
   'modes-daily': dailyTest,
+  'modes-my-cup': myCupTest,
 };
 
 /* ---------------- runner ---------------- */

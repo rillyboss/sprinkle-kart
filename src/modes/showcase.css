@@ -374,13 +374,13 @@
   animation: sk-pop-in 0.3s cubic-bezier(0.2, 1.7, 0.4, 1) both;
 }
 .skc-bar { display: flex; align-items: center; justify-content: center; gap: 0.7em; width: min(100%, 64em); }
-.skc-chip {
+.skc-builder .skc-chip {
   display: inline-flex; align-items: center; gap: 0.4em; padding: 0.35em 0.8em; border-radius: 999px;
   border: 0.16em solid #fff; background: linear-gradient(180deg, #fff, #f4eeff); color: #6b3fc4;
   font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 0.2em 0 rgba(120, 80, 200, 0.2);
   transition: transform 0.15s ease;
 }
-.skc-chip.sk-sel { transform: scale(1.07); box-shadow: 0 0 0 0.2em #fff, 0 0 0 0.42em var(--sk-pink-deep), 0 0.4em 0.8em rgba(217, 72, 156, 0.3); }
+.skc-builder .skc-chip.sk-sel { transform: scale(1.07); box-shadow: 0 0 0 0.2em #fff, 0 0 0 0.42em var(--sk-pink-deep), 0 0.4em 0.8em rgba(217, 72, 156, 0.3); }
 .skc-chip-e { font-size: 1.7em; line-height: 1; }
 .skc-chip-t { font-size: 1.15em; min-width: 7em; text-align: center; }
 .skc-chip-k { font-size: 0.8em; opacity: 0.7; }
