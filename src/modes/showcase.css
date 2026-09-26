@@ -311,3 +311,65 @@
 .skd-hud b { color: #e08a00; font-variant-numeric: tabular-nums; }
 .skd-hud.skd-hud-done { background: #dcf8e6; color: #2f9d63; }
 .skd-hud.skd-hud-done b { color: #2f9d63; }
+
+/* ---------- My Cup (custom cup) ---------- */
+.sk-cupcards:has(> .skc-cupcard) { grid-template-columns: repeat(6, 1fr); width: min(100%, 82em); }
+.skc-cupcard-top { background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.9) 0 10%, transparent 32%), conic-gradient(from 30deg, #ffd6ec, #fff3c4, #dcf8e6, #d9f0ff, #e9e0ff, #ffd6ec) !important; }
+.skc-cuptrack { color: #9c6cf0; background: #f4eeff; font-style: italic; }
+.skc-cuptrack span { background: #c7aaff; }
+.skc-builder { gap: 0.5em; }
+.skc-slots { display: flex; align-items: center; justify-content: center; gap: 0.7em; width: min(100%, 64em); }
+.skc-slot {
+  position: relative;
+  flex: 0 0 9.5em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2em;
+  padding: 0.4em;
+  border-radius: 1.2em;
+  border: 0.18em dashed #d9c3ef;
+  background: rgba(255, 255, 255, 0.55);
+  min-height: 7.4em;
+}
+.skc-slot-full { border: 0.18em solid #fff; background: #fff; box-shadow: 0 0 0 0.2em #c7aaff, 0 0.3em 0.7em rgba(120, 80, 200, 0.2); animation: sk-pop-in 0.35s cubic-bezier(0.2, 1.7, 0.4, 1) both; }
+.skc-num {
+  position: absolute; top: -0.6em; left: -0.5em; z-index: 2;
+  display: grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 50%;
+  background: linear-gradient(180deg, #c9a7ff, #9c6cf0); color: #fff; font-weight: 700; box-shadow: 0 0.1em 0 rgba(90, 50, 160, 0.3);
+}
+.skc-empty { flex: 1; display: grid; place-items: center; font-size: 2.2em; font-weight: 700; color: #d9c3ef; }
+.skc-art {
+  position: relative; width: 100%; aspect-ratio: 5 / 3; border-radius: 0.8em; overflow: hidden;
+  background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.9) 0 10%, transparent 32%), linear-gradient(160deg, var(--c1), var(--c2));
+}
+.skc-art svg { position: absolute; inset: 8% 10%; width: 80%; height: 84%; }
+.skc-art polygon { fill: rgba(255, 255, 255, 0.3); stroke: #fff; stroke-width: 3.4; stroke-linejoin: round; }
+.skc-art span { position: absolute; filter: drop-shadow(0 0.1em 0 rgba(0, 0, 0, 0.12)); }
+.skc-art .a1 { font-size: 2em; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.skc-art .a2 { font-size: 1.1em; left: 8%; bottom: 6%; }
+.skc-name { font-size: 0.78em; font-weight: 700; text-align: center; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.skc-go { flex: 0 0 auto; margin-left: 0.6em; }
+.skc-go.sk-disabled { opacity: 0.5; filter: saturate(0.4); }
+.skc-go.skc-ready { animation: sk-pulse 1.1s ease-in-out infinite; }
+.skc-go.sk-sel { box-shadow: 0 0 0 0.22em #fff, 0 0 0 0.45em var(--sk-pink-deep), 0 0.5em 1em rgba(60, 180, 120, 0.35); }
+.skc-grid {
+  flex: 1; min-height: 0; overflow: auto; width: min(100%, 64em);
+  display: grid; grid-template-columns: repeat(var(--cols, 5), 1fr); gap: 0.55em; padding: 0.5em; align-content: start;
+}
+.skc-card {
+  position: relative; display: flex !important; flex-direction: column; gap: 0.2em; align-items: center;
+  padding: 0.35em !important; border-radius: 1em !important; background: #fff !important;
+  box-shadow: 0 0.2em 0 rgba(160, 70, 150, 0.16);
+  transition: transform 0.15s ease;
+}
+.skc-card.sk-sel { transform: translateY(-0.2em) scale(1.05); box-shadow: 0 0 0 0.2em #fff, 0 0 0 0.4em var(--sk-pink-deep), 0 0.4em 0.8em rgba(217, 72, 156, 0.3); z-index: 2; }
+.skc-card.skc-picked { background: #f6f0ff !important; }
+.skc-card.skc-picked .skc-art { filter: saturate(0.6) brightness(1.05); }
+.skc-cup { position: absolute; top: 0.3em; right: 0.4em; font-size: 0.9em; }
+.skc-badge:empty { display: none; }
+.skc-badge {
+  position: absolute; top: 0.2em; left: 0.3em; display: grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 50%;
+  background: linear-gradient(180deg, #c9a7ff, #9c6cf0); color: #fff; font-weight: 700; font-size: 0.95em; box-shadow: 0 0 0 0.12em #fff;
+  animation: sk-pop-in 0.3s cubic-bezier(0.2, 1.7, 0.4, 1) both;
+}

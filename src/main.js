@@ -59,6 +59,7 @@ import { createTeamSession, createTeamSeries } from './modes/teamSession.js';
 import { dailyChallenge, dailyRules } from './modes/daily.js';
 import { createDailySession } from './modes/dailySession.js';
 import { todayString } from './progress/goals.js';
+import { MY_CUP_ID, myCupDef } from './modes/myCup.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -344,8 +345,10 @@ async function runTimeTrial(setup) {
  * last race 'gp-end' + the trophy ceremony.
  */
 async function runGrandPrix(setup) {
-  const cup = getCup(setup.cupId) ?? CUPS[0];
-  const trackIds = cupTracks(cup.id).map((t) => t.id);
+  // "My Cup" (src/modes/myCup.js): any 4 unlocked tracks the family picked, raced like a cup.
+  const custom = setup.cupId === MY_CUP_ID && Array.isArray(setup.customTrackIds) && setup.customTrackIds.length;
+  const cup = custom ? myCupDef(setup.customTrackIds.filter((id) => findTrack(id))) : (getCup(setup.cupId) ?? CUPS[0]);
+  const trackIds = custom ? cup.trackIds : cupTracks(cup.id).map((t) => t.id);
   if (!trackIds.length) return runFreeRaces({ ...setup, mode: 'free' });
   const base = { ...setup, mode: 'grand-prix', cupId: cup.id };
   const newCup = () => createGrandPrix({ cupId: cup.id, trackIds, cpuIds: pickCpus(base.players) });

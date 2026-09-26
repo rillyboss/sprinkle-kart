@@ -84,6 +84,43 @@ const scenarios = {
     await wait((t1) => (window.__game.race?.time ?? 0) > t1, 6);
     await shot('daily-2-race');
   },
+  async mycup() {
+    await page.goto(`${BASE}?unlockreset=1`);
+    await wait(() => window.__game?.state === 'menu' && window.__game.menus?.screenId === 'title');
+    await page.waitForTimeout(800);
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'join');
+    await page.waitForTimeout(600);
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'mode-select');
+    await page.waitForTimeout(900);
+    await key('KeyD');
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'character-select');
+    await page.waitForTimeout(700);
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'cup-select');
+    await page.waitForTimeout(900);
+    for (let i = 0; i < 5; i++) await key('KeyD');
+    await page.waitForTimeout(500);
+    await shot('mycup-0-cups');
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'my-cup');
+    await page.waitForTimeout(900);
+    await shot('mycup-1-empty');
+    for (let i = 0; i < 4; i++) {
+      const n = await page.evaluate(() => document.querySelectorAll('.skc-slot-full').length);
+      await key('Enter');
+      await wait((m) => document.querySelectorAll('.skc-slot-full').length > m, n, 8000).catch(() => {});
+      if (i < 3) await key('KeyD');
+    }
+    await page.waitForTimeout(900);
+    await shot('mycup-2-full');
+    await key('Enter');
+    await wait(() => window.__game?.state === 'race');
+    await page.waitForTimeout(500);
+    console.log(JSON.stringify(await page.evaluate(() => ({ setup: window.__game.setup, gp: window.__game.gp?.trackIds }))));
+  },
   async team() {
     const players = process.env.P || '2';
     await page.goto(`${BASE}?quick=${process.env.TRACK || 'gumdrop-meadow'}&mode=team&players=${players}&autodrive=1&fastfinish=1&simspeed=${process.env.SIM || 1}`);
