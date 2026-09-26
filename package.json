@@ -7,7 +7,12 @@
     "preview": "vite preview --open",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "worker:dev": "node scripts/worker.mjs dev",
+    "worker:test": "node scripts/worker.mjs test",
+    "worker:deploy": "node scripts/worker.mjs deploy",
+    "worker:login": "node scripts/worker.mjs login",
+    "worker:secret": "node scripts/worker.mjs secret"
   },
   "keywords": [],
   "author": "",

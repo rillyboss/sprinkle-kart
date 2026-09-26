@@ -6,3 +6,4 @@ dev/**/*.png
 .claude/
 smoke-out-before
 coverage
+.dev.vars
