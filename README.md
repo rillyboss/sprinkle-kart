@@ -154,6 +154,42 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 
 ---
 
+## Showtime: the sparkly extras ✨
+
+- **Title show 🎬:** while the title screen waits, eight racers zoom round one of your unlocked
+  tracks behind the logo, and the camera cuts like a TV show: the pack racing at you, a slow
+  circle round a *"⭐ Starring …"* racer, a camera by the fence, a helicopter view.
+- **Track intro card:** every race starts with a card over the countdown: the cup (or
+  *"Grand Prix · Race 2 of 4"*), the track's name and its subtitle.
+- **Racer chatter 💬:** your racer talks in a speech bubble next to your place badge: *"Beep beep,
+  Lenny!"* after passing someone, a pout and then a giggle after a bonk, *"Boop! Sorry, Muffin!"* when
+  your item lands, *"Sparkle power!"* with a Rainbow Star, and their own victory line at the finish.
+- **Weather & sparkles ❄️:** every track has its own gentle weather around the camera:
+  sprinkle-snow, soap bubbles at the beach, blossom petals, autumn leaves, fireflies at bedtime,
+  lemonade fizz, stardust in space.
+- **Finish line party 🎉:** crossing the line throws a confetti fountain and the camera swings up
+  and round to the front of your kart. Two karts within a quarter of a second? *"📸 Photo finish!"*
+- **3D podium 🏆:** on the results screen and at the Grand Prix trophy ceremony the top three are
+  real 3D racers dancing their own happy dance (gigglers twirl, ho-ho-ers wobble, boing-ers bounce
+  like springs), and they cheer in their own voices as they pop up.
+- **Music that follows along 🎵:** the title screen has its own bouncy theme; the band goes lighter
+  on "Who's playing?", calm (no drums) in the grown-up corners, soft and dreamy when you pause or
+  take photos, plays just a heartbeat during the countdown until everyone joins in at GO, and turns
+  up the drums on the final lap. Didn't make the top 3? Instead of the big fanfare you get the
+  cosy *"Good try!"* tune, because every finish is worth a little dance.
+- **Photo mode 📸:** pause the race and pick **Photo mode**. Move the camera round your kart with the
+  stick / arrows (Up/Down = closer/further, Start = tilt), **Y / Tab** picks a frame (snapshot,
+  hearts, sprinkles, stars), **A / Enter** snaps and saves a picture (it lands in your downloads),
+  **B / Esc** goes back.
+- **✨ Effects & comfort** (on the title screen, press Down): **Motion: Gentle** for calmer cameras,
+  fewer wiggles and sparkles (it starts on Gentle if the device asks for reduced motion), **Screen
+  wobble**, **Racer chatter**, **Weather & sparkles**, **Title show**, and **Colour-friendly shapes**,
+  which give every player a shape as well as a colour (P1 ♥ · P2 ★ · P3 ◆ · P4 ●, on the race HUD
+  and on the P1–P4 tags in the menus, with a different border pattern in split-screen). These are saved separately from the Sticker Book, so starting a
+  fresh book keeps them.
+
+---
+
 ## The racers
 
 | Racer | Who they are |
@@ -268,6 +304,9 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | `?democontent=1` | Menus show locked placeholders for the whole v2 lineup (21 racers, 20 tracks) |
 | `?mode=gp&cup=<cupId>` | Skip the menus and start a Grand Prix (e.g. `sprinkle-cup`; works with `players`, `speed`, `autodrive`, `fastfinish`, `cpus`, `laps`) |
 | `?mode=tt&quick=<trackId>` | Skip the menus and start a Time Trial on that track (P1 only, vs your saved ghost) |
+| `?attract=0` | No title show behind the logo (the ✨ Effects screen has the same switch) |
 
 `window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests,
 plus `gp` / `lastGp` (the running Grand Prix and its latest GrandPrixResult) and `timeTrial` (ghost info).
+Showcase extras add `attract()`, `weather()`, `reactions()`, `spectacle()`, `podium()`, `photoMode()` (each `null` when idle), `music()` (song + layer mix),
+`lastPhoto` and `confettiBurst(pos, opts)`.

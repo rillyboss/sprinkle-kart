@@ -199,7 +199,7 @@ async function boot() {
   game.menus = menus;
   game.hud = hud;
   // Event-bus subscribers (sounds, HUD callouts, rumble, progress, ...): src/systems/*.js
-  installSystems(bus, { audio, input, hud, menus, progress, params, game });
+  installSystems(bus, { audio, input, hud, menus, progress, params, game, renderer });
 
   clearInterval(ticker);
   if (fill) fill.style.width = '100%';
