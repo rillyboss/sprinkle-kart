@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { toon, glow } from '../render/toon.js';
 import { makeTrack } from './layout.js';
-import { FENCE_OFFSET, mat4, ribbon, stripeTexture, distToPolyline } from './sceneryKit.js';
+import { FENCE_OFFSET, mat4, ribbon, dataTexture, rgb, distToPolyline } from './sceneryKit.js';
 import { instanced, animatedInstances, isClearOfCamera, farRing, capsule, spotsAlong } from './props/adventure-kit.js';
 
 /** Layered chocolate rock colours: dark, milk, caramel, white chocolate, strawberry. */
@@ -98,6 +98,17 @@ export const def = makeTrack(
   }),
 );
 
+/** Wavy vertical streaks of flowing cocoa (scroll offset.y to make it pour). */
+export function cocoaFlowTexture(dark, mid, light) {
+  const a = rgb(dark), b = rgb(mid), c = rgb(light);
+  return dataTexture(64, (x, y) => {
+    const v = Math.sin((x / 64) * Math.PI * 2 * 3 + Math.sin((y / 64) * Math.PI * 2) * 1.2);
+    const w = Math.sin((x / 64) * Math.PI * 2 * 7 + 1.3);
+    const col = v > 0.55 ? c : v > -0.2 ? b : a;
+    return w > 0.93 ? [...c, 255] : [...col, 255];
+  });
+}
+
 /**
  * Before the terrain is made: trace the chocolate river (perpendicular to the
  * road at the bridge, wiggling off both ways, stopping before other road) so
@@ -168,12 +179,12 @@ export function buildScenery(ctx) {
   // --------------------------------------------------------------------------
 
   /** A stack of chocolate layers (each a slab in the shared rock mesh). */
-  function mesa(x, z, r, h, { y0 = groundH(x, z) - 1.5, layers = 3 + Math.floor(rng() * 3), taper = 0.9, ry = rng() * Math.PI } = {}) {
+  function mesa(x, z, r, h, { y0 = groundH(x, z) - 1.5, layers = 3 + Math.floor(rng() * 3), taper = 0.9, ry = rng() * Math.PI, round = false } = {}) {
     let y = y0, rr = r;
     const k0 = Math.floor(rng() * ROCK_LAYERS.length);
     for (let k = 0; k < layers; k++) {
       const lh = (h / layers) * (0.7 + rng() * 0.6);
-      rocks.push({ m: mat4(x, y + lh / 2, z, { s: [rr, lh, rr * (0.85 + rng() * 0.3)], ry }), c: ROCK_LAYERS[(k0 + k) % ROCK_LAYERS.length] });
+      rocks.push({ m: mat4(x, y + lh / 2, z, { s: [rr, lh, rr * (round ? 1 : 0.85 + rng() * 0.3)], ry }), c: ROCK_LAYERS[(k0 + k) % ROCK_LAYERS.length] });
       y += lh;
       rr *= taper + rng() * 0.08;
     }
@@ -190,7 +201,7 @@ export function buildScenery(ctx) {
     for (let i = 0; i < river.length - 1; i++) {
       const [ax, az] = river[i], [bx, bz] = river[i + 1];
       const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1;
-      const ux = (-dz / len) * 8, uz = (dx / len) * 8;
+      const ux = (-dz / len) * 6.5, uz = (dx / len) * 6.5;
       const y = -1.25;
       pos.push(ax - ux, y, az - uz, bx - ux, y, bz - uz, ax + ux, y, az + uz);
       pos.push(ax + ux, y, az + uz, bx - ux, y, bz - uz, bx + ux, y, bz + uz);
@@ -198,8 +209,22 @@ export function buildScenery(ctx) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.computeVertexNormals();
-    const cocoa = own(toon(0x6b3a22, { unique: true, emissive: 0x2a1208, emissiveIntensity: 0.3, side: THREE.DoubleSide }));
+    const cocoa = own(toon(0x8a4a2a, { unique: true, emissive: 0x2a1208, emissiveIntensity: 0.3, side: THREE.DoubleSide }));
     group.add(new THREE.Mesh(g, cocoa));
+    // a creamy shine line down the middle of the river
+    const shine = [];
+    for (let i = 0; i < river.length - 1; i++) {
+      const [ax, az] = river[i], [bx, bz] = river[i + 1];
+      const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1;
+      const ux = (-dz / len) * 1.3, uz = (dx / len) * 1.3;
+      const y = -1.2;
+      shine.push(ax - ux, y, az - uz, bx - ux, y, bz - uz, ax + ux, y, az + uz);
+      shine.push(ax + ux, y, az + uz, bx - ux, y, bz - uz, bx + ux, y, bz + uz);
+    }
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(shine, 3));
+    sg.computeVertexNormals();
+    group.add(new THREE.Mesh(sg, own(toon(0xc8885a, { unique: true, emissive: 0x442211, emissiveIntensity: 0.35, side: THREE.DoubleSide }))));
     animators.push((dt, t) => { cocoa.emissiveIntensity = 0.28 + Math.sin(t * 2.1) * 0.06; });
     // marshmallows floating down the river
     const mm = [];
@@ -237,17 +262,30 @@ export function buildScenery(ctx) {
     pool.rotation.x = -Math.PI / 2;
     pool.position.set(e[0], -1.24, e[1]);
     group.add(pool);
-    const cx = e[0] + fx * 22, cz = e[1] + fz * 22;
-    const top = mesa(cx, cz, 18, 34, { y0: -3, layers: 5, taper: 0.93, ry: Math.atan2(fx, fz) });
-    const fallTex = ownTex(stripeTexture(0x7a4127, 0x9a5a34, 6));
-    fallTex.repeat.set(1, 3);
+    const CR = 16;
+    const cx = e[0] + fx * (CR + 3), cz = e[1] + fz * (CR + 3);
+    const top = mesa(cx, cz, CR, 34, { y0: -3, layers: 5, taper: 0.97, ry: Math.atan2(fx, fz), round: true });
+    const fallTex = ownTex(cocoaFlowTexture(0x7a4127, 0xa8643a, 0xd89a6a));
+    fallTex.repeat.set(2, 2);
     const fallMat = toonTex(fallTex, 0xffffff, { side: THREE.DoubleSide, emissive: 0x2a1208, emissiveIntensity: 0.35 });
     const fallH = top + 1;
-    const fall = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 8, fallH, 12, 1, true, -Math.PI / 2.4, Math.PI / 1.2), fallMat);
-    fall.position.set(e[0] + fx * 6, fallH / 2 - 1.3, e[1] + fz * 6);
-    fall.rotation.y = Math.atan2(-fx, -fz) + Math.PI;
-    group.add(fall);
-    animators.push((dt, t) => { fallTex.offset.y = (t * 0.9) % 1; });
+    // two layered curtains of cocoa, a little bulge at the bottom, scrolling at different speeds
+    const fallGeo = new THREE.PlaneGeometry(11, fallH, 1, 6);
+    const pz = fallGeo.attributes.position;
+    for (let i = 0; i < pz.count; i++) pz.setZ(i, Math.pow(1 - (pz.getY(i) / fallH + 0.5), 3) * 3.5); // flares out at the foot
+    fallGeo.computeVertexNormals();
+    const fallTex2 = ownTex(cocoaFlowTexture(0x9a5a34, 0xc07a4a, 0xf0c090));
+    fallTex2.repeat.set(1, 1.5);
+    const fallMat2 = toonTex(fallTex2, 0xffffff, { side: THREE.DoubleSide, emissive: 0x3a1a0a, emissiveIntensity: 0.35 });
+    const ry = Math.atan2(-fx, -fz);
+    const back = new THREE.Mesh(fallGeo, fallMat);
+    back.position.set(e[0] + fx * 3.4, fallH / 2 - 1.4, e[1] + fz * 3.4);
+    back.rotation.y = ry;
+    const front = new THREE.Mesh(fallGeo.clone().scale(0.6, 1, 1), fallMat2);
+    front.position.set(e[0] + fx * 2.9, fallH / 2 - 1.4, e[1] + fz * 2.9);
+    front.rotation.y = ry;
+    group.add(back, front);
+    animators.push((dt, t) => { fallTex.offset.y = (t * 0.9) % 1; fallTex2.offset.y = (t * 1.4) % 1; });
     // marshmallow foam puffs where the cocoa splashes down
     const foam = [];
     for (let k = 0; k < 12; k++) {
