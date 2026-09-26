@@ -16,9 +16,10 @@
  *     finished, finishEstimated, item, itemCharges, itemRoulette, hasPending, boosting, spinning, shielded, drifting,
  *     driftLevel, driftDir, starPower, offRoad, wrongWay, battleOut, roboDriven,
  *     phys: { boostTime, spinTime, shieldTime, hopTime, hopY, spinAngle, driftCharge, steerSmoothed, slide, pitch, roll,
- *             throttle, braking, reversing } }
+ *             throttle, braking, reversing, airborne, trick, trickTime (= progress 0..1), trickLen (1), trickDone, trickQueued, landSquash } }
  *   OwnerPhys = { driftHeld, prevAccel, driftWindow, hopLen, onPad, wallCooldown, accelPressedAt, slideDir, wrongWayTime,
- *     lastLapStart, driftTime, groundY, pendingItem, rouletteTime }
+ *     lastLapStart, driftTime, groundY, pendingItem, rouletteTime, driftSlip, driftOmega0, yawRate,
+ *     airVy, airTime, onRamp, trickTime, trickLen, trickCount (mod 3) }
  * Decoded INPUT: { type, seq, newestTick, n, p, lastSnapTick, ticks: [{ tick, players: [PlayerTickInput] }] } newest first.
  * Decoded EVENTS: { type, firstSeq, baseTick, events: [{ seq, tick, type, kart, ...payload }] }.
  */
@@ -35,7 +36,7 @@ export const CTRL_FRAGMENT_BYTES = 1024;
 const JSON_CTRL = new Set([MSG.HELLO, MSG.WELCOME, MSG.REJECT, MSG.LOBBY, MSG.INTENT, MSG.PHASE, MSG.SETUP, MSG.RESYNC, MSG.RESULT, MSG.GP, MSG.CHOICE, MSG.FOCUS]);
 
 export const ITEMS = Object.freeze([null, ...ITEM_ORDER]);
-export const BOOST_SOURCES = Object.freeze(['start', 'pad', 'item', 'other']);
+export const BOOST_SOURCES = Object.freeze(['start', 'pad', 'item', 'other', 'trick', 'ring']);
 export const CAUSES = Object.freeze(['other', 'gumdrop', 'cupcake-rocket', 'star', 'expired', 'rocket']);
 export const WHYS = Object.freeze(['popped', 'bonked', 'rocketed', 'evicted', 'expired', 'gone', 'hit', 'fizzle', 'gumdrop', 'dispose']);
 export const EV = Object.freeze({
@@ -43,6 +44,7 @@ export const EV = Object.freeze({
   'item-box': 10, 'item-get': 11, 'item-use': 12, 'rocket-launch': 13, bonked: 14, 'shield-pop': 15, 'item-dodged': 16,
   'item-end': 17, lap: 18, 'final-lap': 19, finish: 20, 'race-complete': 21, 'gumdrop-spawn': 22, 'gumdrop-despawn': 23,
   'rocket-despawn': 24, 'box-respawn': 25, 'battle-pop': 26, 'battle-out': 27, 'battle-bonus': 28, robo: 29,
+  launch: 30, trick: 31, ring: 32,
 });
 const EV_NAME = Object.fromEntries(Object.entries(EV).map(([k, v]) => [v, k]));
 
@@ -157,7 +159,8 @@ function encodeBody(s, { epoch = 0, flags = {} } = {}) {
     const dd = k.driftDir < 0 ? 1 : k.driftDir > 0 ? 2 : 0;
     w.u16((k.boosting ? 1 : 0) | (k.spinning ? 2 : 0) | (k.shielded ? 4 : 0) | (k.drifting ? 8 : 0) | (k.offRoad ? 16 : 0)
       | (k.wrongWay ? 32 : 0) | (k.finished ? 64 : 0) | (k.finishEstimated ? 128 : 0) | (k.battleOut ? 256 : 0)
-      | (p.braking ? 512 : 0) | (p.reversing ? 1024 : 0) | (k.starPower > 0 ? 2048 : 0) | (dd << 12) | (k.roboDriven ? 1 << 14 : 0));
+      | (p.braking ? 512 : 0) | (p.reversing ? 1024 : 0) | (k.starPower > 0 ? 2048 : 0) | (dd << 12) | (k.roboDriven ? 1 << 14 : 0)
+      | (p.airborne ? 1 << 15 : 0));
     w.u16(msU16(p.boostTime)); w.u16(msU16(p.spinTime)); w.u16(msU16(p.shieldTime)); w.u16(msU16(k.starPower));
     w.u8(clampInt(p.hopTime * 256, 0, 255)); w.u8(clampInt(p.hopY * 128, 0, 255));
     w.u8(Math.round((((p.spinAngle % TAU) + TAU) % TAU) / TAU * 256) & 0xff); w.u8(clampInt(p.driftCharge * 64, 0, 255));
@@ -167,6 +170,9 @@ function encodeBody(s, { epoch = 0, flags = {} } = {}) {
     w.u8((Math.min(15, k.lap) & 15) | ((Math.min(15, k.place) & 15) << 4));
     w.u8(Math.min(15, k.finishPlace || 0) & 15);
     w.u8(clampInt(k.itemRoulette * 255, 0, 255));
+    // v3.1 jumps: trick kind 2b | done 1b | queued 1b · trick progress u8 · landing squash u8
+    w.u8(((p.trick || 0) & 3) | (p.trickDone ? 4 : 0) | (p.trickQueued ? 8 : 0));
+    w.u8(clampInt(p.trickLen > 0 ? (p.trickTime / p.trickLen) * 255 : 0, 0, 255)); w.u8(clampInt((p.landSquash || 0) * 255, 0, 255));
   }
   for (let i = 0; i < nb; i += 8) {
     let b = 0;
@@ -202,6 +208,11 @@ function encodeOwner(w, s, ownerIds = []) {
     w.i8(Math.sign(p.slideDir || 0)); w.u8(clampInt(p.wrongWayTime * 32, 0, 255)); w.u32(Math.round((p.lastLapStart || 0) * 1000));
     w.u16(clampInt(p.driftTime * 256, 0, 0xffff)); w.i16(q(p.groundY, 64)); w.u8(enumIndex(ITEMS, p.pendingItem));
     w.u8(clampInt(p.rouletteTime * 32, 0, 255)); w.u8(clampInt((k.aiSpeedMult ?? 1) * 128, 0, 255));
+    // v3.1 drift arc (so a replayed drift entry / slip matches the host)
+    w.i16(q(p.driftSlip, 16384)); w.i16(q(p.driftOmega0, 2048)); w.i16(q(p.yawRate, 2048));
+    // v3.1 jumps (a replayed flight / trick matches the host)
+    w.i16(q(p.airVy, 256)); w.u8(clampInt(p.airTime * 64, 0, 255)); w.i8(p.onRamp ?? -1);
+    w.u8(clampInt(p.trickTime * 256, 0, 255)); w.u8(clampInt(p.trickLen * 256, 0, 255)); w.u8((p.trickCount || 0) % 3);
   }
 }
 
@@ -236,6 +247,7 @@ function decodeSnapshot(r) {
     const steerSmoothed = r.i8() / 127; const slide = r.u8() / 255; const pitch = r.i8() / 254; const roll = r.i8() / 254;
     const throttle = r.u8() / 255;
     const ib = r.u8(); const lb = r.u8(); const fb = r.u8(); const itemRoulette = r.u8() / 255;
+    const tb = r.u8(); const trickProgress = r.u8() / 255; const landSquash = r.u8() / 255;
     const dd = (f >> 12) & 3;
     karts.push({
       id, position: [x, y, z], heading, velocity: [vx, 0, vz], speed, distance,
@@ -246,7 +258,8 @@ function decodeSnapshot(r) {
       lap: lb & 15, place: lb >> 4, finishPlace: (fb & 15) || null, itemRoulette,
       phys: {
         boostTime, spinTime, shieldTime, hopTime, hopY, spinAngle, driftCharge, steerSmoothed, slide, pitch, roll, throttle,
-        braking: !!(f & 512), reversing: !!(f & 1024),
+        braking: !!(f & 512), reversing: !!(f & 1024), airborne: !!(f & (1 << 15)),
+        trick: tb & 3, trickTime: trickProgress, trickLen: 1, trickDone: !!(tb & 4), trickQueued: !!(tb & 8), landSquash,
       },
     });
   }
@@ -273,12 +286,16 @@ function decodeSnapshot(r) {
     const apa = r.u8(); const slideDir = r.i8(); const wrongWayTime = r.u8() / 32; const lastLapStart = r.u32() / 1000;
     const driftTime = r.u16() / 256; const groundY = r.i16() / 64; const pendingItem = ITEMS[r.u8() & 7] ?? null;
     const rouletteTime = r.u8() / 32; const aiSpeedMult = r.u8() / 128;
+    const driftSlip = r.i16() / 16384; const driftOmega0 = r.i16() / 2048; const yawRate = r.i16() / 2048;
+    const airVy = r.i16() / 256; const airTime = r.u8() / 64; const onRamp = r.i8();
+    const trickTime = r.u8() / 256; const trickLen = r.u8() / 256; const trickCount = r.u8();
     owner.push({
       kart, aiSpeedMult,
       phys: {
         driftHeld: !!(bf & 1), prevAccel: !!(bf & 2), driftWindow: bf & 4 ? dw : 0, hopLen, onPad,
         wallCooldown: bf & 8 ? wc : 0, accelPressedAt: apa === 255 ? null : apa / 60, slideDir, wrongWayTime, lastLapStart,
-        driftTime, groundY, pendingItem, rouletteTime,
+        driftTime, groundY, pendingItem, rouletteTime, driftSlip, driftOmega0, yawRate,
+        airVy, airTime, onRamp, trickTime, trickLen, trickCount,
       },
     });
   }
@@ -316,6 +333,11 @@ const PAYLOAD = {
   'box-respawn': [(w, e) => w.u8(e.boxIndex), (r) => ({ boxIndex: r.u8() })],
   'battle-pop': [(w, e) => { w.u8(e.by); w.u8(e.bubblesLeft); }, (r) => ({ by: r.u8(), bubblesLeft: r.u8() })],
   robo: [(w, e) => w.u8(e.on ? 1 : 0), (r) => ({ on: !!r.u8() })],
+  land: [(w, e) => { w.u8(q(e.strength ?? 0.5, 255)); w.u8((e.air ? 1 : 0) | (e.trick ? 2 : 0)); },
+    (r) => { const strength = r.u8() / 255; const fl = r.u8(); return { strength, air: !!(fl & 1), trick: !!(fl & 2) }; }],
+  launch: [(w, e) => w.u8(e.jump ?? 255), (r) => ({ jump: r.u8() })],
+  trick: [(w, e) => w.u8(e.kind ?? 1), (r) => ({ kind: r.u8() })],
+  ring: [(w, e) => w.u8(e.ring ?? 255), (r) => ({ ring: r.u8() })],
 };
 
 /** Events must have consecutive seqs and ticks within baseTick..baseTick+255 (the caller batches). */

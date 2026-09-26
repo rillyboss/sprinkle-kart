@@ -18,6 +18,7 @@ import { encodeSnapshot, decode } from './helpers/netWire.js';
 import { captureSimState, predictTick, makeCountdown, raceTick } from './helpers/netSim.js';
 import { trackFixture, stubKartModel, defaultRacerIds } from './helpers/raceHarness.js';
 import { createKart } from '../src/race/Kart.js';
+import { TUNING as T } from '../src/race/tuning.js';
 
 const cd = makeCountdown(3);
 
@@ -79,6 +80,16 @@ function replayErr(run, S, n, { quantised }) {
 
 /** Did anything the prediction cannot see touch kart 0 in (S, S+n]? */
 function disturbed(run, S, n) {
+  // resting contact with another kart (the host pushes us, no 'bump' event below 2.5 m/s) is just as invisible
+  // to a one-kart replay as a bump; it showed up once the v3.1 drift reshuffled the CPU pack
+  const touch = 2 * T.kartRadius + 0.05;
+  for (let t = S; t <= S + n; t++) {
+    const ks = run.states[t]?.karts;
+    if (!ks) continue;
+    for (let i = 1; i < ks.length; i++) {
+      if (Math.hypot(ks[i].position[0] - ks[0].position[0], ks[i].position[2] - ks[0].position[2]) < touch) return true;
+    }
+  }
   return run.log.entries().some((e) => e.tick > S - 1 && e.tick <= S + n && (e.kart === 0 || e.other === 0 || e.by === 0)
     && ['bump', 'bonked', 'shield-pop', 'item-use', 'item-box', 'item-get', 'item-dodged', 'boost'].includes(e.type)
     && !(e.type === 'bump' && e.other === 255) && !(e.type === 'boost' && e.source === 'pad'));

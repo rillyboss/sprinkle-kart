@@ -155,7 +155,9 @@ export function buildKartModel(charDef) {
     if (rig.steeringWheel) rig.steeringWheel.rotation.z = st.steer * 1.3;
 
     // drift slide + happy spin
-    const driftTarget = st.drifting ? -st.steer * 0.35 : 0;
+    // The physics already angles the kart into a drift (slip angle, src/race/Kart.js); the model only
+    // adds a tiny extra lean-in so counter-steering never swings the nose the "wrong" way.
+    const driftTarget = st.drifting ? -Math.sign(s.driftDir || 0) * 0.06 : 0;
     st.driftYaw += (driftTarget - st.driftYaw) * k6;
     if (st.spinning) {
       st.spinA += dt * 14;

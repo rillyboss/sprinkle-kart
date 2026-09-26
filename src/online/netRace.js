@@ -18,6 +18,7 @@ import { createHostTimeline } from '../net/guest/hostTimeline.js';
 import { localizeSummary } from '../net/session/localize.js';
 import { buildRaceSummary } from '../game/summary.js';
 import { COUNTDOWN_SECONDS } from './stack.js';
+import { applyKartPose } from '../race/kartPose.js';
 
 /** First byte of a WS6 session message (UTF-8 JSON object). */
 export const SESSION_FIRST_BYTE = 0x7b;
@@ -73,8 +74,7 @@ export function createHostPresenter(race) {
         k.render.heading = h;
         const g = k.model?.group;
         if (g) {
-          g.position.set(x, y, z);
-          g.rotation.set(k.phys?.pitch ?? 0, h + (k.phys?.spinAngle ?? 0), k.phys?.roll ?? 0);
+          applyKartPose(g, k, x, y, z, h);
         }
       }
     },

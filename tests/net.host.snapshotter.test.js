@@ -75,11 +75,12 @@ describe('snapshotter', () => {
 });
 
 describe('snapshot codec stand-in vs §6.1 sizes (M1-4)', () => {
-  it('fixture: typical 8 karts / 32 boxes / 1 own kart = 370 B; 8 gumdrops + 2 rockets <= 460 B; cap-case <= 1150 B', () => {
+  it('fixture: typical 8 karts / 32 boxes / 1 own kart = 407 B; 8 gumdrops + 2 rockets <= 500 B; cap-case <= 1150 B', () => {
     const typical = encodeSnapshot(makeSimStateFixture(), { houseTail: { owner: [0] } });
-    expect(typical.length).toBe(370);
+    // 370 B before v3.1; + 3 B per kart (trick byte, trick progress, landing squash) + 13 B owner tail (drift arc + flight)
+    expect(typical.length).toBe(407);
     const items = encodeSnapshot(makeSimStateFixture({ gumdrops: 8, rockets: 2 }), { houseTail: { owner: [0] } });
-    expect(items.length).toBeLessThanOrEqual(460);
+    expect(items.length).toBeLessThanOrEqual(500);
     const cap = encodeSnapshot(makeSimStateFixture({ gumdrops: 24, rockets: 8, battle: true }), { houseTail: { owner: [0, 1, 2, 3] } });
     expect(cap.length).toBeLessThanOrEqual(1150);
     expect(cap.length).toBeGreaterThan(700);
