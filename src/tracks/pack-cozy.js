@@ -5,6 +5,8 @@
  * Shared Cozy props live in src/tracks/props/cozy-*.js; songs in src/audio/songs/<id>.js.
  */
 import pumpkinPatch from './pumpkin-patch.js';
+import teacupGarden from './teacup-garden.js';
+import peppermintVillage from './peppermint-village.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [pumpkinPatch];
+export default [pumpkinPatch, teacupGarden, peppermintVillage];
