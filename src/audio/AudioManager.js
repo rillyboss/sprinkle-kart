@@ -405,4 +405,53 @@ export class AudioManager {
       g.setTargetAtTime(full, t + h, 0.25);
     } catch { /* never let a duck break the game */ }
   }
+
+  /**
+   * Music layers: scale the parts of the song that is playing (`lead`, `counter`,
+   * `arp`, `pad`, `bass`, `drums`; each 0..1.5, missing = 1) with a smooth ramp of
+   * `fade` seconds, so a screen can thin the band out or bring everyone back in.
+   * Only the current song is affected: every new song starts with all layers at 1.
+   * Returns true when applied (false before unlock / with no song). Added by the
+   * showcase presentation workstream (src/systems/menuMusic.js).
+   */
+  setMusicLayers(levels = {}, fade = 0.6) {
+    const seq = this._seq;
+    if (!seq || !seq.buses || !this.ctx) return false;
+    const next = normalizeLayers(levels);
+    const f = Math.max(0.02, Math.min(4, Number.isFinite(fade) ? fade : 0.6));
+    const t = this.ctx.currentTime;
+    for (const [part, lv] of Object.entries(next)) {
+      const bus = seq.buses[part];
+      if (!bus) continue;
+      try {
+        const g = bus.gain;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(Number.isFinite(g.value) ? g.value : 1, t);
+        g.linearRampToValueAtTime(lv, t + f);
+      } catch { /* layers are decoration; never break the music */ }
+    }
+    seq.layers = next;
+    return true;
+  }
+
+  /** The layer levels of the song playing now (all 1 unless changed), or null with no song. */
+  get musicLayers() {
+    const seq = this._seq;
+    if (!seq) return null;
+    return { ...(seq.layers || FULL_LAYERS) };
+  }
+}
+
+/** Every music layer at its normal level. */
+export const MUSIC_LAYERS = Object.freeze(['lead', 'counter', 'arp', 'pad', 'bass', 'drums']);
+const FULL_LAYERS = Object.freeze(Object.fromEntries(MUSIC_LAYERS.map((k) => [k, 1])));
+
+/** Fill in missing layers with 1 and clamp every level to 0..1.5. */
+export function normalizeLayers(levels = {}) {
+  const out = {};
+  for (const k of MUSIC_LAYERS) {
+    const v = Number(levels?.[k] ?? 1);
+    out[k] = Number.isFinite(v) ? Math.max(0, Math.min(1.5, v)) : 1;
+  }
+  return out;
 }
