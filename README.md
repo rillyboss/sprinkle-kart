@@ -100,15 +100,28 @@ Racers further back get the better items, so everyone stays in the race.
 
 ---
 
-## Unlock **Cotton Candy Girl** ☁️💖
+## Unlocks, the Sticker Book and the Grown-ups corner 📒
 
 **Win any race (finish 1st) and Cotton Candy Girl joins the team!** She has a giant fluffy
 pink-and-blue cotton-candy cloud of hair, a sparkly cape and a cotton-candy wand, and she drives
 a fluffy cloud kart. After you unlock her, pick her on the *Pick your racer!* screen.
-The game remembers the unlock (and your trophies) in this browser.
 
-To lock her again (to earn her again), open the game with `?unlockreset=1` added to the address, for example
-`http://localhost:5173/?unlockreset=1`.
+Every other new racer and track unlocks the same way: finish races, win on certain tracks, do
+drift turbos, use items, race with a friend, try a Time Trial or win a Grand Prix cup. When
+**anyone** in the family reaches a goal, the results screen throws a big party for each new
+friend or track, one after the other ("Surprise 1 of 3!"), and a **Next sticker** card shows
+what is closest to unlocking. Locked racers and tracks show their goal and a progress bar
+(e.g. *Win 3 races — 1/3 ⭐*).
+
+- **📒 Sticker Book** (on the title screen: press Down, pick it, press A): every racer and track
+  as a sticker (locked ones are mystery silhouettes with a hint), trophies and best places per
+  track and cup, and the family's totals. Y / Tab flips the page, B goes back.
+- **⚙️ Grown-ups** (next to it): music and sound volume, *Kid-Assist for new players*,
+  **Unlock everything** and **Start a fresh Sticker Book** (reset). The last two sit behind a
+  little parent gate: answer an addition question with the d-pad (Up/Down) and press A.
+
+The game remembers everything in this browser. `?unlockreset=1` added to the address (for
+example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book.
 
 ---
 

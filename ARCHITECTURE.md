@@ -585,8 +585,14 @@ The RaceSummary (§6) has everything needed: `humans[].place/estimated/kidAssist
 `{ type: 'stat', stat: <STAT_KEY>, count }` · `{ type: 'track', trackId, result: 'win'|'top3'|'finish' }` ·
 `{ type: 'cup-track', cupId, result }` (any track of that cup) · `{ type: 'distinct-tracks', result, count }`.
 Hints: `describeUnlock(rule)` ("Win on Mermaid Lagoon to unlock!"), `unlockDetail(rule, kind)`.
-Today `src/systems/progressUnlocks.js` still hard-codes the v1 behaviour (a human win → trophy + Cotton Candy
-Girl); the progression workstream replaces it with a rule engine that evaluates every `def.unlock`.
+The rule engine is `src/progress/engine.js` (pure: `applyRaceSummary`, `applyGrandPrix`, `ruleProgress`,
+`evaluateUnlocks`, `nextUnlock`); `src/systems/progressUnlocks.js` records every `race-end` / `gp-end` once through
+`progress.recordRace(summary)` / `recordGrandPrix(gp)` and pushes what they return into `summary.unlocks` /
+`gp.unlocks`. Only REGISTERED racers/tracks are evaluated, so content that ships later gets its own celebration.
+v2 saves also keep `racers: { [characterId]: { races, wins, podiums } }`, `tracks[id].timeTrials`,
+`cups[id].finished`, `settings: { music, sfx, kidAssistDefault }` (`getSettings` / `setSettings`, applied by
+`src/systems/progressSettings.js`), and detail counters `miniTurbos1..3, itemBoxes, boosts, bonked, racesPlayed,
+recordsSet`. `setUnlockAll(on)` is the parent switch; `isEarned(id)` ignores it.
 
 ---
 

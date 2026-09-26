@@ -373,10 +373,14 @@ async function resultsTest(browser) {
     await t.page.keyboard.press('Enter');
     await t.page.waitForTimeout(150);
     if (!(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')))) fail(name, 'unlock reveal was skipped by an early press');
-    // once the reveal has had its moment, dismiss it, then pick "Race again" → a new race starts
-    await waitFor(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, 30000, 'unlock reveal ready to continue');
-    await t.page.keyboard.press('Enter');
-    await t.page.waitForTimeout(1500);
+    // once each reveal has had its moment, dismiss it (the rule engine may celebrate
+    // several unlocks in a row), then pick "Race again" → a new race starts
+    for (let i = 0; i < 12; i++) {
+      await waitFor(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, 30000, 'unlock reveal ready to continue');
+      await t.page.keyboard.press('Enter');
+      await t.page.waitForTimeout(1500);
+      if (!(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')))) break;
+    }
     await t.page.screenshot({ path: path.join(OUT, 'results-after.png') });
     await t.page.keyboard.press('Enter');
     await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'next race after results');
@@ -385,6 +389,89 @@ async function resultsTest(browser) {
   } catch (err) {
     fail(name, err.message);
     await t.page.screenshot({ path: path.join(OUT, `${name}-FAIL.png`) }).catch(() => {});
+  } finally {
+    await t.ctx.close();
+  }
+}
+
+/**
+ * Progression: the Sticker Book and Grown-ups corner from the title screen with the
+ * keyboard, the parent gate unlocking everything, and a 3-unlock celebration sequence.
+ */
+async function progressionTest(browser) {
+  const name = 'progression';
+  const n0 = failures.length;
+  const t = await newPage(browser, name);
+  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `progress-${n}.png`) });
+  const press = async (key, pause = 450) => { await t.page.keyboard.press(key); await t.page.waitForTimeout(pause); };
+  const has = (sel) => t.page.evaluate((q) => !!document.querySelector(q), sel);
+  try {
+    await t.page.goto(`${BASE}?unlockreset=1`);
+    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-title'), null, 60000, 'title screen');
+    await t.page.waitForTimeout(1200);
+    const chips = await t.page.evaluate(() => [...document.querySelectorAll('.sk-title-entry')].map((b) => b.textContent));
+    if (!chips.some((c) => /Sticker Book/.test(c)) || !chips.some((c) => /Grown-ups/.test(c))) fail(name, `title entries: ${JSON.stringify(chips)}`);
+    await press('KeyS');                       // focus the menu entries
+    await press('Enter', 900);                 // open the Sticker Book
+    if (!(await has('.skp-book'))) throw new Error('Sticker Book did not open');
+    const counts = await t.page.evaluate(() => [document.querySelectorAll('.skp-sticker').length, document.querySelectorAll('.skp-tsticker').length]);
+    if (counts[0] !== 21 || counts[1] !== 20) fail(name, `expected 21 racer + 20 track stickers, got ${counts}`);
+    await shot('1-book');
+    await press('Tab', 600);
+    await shot('2-book-tracks');
+    await press('Tab', 600);
+    await shot('3-book-totals');
+    await press('Escape', 900);
+    if (!(await has('.sk-title'))) fail(name, 'B did not go back to the title');
+    await press('KeyS');
+    await press('KeyD');
+    await press('Enter', 900);                 // Grown-ups corner
+    if (!(await has('.skp-settings'))) throw new Error('Grown-ups corner did not open');
+    await press('KeyS', 250); await press('KeyS', 250); await press('KeyS', 250);
+    await press('Enter', 700);                 // Unlock everything -> parent gate
+    if (!(await has('.skp-gate'))) throw new Error('parent gate did not open');
+    await press('Enter', 600);                 // wrong answer (0): still gated
+    if (await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}').unlockAll)) fail(name, 'a wrong gate answer unlocked everything');
+    const answer = await t.page.evaluate(() => { const m = document.querySelector('.skp-gate-q').textContent.match(/(\d+)\D+(\d+)/); return Number(m[1]) + Number(m[2]); });
+    for (let i = 0; i < answer; i++) await press('KeyW', 110);
+    await shot('4-gate');
+    await press('Enter', 800);
+    const all = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}').unlockAll);
+    if (all !== true) fail(name, 'the parent gate did not unlock everything');
+    await shot('5-unlocked');
+    await press('Enter', 600);
+    await press('Escape', 900);
+    await press('Enter', 1000);                // title -> join
+    await press('Enter', 1000);                // join -> character select
+    const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
+    if (locked !== 0) fail(name, `unlock everything left ${locked} locked racer tiles`);
+    // A 3-unlock celebration, straight through the results screen.
+    await t.page.evaluate(() => {
+      const m = window.__game.menus;
+      const c = m.characters;
+      const standings = c.slice(0, 8).map((d, i) => ({ characterId: d.id, playerIndex: i ? null : 0, isCPU: !!i, finishPlace: i + 1, finished: true, finishTime: 70 + i }));
+      window.__smokeResults = m.showResults({ standings, trackDef: m.tracks[0], humanWinner: standings[0], unlocks: [
+        { kind: 'character', id: c[8].id, def: c[8] }, { kind: 'track', id: m.tracks[1].id, def: m.tracks[1] }, { kind: 'character', id: c[3].id, def: c[3] },
+      ] });
+    });
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      await waitFor(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue:not(.sk-leaving)'), null, 30000, `reveal ${i + 1}`);
+      seen.push(await t.page.evaluate(() => {
+        const u = document.querySelector('.sk-unlock:not(.sk-leaving)');
+        return `${u.classList.contains('sk-unlock-is-track') ? 'track' : 'character'}:${u.querySelector('.skp-ribbon')?.textContent ?? ''}`;
+      }));
+      if (i === 1) await shot('6-reveal-track');
+      await press('Enter', 1400);
+    }
+    const want = ['character:Surprise 1 of 3!', 'track:Surprise 2 of 3!', 'character:Surprise 3 of 3!'];
+    if (JSON.stringify(seen) !== JSON.stringify(want)) fail(name, `reveal sequence ${JSON.stringify(seen)}`);
+    if (await has('.sk-unlock:not(.sk-leaving)')) fail(name, 'a reveal stayed up after the sequence');
+    checkErrors(t);
+    if (failures.length === n0) log(`${name}: ok`);
+  } catch (err) {
+    fail(name, err.message);
+    await shot('FAIL').catch(() => {});
   } finally {
     await t.ctx.close();
   }
@@ -415,6 +502,7 @@ try {
   if (wanted('scale')) await menuScaleTest(browser);
   if (wanted('gamepad')) await gamepadFlowTest(browser);
   if (wanted('results')) await resultsTest(browser);
+  if (wanted('progression')) await progressionTest(browser);
 } catch (err) {
   fail('smoke', err.stack || err.message);
 } finally {
