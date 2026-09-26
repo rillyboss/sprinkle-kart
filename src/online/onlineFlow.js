@@ -28,7 +28,7 @@ export const ONLINE_TEXT = Object.freeze({
   roboBack: 'You have the wheel again! 🏎️',
   wobbly: 'A friend\'s connection is a bit wobbly… 📶',
   finishWait: 'Finish! ✨',
-  pausedEveryone: 'Everyone is on a snack break 🍪',
+  pausedEveryone: 'Snack break for everyone in the room!',
   controllerNap: 'Controller took a nap 💤 Robo Driver is driving!',
 });
 

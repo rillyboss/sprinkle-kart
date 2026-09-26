@@ -241,3 +241,19 @@ describe('opening and joining a room (in-memory transport)', () => {
     expect(signalConfigFor({ env: {}, location: at('?signal=public&relays=ws://evil', 'rillyboss.github.io'), resolve: resolveSignalConfig }).forced).toBe(null);
   });
 });
+
+describe('friendly words (§1 rule 7) in every WS7 string', () => {
+  it('online glue texts, option lists, HUD lines and emotes pass the tone check', async () => {
+    const { NET_HUD_TEXT } = await import('../src/systems/netHud.js');
+    const { EMOTES } = await import('../src/systems/netEmotes.js');
+    const BANNED = /\b(hit|hits|kill|killed|crash|crashed|destroy|destroyed|die|dies|dead|blood|weapon|shoot|attack|hate|stupid|loser|lose|fail|failed|failure|error|errors|broken|blocked|scary|hurt|banned|kick|kicked|reject|rejected|denied|forbidden|invalid|illegal|abort)\b/i;
+    const all = [
+      ...Object.values(ONLINE_TEXT), ...Object.values(NET_HUD_TEXT), ...EMOTES.map((e) => e[1]),
+      ...[HOST_RESULT_OPTIONS, GUEST_RESULT_OPTIONS, HOST_PAUSE_OPTIONS, GUEST_PAUSE_OPTIONS].flat().map((o) => o[1]),
+    ];
+    expect(all.length).toBeGreaterThan(25);
+    for (const t of all) expect(t, t).not.toMatch(BANNED);
+    // the pause card adds "paused the race" to a short label, so the host's line is a full sentence
+    expect(ONLINE_TEXT.pausedEveryone).toMatch(/[!.?]$/);
+  });
+});

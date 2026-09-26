@@ -1162,6 +1162,7 @@ function startNetRace(setup, done, { net }) {
   const playerIndices = humans.map((p) => p.playerIndex);
   const laps = setup.laps;
   const timing = mod.raceTiming(stack);
+  menus.hide(); // the "waiting for friends" / net-waiting screen goes; the race takes the screen
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(theme.skyBottom ?? 0xffd6ec);
@@ -1327,7 +1328,7 @@ function startNetRace(setup, done, { net }) {
       // "Pause everyone 🍪": every machine freezes until the host keeps racing
       link.pauseAll(true);
       bus.emit('race-pause', { label: 'everyone' }, session);
-      menus.showPause(mod.TEXT.snackBreak, { options: mod.HOST_PAUSE_OPTIONS }).then((choice) => {
+      menus.showPause(mod.ONLINE_TEXT.pausedEveryone, { options: mod.HOST_PAUSE_OPTIONS }).then((choice) => {
         pauseOpen = false;
         link.pauseAll(false);
         bus.emit('race-resume', { choice }, session);
