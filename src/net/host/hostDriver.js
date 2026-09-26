@@ -25,6 +25,13 @@ import { TIMEBASE_REASON, PAUSE_REASON } from './hostClock.js';
 
 export const EVENTS_PER_BATCH = 48;
 export const NETSTAT_EVERY_TICKS = 60;
+/**
+ * A house we have not heard from for this long (an outage: Robo Driver has its karts) gets one snapshot a second
+ * instead of 30, so its SCTP send buffer doesn't fill up and hold the rate at 15 Hz for seconds after the link
+ * comes back (net review #11). Anything it sends brings the full rate back at once.
+ */
+export const SILENT_HOUSE_TICKS = 90;
+export const SILENT_SNAPSHOT_EVERY = 30;
 
 const defaultTickRace = (race, inputs) => {
   if (typeof race.tick === 'function') race.tick(inputs); else race.update(1 / 60, inputs);
@@ -132,6 +139,12 @@ export function createHostDriver({
     const epoch = clock.epoch;
     const state = snapshotter.capture(race, tick);
     for (const st of H.values()) {
+      // silent AND its state channel is backing up (the downlink is dead too): don't pile snapshots into SCTP
+      if ((st.buffer.silentTicks?.(tick) ?? 0) > SILENT_HOUSE_TICKS && (transport.stats?.(st.peerId)?.bufferedState ?? 0) > 0
+        && Math.floor(tick / snapshotEvery) % SILENT_SNAPSHOT_EVERY !== 0) {
+        stats.silentSkips = (stats.silentSkips || 0) + 1;
+        continue;
+      }
       const bytes = snapshotter.encodeFor(state, st.id, {
         epoch, flags: { paused }, lastInputTick: st.buffer.lastConsumed, inputSlack: st.buffer.slack(tick), owner: st.karts,
       });

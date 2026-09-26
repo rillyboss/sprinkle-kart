@@ -95,6 +95,22 @@ export function createSnapshotBuffer({ capacity = 32 } = {}) {
 /**
  * Snapshot arrival statistics: interval, jitter, loss and bursts (from the ticks that arrived).
  */
+/**
+ * The host's current snapshot interval in ticks: the MOST COMMON recent gap (ties → the smaller one). The
+ * smallest gap misread a host on 15 Hz backpressure (gaps of 4 with an occasional 2) as ~50 % loss, which kept
+ * interpolation and the input lead in lossy mode long after the link was clean again (net review #11); single
+ * lost snapshots never make 4 the most common gap of a 30 Hz stream.
+ */
+export function modalGap(gaps) {
+  if (!gaps.length) return 2;
+  const count = new Map();
+  for (const g of gaps) count.set(g, (count.get(g) || 0) + 1);
+  let best = gaps[0];
+  let n = 0;
+  for (const [g, c] of count) if (c > n || (c === n && g < best)) { best = g; n = c; }
+  return best;
+}
+
 export function createArrivalStats({ tickMs = 1000 / 60, window = 64 } = {}) {
   const arrivals = []; // { tick, dev }
   const gaps = [];
@@ -116,16 +132,16 @@ export function createArrivalStats({ tickMs = 1000 / 60, window = 64 } = {}) {
         const g = tick - newestTick;
         gaps.push(g);
         if (gaps.length > 16) gaps.shift();
-        const interval = Math.min(...gaps);
-        const missing = Math.round(g / interval) - 1;
+        const interval = modalGap(gaps);
+        const missing = Math.max(0, Math.round(g / interval) - 1);
         lastBurst = missing;
       }
       if (newestTick === null || tick > newestTick) newestTick = tick;
       seen.push(tick);
       if (seen.length > 90) seen.shift();
     },
-    /** Snapshot interval in ms (the smallest recent tick gap: loss does not inflate it). */
-    get intervalMs() { return (gaps.length ? Math.min(...gaps) : 2) * tickMs; },
+    /** Snapshot interval in ms (the most common recent tick gap: single losses do not inflate it). */
+    get intervalMs() { return modalGap(gaps) * tickMs; },
     get jitterMs() { return jitterMs; },
     /** Missing snapshots in the most recent gap (a burst when >= 2). */
     get lastBurst() { return lastBurst; },
@@ -133,7 +149,7 @@ export function createArrivalStats({ tickMs = 1000 / 60, window = 64 } = {}) {
     get lossPct() {
       if (lossCache !== null) return lossCache;
       if (seen.length < 10 || !gaps.length) return (lossCache = 0);
-      const interval = Math.min(...gaps);
+      const interval = modalGap(gaps);
       const lo = Math.min(...seen);
       const hi = Math.max(...seen);
       const expected = Math.round((hi - lo) / interval) + 1;

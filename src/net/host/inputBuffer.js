@@ -296,6 +296,12 @@ export function createInputBuffer({
     },
     get lastConsumed() { return lastConsumed; },
     get newestSeen() { return newestSeen; },
+    /** Ticks since anything at all arrived from this house (0 until it has sent something). */
+    silentTicks(tick = lastConsumed) {
+      const heard = Math.max(lastInputTick, newestSeen);
+      if (firstTake === null || !Number.isFinite(heard)) return 0;
+      return Math.max(0, tick - heard);
+    },
     get robo() { return robo; },
     get lastInputTick() { return lastInputTick; },
     /** Pending queued presses per player. */
