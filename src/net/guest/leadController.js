@@ -6,8 +6,14 @@
  * - Target slack 2 ticks (inputs travel in pairs at 30 Hz, so never 1), raised to 4 when measured loss
  *   is > 2 % or a burst of >= 2 lost packets was seen in the last 10 s.
  * - Time dilation: the predicted clock runs up to ±3 % faster/slower to hold slack in [target−1, target+1].
- * - Slack < 0 for 3 snapshots in a row → lead += 2 ticks at once; slack > target + 4 for 10 snapshots →
- *   lead −= 2 at once. After a jump, reports that cannot yet reflect it (one round trip) are ignored.
+ * - Slack < 0 (the input really arrived late) for 3 snapshots in a row → lead += 2 ticks at once; slack >
+ *   target + 4 for 10 snapshots → lead −= max(2, half the excess) at once, so a lead that grew during a bad
+ *   patch comes back in a few seconds. After a jump, reports that cannot yet reflect it (one round trip) are
+ *   ignored.
+ * - −128 ("the host has nothing for that tick") is NO information: during an upload-only outage every report
+ *   is −128, and counting it as late ratcheted the lead up ~6 ticks a second (net review #7). The host reports
+ *   late arrivals as real negative slack, so a lead that is truly too small still grows. Reports while the host
+ *   has this house on Robo Driver are ignored too.
  * - Frozen while the host is paused.
  */
 export const LEAD_TARGET_SLACK = 2;
@@ -15,6 +21,8 @@ export const LEAD_TARGET_SLACK_LOSSY = 4;
 export const LEAD_DILATION = 0.03;
 export const LOSS_RAISE_PCT = 2;
 export const BURST_MEMORY_MS = 10000;
+/** "The host never got that tick" in a slack report. */
+export const SLACK_MISSING = -128;
 
 /**
  * @param {{ tickMs?: number, targetSlack?: number, lossySlack?: number, dilation?: number, minLead?: number, maxLead?: number }} [o]
@@ -33,7 +41,7 @@ export function createLeadController({
   let cooldown = 0;
   let slackAvg = null;
   let rttTicks = 0;
-  const stats = { jumpsUp: 0, jumpsDown: 0, reports: 0, missing: 0 };
+  const stats = { jumpsUp: 0, jumpsDown: 0, reports: 0, missing: 0, ignored: 0 };
 
   const target = () => (lossy ? lossySlack : targetSlack);
   const clampLead = () => { lead = Math.max(minLead, Math.min(maxLead, lead)); };
@@ -56,19 +64,31 @@ export function createLeadController({
       clampLead();
     },
     setRtt(rttMs) { rttTicks = rttMs / tickMs; },
-    /** One snapshot's inputSlack report (−128 = missing). */
-    onSlack(slack) {
+    /**
+     * One snapshot's inputSlack report (−128 = the host has nothing for that tick).
+     * @param {number} slack
+     * @param {{ robo?: boolean }} [o]  the host has this house on Robo Driver (its inputs are not being used)
+     */
+    onSlack(slack, { robo = false } = {}) {
       if (frozen) return;
       stats.reports++;
+      if (slack <= SLACK_MISSING || robo) {
+        // no information about how early our inputs are (an outage, or Robo Driver): never a reason to jump
+        if (slack <= SLACK_MISSING) stats.missing++; else stats.ignored++;
+        return;
+      }
       if (cooldown > 0) { cooldown--; return; }
-      const s = slack <= -128 ? -1 : slack;
-      if (slack <= -128) stats.missing++;
+      const s = slack;
       slackAvg = slackAvg === null ? s : slackAvg + (s - slackAvg) * 0.25;
       const t = target();
       const settle = Math.ceil((rttTicks + 4) / 2) + 1; // snapshots before a change is visible
       if (s < 0) { neg++; high = 0; } else if (s > t + 4) { high++; neg = 0; } else { neg = 0; high = 0; }
       if (neg >= 3) { lead += 2; neg = 0; cooldown = settle; slackAvg = null; stats.jumpsUp++; }
-      else if (high >= 10) { lead -= 2; high = 0; cooldown = settle; slackAvg = null; stats.jumpsDown++; }
+      else if (high >= 10) {
+        // far above target (e.g. after a bad patch): halve the excess at once, at least 2 ticks
+        lead -= Math.max(2, Math.floor((s - t) / 2));
+        high = 0; cooldown = settle; slackAvg = null; stats.jumpsDown++;
+      }
       clampLead();
       if (slackAvg === null) { rate = 0; return; }
       rate = slackAvg < t - 1 ? dilation : slackAvg > t + 1 ? -dilation : 0;

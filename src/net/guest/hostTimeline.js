@@ -4,8 +4,10 @@
  * (`clock.hostNow(localMs)`, `clock.rttMs`); this module keeps the tick anchor.
  *
  * - `onTimebase(tb)`: a newer epoch, or a same-epoch anchor that disagrees by > 1 tick, hard-resyncs.
- * - `onPause(pauseTick)` freezes `tickAt()` at pauseTick; `onResume(resumeTick)` + its TIMEBASE unfreeze
- *   (if the TIMEBASE is late, the resume unfreezes on its own after `resumeGraceMs`).
+ * - `onPause(pauseTick)` freezes `tickAt()` at pauseTick; `onResume(resumeTick)` unfreezes AT ONCE on a
+ *   provisional anchor (the host resumed one-way ago) and the resume TIMEBASE, whenever it arrives, only
+ *   corrects it. (Waiting for a TIMEBASE that was lost and retransmitted froze the guest for 300+ ms and then
+ *   jumped its timeline ~25 ticks — every remote kart snapped metres.)
  * - `onSnapshot(tick, epoch, recvMs)` filters (tick, arrival) pairs so a lost or late TIMEBASE is harmless:
  *   residual r = tickAt(recv) − tick − oneWayTicks; the median over the last 10 snapshots of this epoch
  *   slews the anchor by ≤ 0.25 tick per snapshot; |median| > 3 ticks for 5 snapshots in a row hard-resyncs
@@ -58,12 +60,7 @@ export function createHostTimeline({ clock, tickHz = 60, resumeGraceMs = RESUME_
 
   function tickAt(localMs) {
     if (paused) return pauseTick;
-    if (pendingResume) {
-      if (localMs - pendingResume.localMs < resumeGraceMs) return pendingResume.tick - 1;
-      // The resume TIMEBASE never came: assume the host resumed one-way ago.
-      setAnchor(pendingResume.tick, hostNow(pendingResume.localMs) - oneWay());
-      pendingResume = null;
-    }
+    if (pendingResume && localMs - pendingResume.localMs >= resumeGraceMs) pendingResume = null; // TIMEBASE never came
     return known ? raw(localMs) : 0;
   }
 
@@ -97,6 +94,8 @@ export function createHostTimeline({ clock, tickHz = 60, resumeGraceMs = RESUME_
       if (!paused && !pendingResume) return;
       paused = false;
       pendingResume = { tick, localMs: localMs ?? 0 };
+      // provisional: the host resumed `tick` one-way ago; the resume TIMEBASE (new epoch) replaces it
+      setAnchor(tick, hostNow(localMs ?? 0) - oneWay());
     },
     /**
      * @param {number} tick snapshot tick (state after simulating it)
@@ -138,7 +137,7 @@ export function createHostTimeline({ clock, tickHz = 60, resumeGraceMs = RESUME_
         }
       }
     },
-    get paused() { return paused || !!pendingResume; },
+    get paused() { return paused; },
     get epoch() { return epoch; },
     get known() { return known; },
     /** One-way latency in ticks (for R = T_est − oneWay − interp). */

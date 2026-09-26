@@ -42,8 +42,10 @@ describe('host timeline', () => {
     expect(tl.tickAt(5000)).toBe(120);
     expect(tl.tickAt(30000)).toBe(120);
     tl.onResume(121, 30000);
-    expect(tl.paused).toBe(true); // still waiting for the resume TIMEBASE
-    expect(tl.tickAt(30100)).toBe(120);
+    // unfrozen at once on a provisional anchor (the host resumed one-way ago) — never a freeze-then-jump
+    expect(tl.paused).toBe(false);
+    expect(tl.tickAt(30000)).toBeCloseTo(121, 6);
+    expect(tl.tickAt(30100)).toBeCloseTo(121 + 100 / TICK, 6);
     tl.onTimebase({ epoch: 1, tick: 121, hostMs: 30000 - 20 });
     expect(tl.paused).toBe(false);
     expect(tl.tickAt(30000 - 20 + TICK * 10)).toBeCloseTo(131, 9);
@@ -51,15 +53,20 @@ describe('host timeline', () => {
     expect(tl.paused).toBe(false);
   });
 
-  it('a resume whose TIMEBASE never arrives unfreezes by itself after the grace time', () => {
+  it('a resume whose TIMEBASE is late (lost + retransmitted) never freezes or jumps the timeline', () => {
     const tl = createHostTimeline({ clock: fixedClock(0, 40) });
     tl.onTimebase({ epoch: 0, tick: 1, hostMs: 0 });
     tl.onPause(60);
     tl.onResume(61, 10000);
-    expect(tl.tickAt(10200)).toBe(60);
+    // anchored one-way (20 ms) before the resume arrived, running at once
+    expect(tl.tickAt(10200)).toBeCloseTo(61 + (200 + 20) / TICK, 6);
     const t = tl.tickAt(10600);
-    expect(t).toBeCloseTo(61 + (600 + 20) / TICK, 6); // anchored one-way (20 ms) before the resume arrived
+    expect(t).toBeCloseTo(61 + (600 + 20) / TICK, 6);
     expect(tl.paused).toBe(false);
+    // the TIMEBASE finally arrives 400 ms late: it only nudges the estimate (well under a tick here)
+    const before = tl.tickAt(10700);
+    tl.onTimebase({ epoch: 1, tick: 61, hostMs: 10000 - 20 });
+    expect(Math.abs(tl.tickAt(10700) - before)).toBeLessThan(1);
   });
 
   it('snapshot arrivals slew a slightly wrong anchor (<= 0.25 tick per snapshot) and ignore other epochs', () => {
@@ -123,12 +130,35 @@ describe('lead controller', () => {
     lc.reset(0);
     const l0 = lc.lead;
     lc.onSlack(-1); lc.onSlack(-128); expect(lc.lead).toBe(l0);
-    lc.onSlack(-2);
+    lc.onSlack(-2); // −128 carried no information: this is the 2nd real late report
+    expect(lc.lead).toBe(l0);
+    lc.onSlack(-1);
     expect(lc.lead).toBe(l0 + 2);
     lc.onSlack(-1); lc.onSlack(-1); lc.onSlack(-1);
     expect(lc.lead).toBe(l0 + 2); // cooldown
     expect(lc.stats.jumpsUp).toBe(1);
     expect(lc.stats.missing).toBe(1);
+  });
+
+  it('a run of −128 (upload outage) or Robo Driver reports never raise the lead (review #7)', () => {
+    const lc = createLeadController();
+    lc.reset(50);
+    const l0 = lc.lead;
+    for (let i = 0; i < 300; i++) lc.onSlack(-128); // 10 s of "the host has nothing" at 30 Hz
+    expect(lc.lead).toBe(l0);
+    for (let i = 0; i < 30; i++) lc.onSlack(-5, { robo: true });
+    expect(lc.lead).toBe(l0);
+    expect(lc.stats).toMatchObject({ jumpsUp: 0, missing: 300, ignored: 30 });
+  });
+
+  it('far above target the lead comes down by half the excess per jump', () => {
+    // a lead that grew during a bad patch: the host sees our inputs 40 ticks early
+    const probe = createLeadController({ maxLead: 60 });
+    probe.reset(3000);
+    const start = probe.lead;
+    for (let i = 0; i < 10; i++) probe.onSlack(40);
+    expect(start - probe.lead).toBe(19); // (40 − 2) / 2 in one jump, not 2
+    expect(probe.stats.jumpsDown).toBe(1);
   });
 
   it('slack > target + 4 for 10 snapshots → −2 ticks at once', () => {

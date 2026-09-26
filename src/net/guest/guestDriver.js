@@ -59,7 +59,9 @@ export function createGuestDriver({
         if (m.tick > lastSlackTick) {
           lastSlackTick = m.tick;
           lastSlack = m.inputSlack;
-          lead.onSlack(m.inputSlack);
+          // while the host has our karts on Robo Driver its slack says nothing about our lead
+          const robo = replica.localKartIds?.length > 0 && replica.localKartIds.every((id) => m.karts?.[id]?.roboDriven);
+          lead.onSlack(m.inputSlack, { robo });
         }
         lastSnapTick = Math.max(lastSnapTick, m.tick);
         replica.onSnapshot(m, t);
