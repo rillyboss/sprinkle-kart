@@ -538,8 +538,8 @@ The snapshot codec (§6.1) quantises a `SimState`; the owner tail comes from `Ka
 export function predictTick(kart, input, ctx);   // ctx = { path, boostPads, gameplay, rules, raceState, countdown, emit }
 ```
 Order: countdown / rocket-start logic (from `Race._updateCountdown`) → self item use for **boost, triple
-boost, star, shield** (deterministic self-effects, no rng) → `stepKart` × 2 at 1/120 → lap counting (emits
-local `lap` only as a prediction hint, the authoritative `lap` event still comes from the host). It never
+boost, star, shield** (deterministic self-effects, no rng) → `stepKart` × 2 at 1/120 → lap counting (updates
+`kart.lap` / `distance` only; no `lap` event — the authoritative one comes from the host). It never
 reads other karts, items or boxes. **(measured)** `stepKart`-only replay matches the host bit-exactly in
 94–98 % of 100–200 ms windows; windows with contact/bonks/items reach up to 1.4 m error — reconciliation
 smoothing absorbs that (§9.5).
@@ -627,7 +627,8 @@ The host's own local players bypass the buffer (their input is sampled directly 
   owner phys), then **replay** stored inputs for ticks S+1 … current (≤ 12 ticks typical). The difference
   between the old predicted pose and the new one becomes a **visual error offset** that decays exponentially
   (τ = 100 ms; heading τ = 80 ms). Snap (no smoothing) when error > 4 m, heading error > 0.6 rad, or the
-  snapshot `teleport` flag is set.
+  snapshot `teleport` flag is set. **Replayed ticks never emit events** (`ctx.emit` is a no-op during replay):
+  a predicted hop/drift/boost event fires once, the first time its tick is predicted.
 - What is predicted vs host-only:
 
 | Thing | Local prediction | Host truth arrives via |
@@ -974,7 +975,7 @@ createHostDriver({ race, transport, houses /* houseId → { peerId, karts: kartI
                    setHouseRobo(houseId, on), stats(), dispose() }   // wraps race.onEvent to feed EventLog
 class ReplicaRace { constructor({ scene, trackDef, path, builtTrack, setup /* NetRaceSetup */, localKartIds,
                    buildKartModel, onEvent }); // Race read API: karts, getPlayerKart, getStandings, state, countdown,
-                   // time, clock, lapsTotal, path, rules, modeInfo, gameplay, lastDt, items.bursts, rng: null
+                   // time, clock, lapsTotal, path, racingLine, rules, modeInfo, gameplay, lastDt, items.bursts, rng: null
                    onSnapshot(snap), onEvents(batch), onResync(r), frame(frameDt, localInputs), present(alpha, frameDt), dispose() }
 createGuestDriver({ replica, transport, clock, localSeats }) → { frame(dt), onMessage(peerId, ch, bytes), stats(), dispose() }
 runNetRace(opts) → { host, guests[], results, events, metrics }   // tests/helpers/netHarness.js
