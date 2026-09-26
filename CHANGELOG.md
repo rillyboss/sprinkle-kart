@@ -22,6 +22,23 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
   Settings → Grown-ups 🔒* and is wiped from the address bar right away.
 - Say hi with 8 preset emotes (no typed chat anywhere). Grand Prix, Team Race and Bubble Battle come next.
 
+### Online play fixes (review of the first build)
+- A quiet lobby, a slow "Let them in?" or a host taking their time on the track screen no longer sends
+  friends home after 8 seconds (a tiny heartbeat keeps the room open).
+- **Back to the lobby** / **Start over** from the host's snack break now take every friend along.
+- A Wi-Fi hiccup shows **Reconnecting… 🔌** and brings the same house back (Robo Driver drives meanwhile);
+  "Your internet took a nap 📶" when it was this computer. A reloaded tab rejoins its own house. A house that
+  really left no longer haunts later races.
+- Closing the host's tab tells everyone within a second or two.
+- Smooth karts on 120/144 Hz screens, for the host and the guests; Kid-Assist players no longer lurch at GO.
+- An old tab meets "Different game version — everyone refresh the page 🔄" instead of racing a different track.
+- A wrong code or wrong sweets says *We couldn't find that room*; the network tips show when it really was the
+  network; a closed room says it is closed.
+- On an open stretch your twirl starts right at the gumdrop you touched.
+- A friend's Start says *Robo Driver has the wheel!* (no Photo mode online); the online mode screen shows only
+  the online modes.
+- The Grand Prix trophy ceremony shows its *Play again* / *Menu* buttons again after an unlock reveal.
+
 ### Under the hood
 - `src/online/` wires the netcode and the room into the game; `runHeadlessNetSession` races a host and
   guest houses in node (with network delay and loss) through the real glue for the tests.

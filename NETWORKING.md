@@ -608,9 +608,13 @@ is dropped as late.
 
 ### 7.4 Heartbeat and liveness
 
-PING at 4 Hz (lobby) / 2 Hz (race); any packet counts as a heartbeat. Per peer: **> 3 s** silent → `wobbly`
-(lobby icon 📶, HUD "🏡 is a bit wobbly…"); **> 8 s** silent or channel/pc `closed`/`failed` → `asleep`
-(disconnected, §13.1). A guest that sees no host packet for 8 s treats the host as gone (§13.3).
+While a room is open both sides send a tiny session **`KEEP`** on ctrl whenever they sent nothing else to that
+peer for 1 s — in the lobby, while waiting for approval, on net-waiting and in the race (plus the race's PING at
+2 Hz). Session housekeeping runs on a plain timer, never on rAF, so a hidden or busy tab keeps its room open. Any
+byte on any channel counts as heard. Per peer on the host: **> 3 s** silent in the lobby → `wobbly` (lobby icon
+📶, HUD "🏡 is a bit wobbly…"); a dropped connection → `asleep` (§13.1). A guest that hears nothing from the host
+for 8 s starts reconnecting (§13.2); one still waiting for approval goes back to the hub. (The first build sent
+nothing outside a race, so every guest was sent home after 8 s of quiet lobby — net review #1.)
 
 ---
 
@@ -1164,31 +1168,43 @@ The *Notes* column names the milestone (§16.2) that turns the mode on in `ONLIN
 
 ### 13.1 Guest disconnects
 
-`wobbly` at 3 s (icon + gentle HUD line), `asleep` at 8 s: their karts get **Robo Driver** ("🤖"), their seats
-stay reserved. In the lobby an asleep house is greyed and removed after the reconnect window.
+`wobbly` at 3 s (icon + gentle HUD line); a dropped connection → `asleep`: their karts get **Robo Driver**
+("🤖"), their seats and global indices stay reserved for the 60 s reconnect window — also in the lobby. An asleep
+house never holds up "everyone ready" and gets no karts in a new race; after the window (never during a race) it is
+removed. A guest's **BYE** ("Leave the room", closing the tab) removes its house at once in the lobby and at the
+results when it came mid-race (net review #5: dropped houses used to stay as ghosts forever).
 
 ### 13.2 Reconnect window (60 s) — milestone M2
 
-WELCOME gives each house a random 128-bit `token` (sessionStorage). A guest whose link drops retries
-signaling automatically (1 s, 2 s, 4 s … ≤ 60 s total, "Reconnecting… 🔌"); HELLO with the token re-attaches the
-same house and global indices without approval (also while the room is locked, since that house was never
-removed); mid-race the host sends RESYNC (cold state + `lastEventSeq`, as FRAG pieces paced per §4.1),
-snapshots resume, the input baseline resets (§9.3) and control returns on the next tick. In M1 a dropped
-guest simply stays with Robo Driver until the race ends and can rejoin (with approval) in the lobby. iOS/iPadOS (WebRTC suspended when locked or backgrounded):
+WELCOME gives each house a random 128-bit `token`, kept in sessionStorage per room (`sessionTicketStore`), so a
+reload of that tab re-attaches too. A joined guest whose link drops (host silent 8 s, or the connection closed)
+shows "Reconnecting… 🔌" ("Your internet took a nap 📶" when this machine is offline) and opens a **fresh
+matchmaker + connection with a new selfId** at 0, 3, 7, 12, 18 and 24 s, for 30 s in all (longer than the
+transport's 10 s ICE grace); the session, router and race sit on a swappable transport proxy and never notice.
+HELLO with the token re-attaches the same house and global indices without approval (also while locked). Mid-race
+the host's race moves that house to the new peer (`reattach`: snapshots, events and inputs follow it, START +
+the current TIMEBASE are resent, Robo Driver hands the karts back, the input baseline resets); the guest's own
+race was never torn down, so it just carries on (events sent during the outage are not replayed — the snapshots
+carry the state). Giving up says whose connection it was. (M1 had none of this: a 9 s Wi-Fi hiccup ended the
+guest's race blaming the host — net review #6.) iOS/iPadOS (WebRTC suspended when locked or backgrounded):
 on `visibilitychange → visible` the guest shows "Tap to reconnect 👆" (audio also needs the gesture).
 
 ### 13.3 Host leaves
 
-Host BYE (ending) or 8 s of silence → guests show "The host's house went to sleep 😴 Thanks for racing!" and
-return to the Online hub; the unfinished race is not recorded. No host migration in v1 (future: SimState +
+Host BYE (ending — also sent on `pagehide` when the host closes or reloads the tab, which closes the connections
+at once) → guests show "The host's house went to sleep 😴 Thanks for racing!" within a second or two; silence
+starts a reconnect first (§13.2) and ends with that sentence after 30 s. The unfinished race is not recorded. No host migration in v1 (future: SimState +
 rng state make it possible).
 
 ### 13.4 NAT / connection failure UX
 
-ICE timeout 15 s (one ICE restart included) → "We couldn't connect your houses 🙈" with three friendly tips:
-try again · a grown-up can turn on the Sprinkle Kart relay (docs/INFRA_SETUP.md) · try another network (school
-Chromebooks and phone hotspots often need the relay). The message says which part failed (from Check
-connection's categories).
+If the host showed up on the matchmaker (a connection was being made) but the connection never opened (20 s) →
+"We couldn't connect your houses 🙈" with the three friendly tips under it on the hub: try again · a grown-up can
+turn on the Sprinkle Kart relay (docs/INFRA_SETUP.md) · try another network (school Chromebooks and phone hotspots
+often need the relay). If **no host ever showed up** (public signaling can't tell "no such room" otherwise) →
+"We couldn't find that room. Check the code and the secret sweets? 🔍…" — a typo in the sweets is the likelier
+cause. A locked host answers a public-signaling knock with `refused: 'locked'` so the guest sees "closed", never
+the NAT tips (net review #10, #19).
 
 ### 13.5 Other failures
 
@@ -1573,16 +1589,19 @@ All bandwidth numbers are wire bytes (§4.1).
 | `INTERP_DELAY` | start 100 ms, clamp 70–150 ms, slew 1 ms / 100 ms | `src/net/guest/interpolation.js` |
 | `MAX_EXTRAPOLATION` | 250 ms | same |
 | `RECONCILE_TAU` / heading τ / snap | 100 ms / 80 ms / 4 m or 0.6 rad | `src/net/guest/reconcile.js` |
-| `LEAD_TARGET_SLACK` / under loss / dilation | 2 ticks / 4 ticks (loss > 2 % or bursts) / ±3 % | `src/net/guest/leadController.js` |
+| `LEAD_TARGET_SLACK` / under loss / dilation | 2 ticks / 4 ticks (loss > 2 % or bursts) / ±3 %; −128 and Robo Driver reports = no information; down by half the excess | `src/net/guest/leadController.js` |
+| slow machine | predict one frame further (EWMA of the frame length); `MAX_PREDICT_TICKS` 24 predicted + `MAX_FILL_TICKS` 60 recorded per frame | `src/net/guest/{guestDriver,replicaRace}.js` |
+| host tick phase / render | grid half a tick before the start frame; karts drawn between tick poses at the clock's alpha | `src/online/netRace.js` |
+| local gumdrop hits | uncontested (no other kart within 10 m), not a maybe-own drop (first seen < 16 m behind us, 60 ticks) | `src/net/guest/localHits.js`, `replicaRace.js` |
 | input hold / coast / Robo Driver / stale press drop | 250 ms / → 1.5 s / after 1.5 s / 250 ms | `src/net/host/inputBuffer.js` |
 | timebase | TIMEBASE at start, pause, resume, skip and 1 Hz; resync if > 1 tick off or median residual > 3 ticks × 5 | `src/net/guest/hostTimeline.js` |
-| heartbeat | ping 4 Hz lobby, 2 Hz race; wobbly 3 s; asleep 8 s | `src/net/heartbeat.js` |
-| reconnect window | 60 s (M2) | `src/net/session/*` |
+| heartbeat | session `KEEP` on ctrl when nothing else was sent for 1 s (both ways, every phase); PING 2 Hz in race; wobbly 3 s; host silent 8 s → guest reconnects | `src/net/session/wire.js`, `hostSession.js`, `guestSession.js` |
+| reconnect window | host keeps an asleep house 60 s; a guest tries for 30 s (attempts at 0, 3, 7, 12, 18, 24 s, each a fresh matchmaker + selfId) | `src/net/session/*`, `src/online/onlineFlow.js` |
 | approval timeout | 120 s | `src/net/session/approval.js` |
 | ICE connect timeout | 15 s (1 ICE restart) | `src/net/transport/webrtc.js` |
 | public fallback / guest dual start | torrent → + nostr after 6 s / public 4 s after Worker | `src/net/signaling/` |
 | `MAX_STATE_BYTES` / `MAX_CTRL_BYTES` / `CTRL_FRAGMENT_BYTES` | 1150 / 16384 / 1024 | `src/net/constants.js` |
-| `STATE_BUFFER_LIMIT` | max(1024, 2 × last state message) | `src/net/transport/webrtc.js` |
+| `STATE_BUFFER_LIMIT` | max(1024, 4 × the big state message (decaying max)) ; a silent house with a backed-up channel gets 1 snapshot/s | `src/net/transport/webrtc.js`, `src/net/host/hostDriver.js` |
 | `WIRE_OVERHEAD_BYTES` / TURN UDP / TURN TLS / `SACK_BYTES` | 93 / 97 / 150 / 93 (16 bundled) | `src/net/constants.js` |
 | memory ctrl retransmit | max(RTT + 3 snapshot intervals, `RTO_MIN_MS` 300), ×2 per repeat, cap 3 s | `src/net/transport/memory.js` |
 | channel ids | state 8 (unordered, 0 retransmits), ctrl 9 (reliable) | `src/net/transport/webrtc.js` |
