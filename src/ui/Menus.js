@@ -87,7 +87,8 @@ export class Menus {
      * Online session hooks (NETWORKING.md §10.1), null offline — every net hook below is a
      * no-op then, so offline paths are unchanged. Set by the online flow (WS7) to
      *   { role: 'host'|'guest', composeSetup(localSetup) → NetRaceSetup, waitingParams?(screenId) → params,
-     *     lobby?() → LobbyState, dispatch?(ev), seatsLeft?() → number, ... }
+     *     lobby?() → LobbyState, dispatch?(ev), seatsLeft?() → how many local players this machine may have now
+     *     (its current seats + the room's free seats; the join screen caps at it), ... }
      */
     this.net = null;
     /** Online flow actions for the online screens (host(), join(secret), leave() …), set by WS7. */

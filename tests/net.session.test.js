@@ -2,8 +2,8 @@
 // acceptance M1 #1 / M1-13 / M1-15 / M1-17).
 import { describe, it, expect, vi } from 'vitest';
 import { createSessionHub } from './net.session.hub.js';
-import { createHostSession, createHostReducer, createHostState, HELLO_TIMEOUT_MS } from '../src/net/session/hostSession.js';
-import { createGuestSession, guestReduce, createGuestState, CONNECT_TIMEOUT_MS, HOST_SILENT_MS } from '../src/net/session/guestSession.js';
+import { createHostSession, createHostReducer, createHostState, HELLO_TIMEOUT_MS, createHostNetContext } from '../src/net/session/hostSession.js';
+import { createGuestSession, guestReduce, createGuestState, CONNECT_TIMEOUT_MS, HOST_SILENT_MS, createGuestNetContext } from '../src/net/session/guestSession.js';
 import { buildIdentity, compatible, jsonDecode, jsonEncode, isToken, EMOTE_INTERVAL_MS } from '../src/net/session/wire.js';
 import { matchEmoji, APPROVAL_TIMEOUT_MS } from '../src/net/session/approval.js';
 import { humanCount, housePis } from '../src/net/session/lobby.js';
@@ -415,5 +415,40 @@ describe('lobby traffic, intents, emotes, leaving', () => {
     expect(jsonDecode(jsonEncode(msg))).toEqual(msg);
     expect(jsonDecode(new Uint8Array([1, 2, 3]))).toBe(null);
     expect(jsonDecode(jsonEncode({ type: 'NOPE' }))).toBe(null);
+  });
+});
+
+describe('ctx.net for the menus (glue for the online flow)', () => {
+  it('host: composeSetup turns the local flow result into a NetRaceSetup for the whole room', () => {
+    const room = makeRoom({ hostPlayers: 2 });
+    room.join('guest-b', { localPlayers: 1 });
+    room.host.dispatch({ type: 'host-intent', intent: { kind: 'pick', seat: 0, characterId: 'luna' } });
+    const pickCpus = vi.fn((n) => ['rocco', 'lenny', 'stella', 'peachy', 'gumbo', 'muffin', 'dino'].slice(0, n));
+    const net = createHostNetContext(room.host, { makeSeed: () => 42, pickCpus });
+    expect(net.role).toBe('host');
+    expect(net.secret).toEqual(SECRET);
+    expect(net.seatsLeft()).toBe(4); // 2 own seats + 5 free, capped at 4
+    const setup = net.composeSetup({ players: [], trackId: 'gumdrop-meadow', speedClass: 'zoomy', laps: 2, mode: 'free' });
+    expect(pickCpus).toHaveBeenCalledWith(5);
+    expect(setup).toMatchObject({ raceId: 1, seed: 42, trackId: 'gumdrop-meadow', speedClass: 'zoomy', laps: 2, mode: 'free' });
+    expect(setup.participants).toHaveLength(8);
+    expect(setup.participants.filter((p) => p.playerIndex !== null).map((p) => p.playerIndex)).toEqual([0, 1, 2]);
+    expect(room.host.lobby().hostChoice).toMatchObject({ trackId: 'gumdrop-meadow', speedClass: 'zoomy', laps: 2 });
+    expect(net.composeSetup({ trackId: 'gumdrop-meadow' }).raceId).toBe(2);
+  });
+
+  it('guest: role guest, its own house and seats, no composeSetup', () => {
+    const room = makeRoom({ hostPlayers: 1 });
+    const b = room.join('guest-b', { localPlayers: 2 });
+    const net = createGuestNetContext(b.g);
+    expect(net.role).toBe('guest');
+    expect(net.houseId).toBe(1);
+    expect(net.composeSetup).toBeUndefined();
+    expect(net.prompt()).toBe(null);
+    expect(net.seatsLeft()).toBe(4);
+    expect(net.lobby().label).toBe('SPRINKLE-4821');
+    net.dispatch({ type: 'intent', intent: { kind: 'seat-leave', seat: 1 } });
+    room.flush();
+    expect(room.host.lobby().houses[1].players).toHaveLength(1);
   });
 });

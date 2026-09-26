@@ -29,8 +29,9 @@
  * OWNER: WS6 (session, lobby & screens).
  */
 import {
-  createLobby, lobbyReduce, lobbyForWire, seatsLeft, getHouse, hostHouse, houseOfPi, LOBBY_SEND_INTERVAL_MS,
+  createLobby, lobbyReduce, lobbyForWire, seatsLeft, getHouse, hostHouse, houseOfPi, localCapacity, LOBBY_SEND_INTERVAL_MS,
 } from './lobby.js';
+import { composeOnlineSetup, cpuCountFor } from './composeSetup.js';
 import { createApprovalQueue, approvalReduce, isMatch } from './approval.js';
 import { rejectText, signalingErrorText } from './texts.js';
 import {
@@ -437,6 +438,49 @@ export function createHostSession({
     }));
   }
   return session;
+}
+
+/**
+ * The `ctx.net` object the menus use on the HOST (Menus.js: role, composeSetup, lobby,
+ * prompt, dispatch, seatsLeft …), built from a live host session. `composeSetup` turns the
+ * host's local flow result (track / speed / laps / mode) into a NetRaceSetup for the whole
+ * lobby (§10.5): it records the host's choice in the lobby, draws the seed, numbers the
+ * race and asks `pickCpus(count)` for the CPU racers (from the host's unlocked racers).
+ * @param {ReturnType<typeof createHostSession>} session
+ * @param {{ makeSeed?: () => number, pickCpus?: (count: number) => string[], rules?: object }} [o]
+ */
+export function createHostNetContext(session, { makeSeed = () => cryptoU32(), pickCpus = () => [], rules = {} } = {}) {
+  let raceId = 0;
+  return {
+    role: 'host',
+    get secret() { return session.state.secret; },
+    houseId: 0,
+    lobby: () => session.lobby(),
+    prompt: () => session.prompt(),
+    dispatch: (ev) => session.dispatch(ev),
+    onEffect: (fn) => session.onEffect(fn),
+    seatsLeft: () => {
+      const l = session.lobby();
+      return localCapacity(l, hostHouse(l)?.houseId ?? 0);
+    },
+    composeSetup(localSetup = {}) {
+      const patch = {};
+      for (const k of ['mode', 'trackId', 'cupId', 'arenaId', 'speedClass', 'laps', 'customTrackIds']) if (localSetup[k] !== undefined) patch[k] = localSetup[k];
+      session.dispatch({ type: 'choice', patch });
+      const lobby = session.lobby();
+      const humans = lobby.houses.reduce((n, h) => n + h.players.length, 0);
+      const cpuIds = pickCpus(cpuCountFor(humans, rules)) ?? [];
+      raceId += 1;
+      return composeOnlineSetup(lobby, lobby.hostChoice, { seed: makeSeed(), raceId, cpuIds, rules });
+    },
+    waitingParams: () => ({}),
+  };
+}
+
+function cryptoU32() {
+  const b = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(b);
+  return b[0];
 }
 
 export { rejectText };

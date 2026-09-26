@@ -25,6 +25,7 @@ import {
 } from './wire.js';
 import { canHost, currentPlatform } from '../platform.js';
 import { MAX_LOCAL_PLAYERS } from '../../config.js';
+import { localCapacity } from './lobby.js';
 
 /** Signaling + ICE (15 s incl. one restart) + a little slack. */
 export const CONNECT_TIMEOUT_MS = 20_000;
@@ -195,6 +196,30 @@ export function guestReduce(state, ev) {
       break;
   }
   return { state: st, effects };
+}
+
+/**
+ * The `ctx.net` object the menus use on a GUEST: host-only screens become net-waiting
+ * (Menus.goto), the lobby screen reads the replicated LobbyState, and the join screen caps
+ * at this house's seats + the room's free seats. Guests never compose a setup (SETUP comes
+ * from the host), so `composeSetup` is absent.
+ * @param {ReturnType<typeof createGuestSession>} session
+ */
+export function createGuestNetContext(session) {
+  return {
+    role: 'guest',
+    get secret() { return session.state.secret; },
+    get houseId() { return session.state.houseId; },
+    lobby: () => session.lobby(),
+    prompt: () => null,
+    dispatch: (ev) => session.dispatch(ev),
+    onEffect: (fn) => session.onEffect(fn),
+    seatsLeft: () => {
+      const l = session.lobby();
+      return l ? localCapacity(l, session.state.houseId) : session.state.localPlayers;
+    },
+    waitingParams: () => ({}),
+  };
 }
 
 /**

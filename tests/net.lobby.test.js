@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   createLobby, lobbyReduce, allPlayers, seatsLeft, humanCount, housePis, lobbyAllReady, lobbyForWire, createLobbyCoalescer,
-  HOUSE_EMOJI, LOBBY_SEND_INTERVAL_MS, houseOfPi,
+  HOUSE_EMOJI, LOBBY_SEND_INTERVAL_MS, houseOfPi, localCapacity,
 } from '../src/net/session/lobby.js';
 import {
   approvalReduce, createApprovalQueue, drawMatch, isMatch, matchEmoji, MATCH_ANIMALS, APPROVAL_TIMEOUT_MS, currentPrompt, MAX_PENDING,
@@ -53,6 +53,15 @@ describe('lobbyReduce', () => {
     expect(r.lobby).toBe(l);
     expect(r.effects).toEqual([{ type: 'refused', reason: 'full' }]);
     expect(lobbyReduce(l, { type: 'seat-join', houseId: 1 }).effects).toEqual([{ type: 'refused', reason: 'full' }]);
+  });
+
+  it('localCapacity = a house seats + the free seats, at most 4 (the join screen cap)', () => {
+    let l = withHost(2);
+    expect(localCapacity(l, 0)).toBe(4);
+    l = run(l, [{ type: 'house-approve', players: 3 }, { type: 'house-approve', players: 2 }]);
+    expect(localCapacity(l, 0)).toBe(3); // 2 own + 1 free
+    expect(localCapacity(l, 2)).toBe(3);
+    expect(localCapacity(l, 7)).toBe(1); // unknown house: just the free seats
   });
 
   it('refuses a house that needs more seats than are left (8-human cap)', () => {

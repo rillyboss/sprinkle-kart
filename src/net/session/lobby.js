@@ -74,6 +74,15 @@ export function housePis(lobby, houseId) {
   return h ? [...h.players].sort((a, b) => a.seat - b.seat).map((p) => p.globalPi) : [];
 }
 
+/**
+ * How many local players one house may have right now (its seats + the room's free
+ * seats, never more than MAX_LOCAL_PLAYERS): the join screen's `capacity` (§10.4).
+ */
+export function localCapacity(lobby, houseId) {
+  const h = getHouse(lobby, houseId);
+  return Math.min(MAX_LOCAL_PLAYERS, (h?.players.length ?? 0) + seatsLeft(lobby));
+}
+
 /** Everyone picked a racer and pressed ready (at least one player). */
 export function lobbyAllReady(lobby) {
   const ps = allPlayers(lobby);
