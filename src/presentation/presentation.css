@@ -237,3 +237,10 @@ body.skx-gentle .skx-bubble-wrap.skx-on { animation: none; }
 .skx-k-finish .skx-bubble-t::before, .skx-k-go .skx-bubble-t::before { content: '✨ '; }
 .skx-k-final-lap .skx-bubble-t::before { content: '🏁 '; }
 .skx-k-overtaken .skx-bubble-t::before { content: '😮 '; }
+
+/* ---------- Colour-friendly shapes on the menu player tags (P1 ♥ · P2 ★ · P3 ◆ · P4 ●) ---------- */
+body.skx-cb [data-skx-tag]::before { margin-right: 0.18em; font-size: 0.95em; }
+body.skx-cb [data-skx-tag='1']::before { content: '♥'; }
+body.skx-cb [data-skx-tag='2']::before { content: '★'; }
+body.skx-cb [data-skx-tag='3']::before { content: '◆'; }
+body.skx-cb [data-skx-tag='4']::before { content: '●'; }
