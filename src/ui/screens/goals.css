@@ -1,0 +1,33 @@
+/* Sticker Book: the Fun Goals page (src/progress/goals.js). OWNER: showcase features & modes. */
+.skp-page-goals[hidden] { display: none; }
+.skp-goal-head { text-align: center; font-weight: 600; margin: 0 0 0.6em; color: var(--sk-ink); }
+.skp-goal-head b { color: #e08a00; font-size: 1.2em; }
+.skp-goal {
+  display: flex !important; flex-direction: column; align-items: center; gap: 0.25em; padding: 0.4em 0.2em 0.35em !important;
+  border-radius: 1em; transform: rotate(var(--tilt, 0deg)); transition: transform 0.15s ease, background 0.15s ease;
+}
+.skp-goal-pic {
+  position: relative; display: grid; place-items: center; width: 2.4em; height: 2.4em; font-size: 1.9em; border-radius: 50%;
+  background: #efe7f3; filter: grayscale(0.85) opacity(0.55);
+  box-shadow: inset 0 0 0 0.08em rgba(154, 106, 168, 0.25);
+}
+.skp-goal-got .skp-goal-pic {
+  filter: none; background: radial-gradient(circle at 35% 30%, #fff, #ffe98a 70%, #ffc933);
+  box-shadow: 0 0 0 0.1em #fff, 0 0 0 0.2em #ffd23f, 0 0.2em 0.4em rgba(200, 140, 0, 0.3);
+}
+.skp-goal-lock { position: absolute; right: -0.15em; bottom: -0.1em; font-size: 0.45em; filter: none; }
+.skp-goal-name { font-size: 0.72em; font-weight: 600; line-height: 1.1; text-align: center; min-height: 2.2em; display: flex; align-items: center; }
+.skp-goal:not(.skp-goal-got) .skp-goal-name { color: var(--sk-ink-soft, #9a6aa8); }
+.skp-goal.sk-sel {
+  background: rgba(255, 210, 63, 0.22); transform: rotate(0deg) scale(1.08);
+  box-shadow: 0 0 0 0.2em #ffc933, 0 0.3em 0.8em rgba(200, 140, 0, 0.3);
+}
+.skp-d-goal {
+  display: grid; place-items: center; width: 2em; height: 2em; font-size: 3.4em; border-radius: 50%; margin: 0.1em auto 0.1em;
+  background: #efe7f3; filter: grayscale(0.8) opacity(0.6);
+}
+.skp-d-goal-got {
+  filter: none; background: radial-gradient(circle at 35% 30%, #fff, #ffe98a 70%, #ffc933);
+  box-shadow: 0 0 0 0.06em #fff, 0 0 0 0.12em #ffd23f; animation: sk-bob 1.6s ease-in-out infinite;
+}
+.skp-d-ok small { display: block; font-size: 0.8em; color: var(--sk-ink-soft, #9a6aa8); }

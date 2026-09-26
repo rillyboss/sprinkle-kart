@@ -1,0 +1,214 @@
+/**
+ * HUD widgets for the showcase modes (anchor 'top-center'; the How to Play coach 'bottom-center'; installed by
+ * src/systems/showcaseHud.js). Both stay empty/hidden unless their mode's
+ * controller publishes `race.modeInfo.battle` / `race.modeInfo.team`.
+ *
+ *   BATTLE_WIDGET   the battle clock, YOUR bubbles (big) and a strip of every
+ *                   racer's bubbles (little dots; out = a sleepy 💤)
+ *   TEAM_WIDGET     live team score "🍭 36 — 22 ⭐" with your team highlighted
+ *   DAILY_WIDGET    today's Daily Sprinkle goal and how far along the family is
+ *
+ * The "what to show" logic is pure (battleHudModel / teamHudModel / dailyHudModel, unit tested).
+ * OWNER: showcase features & modes.
+ */
+import '../../modes/showcase.css';
+import { teamInfo, HOME_TEAM, AWAY_TEAM } from '../../modes/team.js';
+
+/** @returns {null | { clock, hurry, mine: {bubbles, max, out} | null, alive, total, strip: Array<{id, bubbles, max, out, me, human}> }} */
+export function battleHudModel(kart, race) {
+  const v = race?.modeInfo?.battle;
+  if (!v) return null;
+  const mineRow = v.racers.find((r) => r.id === kart?.id) ?? null;
+  return {
+    clock: v.clock,
+    hurry: !!v.hurry,
+    waiting: race?.state === 'countdown',
+    mine: mineRow ? { bubbles: mineRow.bubbles, max: mineRow.max, out: mineRow.out } : null,
+    alive: v.alive,
+    total: v.total,
+    strip: v.racers.map((r) => ({ id: r.id, bubbles: r.bubbles, max: r.max, out: r.out, me: r.id === kart?.id, human: !r.isCPU })),
+  };
+}
+
+/** @returns {null | { mine: string, home: number, away: number, leader: string|null, sig: string }} */
+export function teamHudModel(kart, race) {
+  const v = race?.modeInfo?.team;
+  if (!v) return null;
+  const home = v.totals?.[HOME_TEAM] ?? 0;
+  const away = v.totals?.[AWAY_TEAM] ?? 0;
+  const mine = kart?.team ?? HOME_TEAM;
+  return { mine, home, away, leader: v.leader ?? null, sig: `${mine}|${home}|${away}|${v.leader}` };
+}
+
+/** @returns {null | { text: string, done: boolean, sig: string }} */
+export function dailyHudModel(race) {
+  const v = race?.modeInfo?.daily;
+  if (!v) return null;
+  const text = v.done ? `${v.emoji} Daily done! ☀️` : `☀️ ${v.emoji} ${v.goal}`;
+  const count = !v.done && v.target > 1 ? `${v.current}/${v.target}` : '';
+  return { text, count, done: !!v.done, sig: `${text}|${count}` };
+}
+
+const canDom = () => typeof document !== 'undefined';
+const noop = { update() {}, reset() {}, destroy() {} };
+
+function mk(tag, cls, parent, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  parent?.appendChild(n);
+  return n;
+}
+
+export const BATTLE_WIDGET = {
+  id: 'battle-hud',
+  anchor: 'top-center',
+  order: 5,
+  create(node) {
+    if (!canDom() || !node?.appendChild) return noop;
+    const root = mk('div', 'skb-hud', node);
+    root.hidden = true;
+    const top = mk('div', 'skb-hud-top', root);
+    mk('span', 'skb-hud-ico', top, '⏱️');
+    const clock = mk('b', 'skb-hud-clock', top, '2:00');
+    const mine = mk('div', 'skb-hud-mine', root);
+    const strip = mk('div', 'skb-hud-strip', root);
+    let cache = {};
+    return {
+      update(kart, race) {
+        const m = battleHudModel(kart, race);
+        root.hidden = !m;
+        if (!m) return;
+        if (cache.clock !== m.clock) { cache.clock = m.clock; clock.textContent = m.clock; }
+        root.classList.toggle('skb-hurry', m.hurry);
+        const mineSig = m.mine ? `${m.mine.bubbles}/${m.mine.max}/${m.mine.out}` : '';
+        if (cache.mine !== mineSig) {
+          const lost = cache.mineBubbles !== undefined && m.mine && m.mine.bubbles < cache.mineBubbles;
+          cache.mine = mineSig;
+          cache.mineBubbles = m.mine?.bubbles;
+          mine.innerHTML = '';
+          if (m.mine?.out) mk('span', 'skb-hud-out', mine, '💤 Out — cheer them on!');
+          else if (m.mine) {
+            for (let i = 0; i < m.mine.max; i++) mk('i', `skb-hud-bub${i < m.mine.bubbles ? '' : ' skb-gone'}`, mine);
+          }
+          if (lost) { mine.classList.remove('skb-shake'); void mine.offsetWidth; mine.classList.add('skb-shake'); }
+        }
+        const stripSig = m.strip.map((r) => `${r.bubbles}${r.me ? '*' : ''}`).join(',');
+        if (cache.strip !== stripSig) {
+          cache.strip = stripSig;
+          strip.innerHTML = '';
+          for (const r of m.strip) {
+            const chip = mk('span', `skb-chip${r.out ? ' skb-chip-out' : ''}${r.me ? ' skb-chip-me' : ''}${r.human ? ' skb-chip-human' : ''}`, strip);
+            if (r.out) chip.textContent = '💤';
+            else for (let i = 0; i < r.bubbles; i++) mk('i', null, chip);
+          }
+        }
+      },
+      reset() { cache = {}; mine.innerHTML = ''; strip.innerHTML = ''; root.hidden = true; },
+      destroy() { root.remove(); },
+    };
+  },
+};
+
+export const TEAM_WIDGET = {
+  id: 'team-hud',
+  anchor: 'top-center',
+  order: 20,
+  create(node) {
+    if (!canDom() || !node?.appendChild) return noop;
+    const root = mk('div', 'skt-hud', node);
+    root.hidden = true;
+    const home = mk('span', 'skt-hud-side skt-hud-home', root);
+    mk('span', 'skt-hud-dash', root, '—');
+    const away = mk('span', 'skt-hud-side skt-hud-away', root);
+    let sig = null;
+    return {
+      update(kart, race) {
+        const m = teamHudModel(kart, race);
+        root.hidden = !m;
+        if (!m || m.sig === sig) return;
+        sig = m.sig;
+        home.innerHTML = `${teamInfo(HOME_TEAM).emoji} <b>${m.home}</b>`;
+        away.innerHTML = `<b>${m.away}</b> ${teamInfo(AWAY_TEAM).emoji}`;
+        home.classList.toggle('skt-mine', m.mine === HOME_TEAM);
+        away.classList.toggle('skt-mine', m.mine === AWAY_TEAM);
+        home.classList.toggle('skt-lead', m.leader === HOME_TEAM);
+        away.classList.toggle('skt-lead', m.leader === AWAY_TEAM);
+      },
+      reset() { sig = null; root.hidden = true; },
+      destroy() { root.remove(); },
+    };
+  },
+};
+
+export const DAILY_WIDGET = {
+  id: 'daily-hud',
+  anchor: 'top-center',
+  order: 22,
+  create(node) {
+    if (!canDom() || !node?.appendChild) return noop;
+    const root = mk('div', 'skd-hud', node);
+    root.hidden = true;
+    const label = mk('span', null, root);
+    const count = mk('b', null, root);
+    let sig = null;
+    return {
+      update(kart, race) {
+        const m = dailyHudModel(race);
+        root.hidden = !m;
+        if (!m || m.sig === sig) return;
+        sig = m.sig;
+        label.textContent = m.text;
+        count.textContent = m.count;
+        count.hidden = !m.count;
+        root.classList.toggle('skd-hud-done', m.done);
+      },
+      reset() { sig = null; root.hidden = true; },
+      destroy() { root.remove(); },
+    };
+  },
+};
+
+/** @returns {null | { emoji, text, key, index, total, cheering, done, learned, sig }} the How to Play coach bubble */
+export function tutorialHudModel(kart, race) {
+  const v = race?.modeInfo?.tutorial;
+  if (!v || (kart && kart.playerIndex !== 0 && kart.playerIndex !== undefined)) return null;
+  return v;
+}
+
+// The coach sits at the bottom (above the kart) so the big centre flashes never cover it.
+export const TUTORIAL_WIDGET = {
+  id: 'tutorial-hud',
+  anchor: 'bottom-center',
+  order: 24,
+  create(node) {
+    if (!canDom() || !node?.appendChild) return noop;
+    const root = mk('div', 'skh-coach', node);
+    root.hidden = true;
+    const face = mk('span', 'skh-coach-e', root);
+    const body = mk('div', 'skh-coach-body', root);
+    const text = mk('span', 'skh-coach-t', body);
+    const key = mk('b', 'skh-coach-k', body);
+    const dots = mk('div', 'skh-coach-dots', root);
+    let sig = null;
+    return {
+      update(kart, race) {
+        const m = tutorialHudModel(kart, race);
+        root.hidden = !m;
+        if (!m || m.sig === sig) return;
+        sig = m.sig;
+        face.textContent = m.emoji;
+        text.textContent = m.text;
+        key.textContent = m.key;
+        key.hidden = !m.key;
+        root.classList.toggle('skh-cheer', m.cheering);
+        root.classList.toggle('skh-done', m.done && !m.cheering);
+        root.classList.remove('skh-pop'); void root.offsetWidth; root.classList.add('skh-pop');
+        dots.innerHTML = '';
+        for (let i = 0; i < m.total; i++) mk('i', i < m.index ? 'skh-dot-on' : i === m.index ? 'skh-dot-now' : null, dots);
+      },
+      reset() { sig = null; root.hidden = true; },
+      destroy() { root.remove(); },
+    };
+  },
+};

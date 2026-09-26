@@ -6,16 +6,18 @@
  *   cpus             false = CPU participants are dropped (solo runs)
  *   startItem        an ItemId every HUMAN kart starts with (null = none)
  *   startItemCharges how many uses of it (only 'triple-sprinkle' has more than one)
+ *   battle           true = Bubble Pop Battle: no laps, nobody finishes by driving; the
+ *                    race only completes when the mode calls race.completeWith(order)
  *
  * OWNER: modes + timing workstream.
  */
 /** Same list as MODES in src/game/summary.js (kept import-free so Race.js stays light). */
-const MODE_IDS = ['free', 'grand-prix', 'time-trial'];
+const MODE_IDS = ['free', 'grand-prix', 'time-trial', 'team', 'battle', 'daily', 'tutorial'];
 
 /** Sprinkle boosts a Time Trial starts with. */
 export const TIME_TRIAL_BOOSTS = 3;
 
-export const DEFAULT_RULES = Object.freeze({ items: true, cpus: true, startItem: null, startItemCharges: 0 });
+export const DEFAULT_RULES = Object.freeze({ items: true, cpus: true, startItem: null, startItemCharges: 0, battle: false });
 
 const ITEM_IDS = new Set(['sprinkle-boost', 'triple-sprinkle', 'gumdrop', 'bubble-shield', 'cupcake-rocket', 'rainbow-star']);
 
@@ -37,6 +39,7 @@ export function normalizeRules(rules = {}) {
     cpus: r.cpus !== false,
     startItem,
     startItemCharges: charges,
+    battle: r.battle === true,
   });
 }
 
@@ -45,6 +48,9 @@ export function rulesForMode(mode) {
   if (mode === 'time-trial') {
     return normalizeRules({ items: false, cpus: false, startItem: 'triple-sprinkle', startItemCharges: TIME_TRIAL_BOOSTS });
   }
+  if (mode === 'battle') return normalizeRules({ items: true, cpus: true, battle: true });
+  // How to Play (modes/tutorial.js): a calm solo practice race, surprise boxes on.
+  if (mode === 'tutorial') return normalizeRules({ items: true, cpus: false });
   return normalizeRules(DEFAULT_RULES);
 }
 

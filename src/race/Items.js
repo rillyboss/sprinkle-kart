@@ -238,6 +238,15 @@ export class ItemSystem {
     this.emit = emit || (() => {});
     this.rng = rng;
     this.getStandings = getStandings || (() => []);
+    /**
+     * Optional mode hooks (set by the Race for Team Race / Bubble Pop Battle, see src/modes/):
+     *   isFriendly(a, b) -> true = team-mates: their gumdrops, rockets and stars never bonk each other
+     *   pickTarget(kart) -> { target, distance } | null: who a cupcake rocket chases and the
+     *                       rocket's start distance in the target's frame (null = the default:
+     *                       the racer just ahead in the standings)
+     */
+    this.isFriendly = null;
+    this.pickTarget = null;
     this.root = new THREE.Group();
     this.root.name = 'race-items';
     scene.add(this.root);
@@ -326,11 +335,14 @@ export class ItemSystem {
   }
 
   launchRocket(kart) {
-    const standings = this.getStandings();
-    const idx = standings.indexOf(kart);
-    let target = null;
-    for (let i = idx - 1; i >= 0; i--) {
-      if (!standings[i].finished) { target = standings[i]; break; }
+    const picked = this.pickTarget ? this.pickTarget(kart) : null;
+    let target = picked?.target ?? null;
+    if (!picked) {
+      const standings = this.getStandings();
+      const idx = standings.indexOf(kart);
+      for (let i = idx - 1; i >= 0; i--) {
+        if (!standings[i].finished && !this._friends(standings[i], kart)) { target = standings[i]; break; }
+      }
     }
     const mesh = buildRocketMesh();
     this.root.add(mesh);
@@ -341,7 +353,7 @@ export class ItemSystem {
       owner: kart,
       target,
       chased: target, // who it was sent after (kept even if it loses them: "dodged!")
-      distance: kart.distance + 2.5,
+      distance: Number.isFinite(picked?.distance) ? picked.distance : kart.distance + 2.5,
       s: this.path.wrap(kart.s + 2.5),
       lateral: kart.lateral,
       y: kart.position.y + 0.8,
@@ -396,8 +408,14 @@ export class ItemSystem {
     r.reticle.getObjectByName('spin').rotation.y = this._time * (1.5 + close * 4);
   }
 
+  /** True when a mode says these two different karts are team-mates. */
+  _friends(a, b) {
+    return !!(this.isFriendly && a && b && a !== b && this.isFriendly(a, b));
+  }
+
   /** Bonk a kart via an item, emitting the friendly events and the burst FX. */
   bonk(kart, cause, by) {
+    if (this._friends(kart, by)) return 'friendly';
     const wasStar = kart.starPower > 0;
     const res = bonkKart(kart);
     const at = { x: kart.position.x, y: kart.position.y + 1.2, z: kart.position.z };
@@ -460,6 +478,7 @@ export class ItemSystem {
       let hit = false;
       for (const k of karts) {
         if (k === g.owner && g.grace > 0) continue;
+        if (this._friends(k, g.owner)) continue; // team-mates roll right over each other's gumdrops
         const d2 = sweptDistSq(k, g.position.x, g.position.z);
         const sameLevel = Math.abs(k.position.y - g.position.y) < 2.5;
         if (d2 < T.gumdropRadius * T.gumdropRadius && sameLevel) {
@@ -522,7 +541,7 @@ export class ItemSystem {
 
       let hit = null;
       for (const k of karts) {
-        if (k === r.owner) continue;
+        if (k === r.owner || this._friends(k, r.owner)) continue;
         const dist = Math.abs(path.delta(r.s, k.s));
         if (dist < T.rocketHitRadius + 0.6 && Math.abs(k.lateral - r.lateral) < T.rocketHitRadius) { hit = k; break; }
       }

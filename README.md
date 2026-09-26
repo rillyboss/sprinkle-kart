@@ -57,6 +57,26 @@ Xbox, PlayStation and Switch Pro controllers all work.
   **Records 🏆** button on the mode screen lists the best race and lap on every track, with the racer
   who set them. (Race records count only for the track's normal number of laps.)
 
+### Even more fun 🎉
+
+- **Team Race 🤝** — the family (plus CPU buddies) is **Team Sprinkle** against CPU **Team Sparkle**.
+  Every place gives points, the team with the most points wins, and the score carries over to rematches.
+- **Bubble Battle 🫧** — no laps: everyone floats 3 bubbles in a battle arena, surprises pop them,
+  and the last one still bobbing wins (2 arenas).
+- **Daily Sprinkle ☀️** (button on the mode screen) — one fun challenge a day (a track, a goal and a
+  silly twist). Do it on several days in a row for a 🔥 streak.
+- **My Cup ✨** (last card on the cup screen) — pick **any 4 unlocked tracks** in your own order,
+  tap the badge and name to style the cup (e.g. *Rocco Ravioli's Cup* 🦄), and race it as a Grand
+  Prix. Your cup is remembered. (It's just for fun: it doesn't count as winning a real cup.)
+- **How to Play 🎓** (title screen) — a calm practice race with no other racers. A friendly coach at
+  the bottom shows one trick at a time (gas, steering, drifting, grabbing and using a surprise,
+  finishing) with the right button for your controller, and cheers each one. Learn them all for the
+  *Sprinkle Scholar* sticker.
+- **Paint Shop 🎨** (title screen) — give any racer's kart a new colour (11 paints, or *Original*)
+  and see the whole kart in its new paint. It's saved, and every race uses it.
+- **Fun Goals 🏅** — a page in the Sticker Book with achievement stickers (first win, drift turbos,
+  Bubble Battles, Daily Sprinkles, How to Play...), each with a progress bar.
+
 ### Controller buttons
 
 | What | Button |
@@ -304,6 +324,8 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | `?democontent=1` | Menus show locked placeholders for the whole v2 lineup (21 racers, 20 tracks) |
 | `?mode=gp&cup=<cupId>` | Skip the menus and start a Grand Prix (e.g. `sprinkle-cup`; works with `players`, `speed`, `autodrive`, `fastfinish`, `cpus`, `laps`) |
 | `?mode=tt&quick=<trackId>` | Skip the menus and start a Time Trial on that track (P1 only, vs your saved ghost) |
+| `?mode=gp&cup=my-cup&mycup=a,b,c,d` | Skip the menus and start a custom *My Cup* of those tracks (up to 4) |
+| `?mode=tutorial` | Skip the menus and start the How to Play practice race (add `&quick=<trackId>` / `&laps=` to change it) |
 | `?attract=0` | No title show behind the logo (the ✨ Effects screen has the same switch) |
 
 `window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests,

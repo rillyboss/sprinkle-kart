@@ -36,7 +36,7 @@ export function build(kit, rig, def) {
   buildKartBase(kit, rig, { body: WHITE, trim: pink, seat: 0xffc8ea, hub: WHITE, hubStar: 0xffe45c, tire: 0xd98ac0, shell: false });
   const C = rig.chassis;
   // fluffy cloud kart
-  const puffCols = [toon(WHITE), toon(0xffd3ee), toon(0xcdeeff)];
+  const puffCols = [toon(rig.paint ?? WHITE), toon(0xffd3ee), toon(0xcdeeff)]; // rig.paint: Paint Shop colour
   kit.add(C, G.rbox(1.15, 0.3, 1.8, 0.14), puffCols[0], { p: [0, 0.4, 0] });
   const puffs = [
     [0, 0.55, 0.85, 0.34, 0], [-0.4, 0.5, 0.75, 0.28, 1], [0.4, 0.5, 0.75, 0.28, 2],

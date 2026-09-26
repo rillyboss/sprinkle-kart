@@ -233,6 +233,8 @@ describe('sticker book reducer', () => {
     expect(s.focus).toBe('tabs');
     expect(bookReduce(s, ev('down')).state.focus).toBe('tabs');
     s = bookReduce(s, ev('right')).state;
+    expect(BOOK_TABS[s.tab]).toBe('goals'); // Fun Goals page (no goals counted in fresh(): tabs only)
+    s = bookReduce(s, ev('right')).state;
     expect(BOOK_TABS[s.tab]).toBe('racers');
   });
 

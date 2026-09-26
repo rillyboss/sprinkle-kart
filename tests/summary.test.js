@@ -60,7 +60,7 @@ describe('race-start / race-end payloads', () => {
     expect(raceStartInfo({ setup: { ...setup, mode: 'grand-prix', cupId: 'bubble-cup' }, trackDef, humans, laps: 3 }))
       .toMatchObject({ mode: 'grand-prix', cupId: 'bubble-cup' });
     expect(raceStartInfo({ setup: { ...setup, mode: 'bogus' }, trackDef, humans, laps: 3 }).mode).toBe('free');
-    expect(MODES).toEqual(['free', 'grand-prix', 'time-trial']);
+    expect(MODES).toEqual(['free', 'grand-prix', 'time-trial', 'team', 'battle', 'daily', 'tutorial']);
   });
 
   it('buildRaceSummary gives places, times, lap times, winner, stats and an unlock collector', () => {

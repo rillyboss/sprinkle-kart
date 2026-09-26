@@ -59,7 +59,7 @@ export default {
         tally = createRaceStats(); // a restart without race-start never double-counts
         if (typeof progress.recordRace !== 'function') {
           // Minimal progress API (older saves module / fakes): legacy trophy + Cotton Candy Girl.
-          if (!summary.winner || summary.mode === 'time-trial') return;
+          if (!summary.winner || summary.mode === 'time-trial' || summary.mode === 'tutorial') return;
           progress.recordWin?.(summary.trackId);
           if (progress.unlock?.('cotton-candy-girl')) push(summary.unlocks, [{ kind: 'character', id: 'cotton-candy-girl' }]);
           return;

@@ -3,7 +3,8 @@
  * to the shared menu draft, and how the RaceSetup a flow finishes with gets
  * its mode. OWNER: modes + timing workstream.
  *
- * - Grand Prix swaps track select for cup select (draft.skip / cup-select's when()).
+ * - Grand Prix swaps track select for cup select (draft.skip / cup-select's when()),
+ *   Bubble Battle for arena select (arena-select's when()).
  * - Time Trial is a solo run: only P1 picks a racer; the rest of the family
  *   stays joined in draft.partyJoin and comes back afterwards
  *   (setup.partyPlayers -> menuPrevious() in src/game/setup.js).
@@ -22,14 +23,15 @@ export function restoreParty(draft) {
 /**
  * Apply a mode pick to the menu draft (mutates and returns it).
  * @param {object} draft ctx.draft ({ joinState, skip:Set, mode, ... })
- * @param {'free'|'grand-prix'|'time-trial'} mode
+ * @param {'free'|'grand-prix'|'time-trial'|'team'|'battle'} mode
  */
 export function applyModeChoice(draft, mode) {
   const m = modeId(mode);
   restoreParty(draft);
   draft.mode = m;
   if (!draft.skip) draft.skip = new Set();
-  if (m === 'grand-prix') draft.skip.add('track-select');
+  // Grand Prix picks a cup, Bubble Battle an arena and the Daily Sprinkle has its own track.
+  if (m === 'grand-prix' || m === 'battle' || m === 'daily') draft.skip.add('track-select');
   else draft.skip.delete('track-select');
   if (m === 'time-trial') {
     const players = draft.joinState?.players ?? [];

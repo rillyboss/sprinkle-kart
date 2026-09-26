@@ -88,6 +88,10 @@ export function applyRaceSummary(p, summary, { tallies = null } = {}) {
     bump(p, 'itemBoxes', t.itemBoxes);
   }
 
+  // Bubble Pop Battle is not a race (no finish line): only the per-action counters count.
+  // A How to Play practice race (solo, no CPUs) is not a real race either.
+  if (summary.mode === 'battle' || summary.mode === 'tutorial') return p;
+
   if (summary.mode === 'time-trial') {
     if (finishers.length) {
       bump(p, 'timeTrialsFinished');
@@ -138,6 +142,9 @@ export function applyGrandPrix(p, gp) {
   ensure(p);
   if (!gp || typeof gp.cupId !== 'string' || gp.finished === false) return p;
   bump(p, 'grandPrixFinished');
+  // A family-built "My Cup" (modes/myCup.js MY_CUP_ID) counts as a finished
+  // Grand Prix, but only the real cups give cup trophies / "win a cup" unlocks.
+  if (gp.cupId === 'my-cup') return p;
   const c = (p.cups[gp.cupId] = { bestPlace: null, wins: 0, finished: 0, ...(p.cups[gp.cupId] || {}) });
   c.finished = num(c.finished) + 1;
   const best = Number.isInteger(gp.bestHumanPlace) && gp.bestHumanPlace >= 1 ? gp.bestHumanPlace : null;

@@ -1,6 +1,6 @@
 /**
- * "How do you want to play?" — three big mode cards (Free Race, Grand Prix,
- * Time Trial) plus menu-entry buttons (Records ...) under them.
+ * "How do you want to play?" — the big mode cards (Free Race, Grand Prix,
+ * Time Trial, Team Race, Bubble Battle) plus menu-entry buttons (Records ...) under them.
  * Flow order 25 (after join, before character select). P1 (or the mouse) chooses.
  * OWNER: modes + timing workstream.
  */
@@ -14,6 +14,8 @@ const TAGS = {
   free: (n) => (n > 1 ? `${n} friends + CPU pals` : 'You + 7 CPU pals'),
   'grand-prix': () => '4 tracks · points · trophies',
   'time-trial': (n) => (n > 1 ? 'Solo run for P1 — everyone cheers!' : 'Just you and your ghost'),
+  team: (n) => (n > 1 ? `${n} of you + buddies vs ⭐` : 'You + 3 buddies vs ⭐'),
+  battle: () => '3 bubbles each · 2 arenas',
 };
 
 /** @type {import('./index.js').ScreenDef} */
@@ -35,7 +37,7 @@ export default {
       html: `<div class="sk-mode-art"><span class="a1">${m.art[0]}</span><span class="a2">${m.art[1]}</span><span class="a3">${m.art[2]}</span></div>`
         + `<div class="sk-mode-name">${escapeHtml(m.name)}</div>`
         + `<div class="sk-mode-blurb">${escapeHtml(m.blurb)}</div>`
-        + `<div class="sk-mode-tag">${escapeHtml(TAGS[m.id](players.length))}</div>`,
+        + `<div class="sk-mode-tag">${escapeHtml(TAGS[m.id]?.(players.length) ?? '')}</div>`,
     }));
     const chips = entries.map((en, i) => el('button.sk-title-entry.sk-mode-entry', {
       onclick: (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'select', key: 'entry', value: i }); },
@@ -48,7 +50,7 @@ export default {
         backButton(() => handle({ deviceId: 'mouse', action: 'back' })),
         el('h1.sk-h1', { html: 'How do you want to play? <span class="sk-wiggle">🎮</span>' }),
         el('div.sk-chooser', { html: `<b class="sk-tag" style="--pc:${pc(0)}">P1</b> picks the fun!` })),
-      el('div.sk-mode-cards', {}, cards),
+      el('div.sk-mode-cards', { '--n': cards.length }, cards),
       chips.length ? el('div.sk-title-entries.sk-mode-entries', {}, chips) : null,
       hintsBar([
         hint('A', 'Enter', 'Pick'),

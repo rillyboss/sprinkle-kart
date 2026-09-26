@@ -43,6 +43,9 @@ export function parseDebugParams(search = '') {
     demoContent: flag(q, 'democontent'),
     mode: modeParam(q.get('mode')),
     cup: q.has('cup') ? String(q.get('cup') || '').trim() || null : null,
+    arena: q.has('arena') ? String(q.get('arena') || '').trim() || null : null,
+    // ?mode=gp&cup=my-cup&mycup=a,b,c,d — a custom "My Cup" of those tracks (smoke / debugging)
+    myCup: q.has('mycup') ? String(q.get('mycup') || '').split(',').map((s) => s.trim()).filter(Boolean) : null,
   };
 }
 
@@ -50,17 +53,21 @@ const MODE_ALIASES = {
   free: 'free', race: 'free',
   gp: 'grand-prix', 'grand-prix': 'grand-prix', grandprix: 'grand-prix', cup: 'grand-prix',
   tt: 'time-trial', 'time-trial': 'time-trial', timetrial: 'time-trial', trial: 'time-trial',
+  battle: 'battle', bubble: 'battle', 'bubble-battle': 'battle',
+  team: 'team', 'team-race': 'team', teams: 'team',
+  daily: 'daily', 'daily-sprinkle': 'daily',
+  tutorial: 'tutorial', 'how-to-play': 'tutorial', howto: 'tutorial', practice: 'tutorial',
 };
 
-/** ?mode=gp|tt|free (and long names) -> 'grand-prix' | 'time-trial' | 'free' | null. */
+/** ?mode=gp|tt|free|battle|team (and long names) -> 'grand-prix' | 'time-trial' | 'free' | 'battle' | 'team' | null. */
 export function modeParam(v) {
   if (v == null) return null;
   return MODE_ALIASES[String(v).trim().toLowerCase()] ?? null;
 }
 
-/** True when the URL asks to skip the menus (?quick=..., or ?mode=gp&cup=...). */
+/** True when the URL asks to skip the menus (?quick=..., ?mode=gp&cup=..., ?mode=battle, ?mode=daily or ?mode=tutorial). */
 export function wantsQuickStart(params) {
-  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup);
+  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup) || params.mode === 'battle' || params.mode === 'daily' || params.mode === 'tutorial';
 }
 
 /** Fisher–Yates shuffle (returns a new array). */
@@ -131,7 +138,12 @@ export function quickDeviceIds(players) {
 export function quickSetup(params, input, characters, tracks, { cups = [] } = {}) {
   const mode = params.mode ?? 'free';
   let cup = null;
-  if (mode === 'grand-prix') {
+  const customIds = mode === 'grand-prix' && params.cup === 'my-cup' && Array.isArray(params.myCup)
+    ? [...new Set(params.myCup)].filter((id) => tracks.some((t) => t.id === id)).slice(0, 4)
+    : [];
+  if (customIds.length) {
+    cup = { id: 'my-cup', trackIds: customIds, custom: true };
+  } else if (mode === 'grand-prix') {
     const complete = cups.filter((c) => c.trackIds.every((id) => tracks.some((t) => t.id === id)));
     cup = complete.find((c) => c.id === params.cup) || complete[0] || null;
   }
@@ -158,9 +170,17 @@ export function quickSetup(params, input, characters, tracks, { cups = [] } = {}
     laps: params.laps ?? track.laps ?? DEFAULT_LAPS,
   };
   if (mode !== 'free') setup.mode = mode;
+  if (mode === 'battle' && params.arena) setup.arenaId = params.arena;
+  if (mode === 'tutorial') {
+    // How to Play: P1 alone; main.js picks the friendly practice track + laps unless the URL names them.
+    setup.players = players.slice(0, 1);
+    setup.laps = params.laps ?? null;
+    if (!params.quick || params.quick === 'default') setup.trackId = null;
+  }
   if (cup) {
     setup.cupId = cup.id;
     setup.laps = params.laps ?? null; // each cup race uses its track's own laps
+    if (cup.custom) setup.customTrackIds = [...cup.trackIds];
   }
   return setup;
 }

@@ -9,9 +9,9 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.6em;
-  width: min(100%, 62em);
+  grid-template-columns: repeat(var(--n, 3), 1fr);
+  gap: calc(4.8em / var(--n, 3));
+  width: min(100%, calc(var(--n, 3) * 17.5em + 10em));
   align-items: center;
   padding: 1em 0.6em;
 }
@@ -28,6 +28,8 @@
   --m1: #ffd6ec; --m2: #ff8fc8; --m3: #ff5fb4;
 }
 .sk-mode-grand-prix { --m1: #fff3c4; --m2: #ffd95e; --m3: #ffb21a; }
+.sk-mode-team { --m1: #dcf8e6; --m2: #8fe0b0; --m3: #3fc47e; }
+.sk-mode-battle { --m1: #e9e0ff; --m2: #c7aaff; --m3: #9a6bff; }
 .sk-mode-time-trial { --m1: #d9f0ff; --m2: #8fd3ff; --m3: #9c6cf0; }
 .sk-mode-card:hover { transform: translateY(-0.2em); }
 .sk-mode-card.sk-sel {

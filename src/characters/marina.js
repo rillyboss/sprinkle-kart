@@ -61,7 +61,7 @@ export function build(kit, rig, def) {
   const c = def.colors;
   const rand = rng(0xc1a4);
   const C = rig.chassis;
-  const pearl = toon(PEARL);
+  const pearl = toon(rig.paint ?? PEARL); // rig.paint: Paint Shop colour (src/modes/paint.js)
   const ridge = toon(RIDGE);
 
   // ── the clamshell hover-kart ──

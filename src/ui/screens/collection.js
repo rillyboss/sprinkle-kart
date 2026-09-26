@@ -2,12 +2,14 @@
  * "My Sticker Book" — the Collection screen (a title-screen menu entry).
  * Pages: Racers (all 21, locked ones as silhouettes with a friendly hint and
  * a progress bar), Tracks (all 20 by cup, with trophies / best places / best
- * times) and Our totals (family stats). Fully controller-navigable:
+ * times), Our totals (family stats) and Fun Goals (achievement stickers,
+ * src/progress/goals.js — showcase features). Fully controller-navigable:
  * arrows move, Y / Tab flips the page, Up from the top row reaches the tabs,
  * B goes back. Logic: src/progress/screenState.js (bookReduce) + collection.js.
  * OWNER: progression/unlocks workstream.
  */
 import './progress.css';
+import './goals.css';
 import { el, escapeHtml, hint, portraitHtml, floatiesLayer, kbd } from '../dom.js';
 import { cssColor, lighten, formatTime, trackOutlinePoints } from '../hudLogic.js';
 import { hintsBar, backButton, shake, keepVisible, trackArt, lockHint } from './_shared.js';
@@ -16,10 +18,12 @@ import { createBookState, bookReduce, BOOK_TABS } from '../../progress/screenSta
 import { STAT_BOOK, TURBO_BOOK, ordinalText } from '../../progress/progressText.js';
 import { unlockDetail } from '../../progress/describeUnlock.js';
 import { barHtml } from './unlock.js';
+import { goalsBookModel } from '../../progress/goals.js';
 
-const TAB_LABELS = { racers: ['💞', 'Racers'], tracks: ['🗺️', 'Tracks'], stats: ['📊', 'Our totals'] };
+const TAB_LABELS = { racers: ['💞', 'Racers'], tracks: ['🗺️', 'Tracks'], stats: ['📊', 'Our totals'], goals: ['🏅', 'Fun Goals'] };
 const RACER_COLS = 7;
 const TRACK_COLS = 4;
+const GOAL_COLS = 7;
 
 const n = (v) => (Number.isFinite(v) ? v : 0);
 const many = (k, one, lots) => `${k} ${k === 1 ? one : lots}`;
@@ -32,7 +36,8 @@ export default {
     let p = null;
     try { p = ctx.progress?.loadProgress?.() ?? null; } catch { /* ignore */ }
     const book = bookModel(p || {}, { characters: ctx.characters, tracks: ctx.tracks });
-    let state = createBookState({ racers: book.racers.length, tracks: book.tracks.length, racerCols: RACER_COLS, trackCols: TRACK_COLS, tab: params.tab ?? 0 });
+    const goalBook = goalsBookModel(p || {});
+    let state = createBookState({ racers: book.racers.length, tracks: book.tracks.length, goals: goalBook.goals.length, racerCols: RACER_COLS, trackCols: TRACK_COLS, goalCols: GOAL_COLS, tab: params.tab ?? 0 });
     const leave = () => nav.goto(params.returnTo ?? 'title');
 
     /* ---------- racer stickers ---------- */
@@ -95,7 +100,19 @@ export default {
       el('div.skp-statline', { html: `<span class="skp-statline-k">Drift turbos</span>${turbos}` }),
       el('div.skp-statline', { html: `<span class="skp-statline-k">Grand Prix cups</span>${cupsLine}` }),
     );
-    const pages = [racerPage, trackPage, statsPage];
+    /* ---------- Fun Goals ---------- */
+    const goalEls = goalBook.goals.map((g, i) => el(`button.skp-goal${g.earned ? '.skp-goal-got' : ''}`, {
+      '--i': i,
+      '--tilt': `${((i * 41) % 7) - 3}deg`,
+      onclick: (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'pick', index: i }); },
+      html: `<div class="skp-goal-pic">${g.emoji}${g.earned ? '' : '<span class="skp-goal-lock">🔒</span>'}</div>`
+        + `<div class="skp-goal-name">${escapeHtml(g.name)}</div>`
+        + (!g.earned && g.progress.target > 1 ? barHtml(g.progress.ratio, g.count, 'skp-bar-mini') : ''),
+    }));
+    const goalsPage = el('div.skp-page.skp-page-goals', { '--cols': GOAL_COLS },
+      el('div.skp-goal-head', { html: `🏅 <b>${goalBook.earned}</b> of ${goalBook.total} Fun Goal stickers` }),
+      el('div.skp-grid.skp-goal-grid', {}, goalEls));
+    const pages = [racerPage, trackPage, statsPage, goalsPage];
 
     /** "Favourite racer / track" cards for the totals page ('' before the first race). */
     const favourites = () => {
@@ -125,6 +142,17 @@ export default {
           + `<div class="skp-d-line">${book.stickers >= book.total ? 'You found them ALL! Superstar! 🌈' : 'Every race fills your book a little more! ✨'}</div>`
           + (book.unlockAll ? '<div class="skp-d-note">A grown-up opened every page 🎁</div>' : '')
           + favourites();
+        return;
+      }
+      if (tab === 'goals') {
+        const g = goalBook.goals[state.index[3]];
+        if (!g) { panel.innerHTML = ''; return; }
+        panel.innerHTML = `<div class="skp-d-goal${g.earned ? ' skp-d-goal-got' : ''}">${g.emoji}</div>`
+          + `<div class="skp-d-name">${escapeHtml(g.name)}</div>`
+          + `<div class="skp-d-tag">${escapeHtml(g.hint)}</div>`
+          + (g.earned
+            ? `<div class="skp-d-ok">Sticker earned! 🎉${g.when ? `<small>${escapeHtml(g.when)}</small>` : ''}</div>`
+            : barHtml(g.progress.target > 1 ? Math.max(0.04, g.progress.ratio) : 0.04, g.count || 'Not yet — you can do it!', 'skp-bar-panel'));
         return;
       }
       const item = tab === 'racers' ? book.racers[state.index[0]] : book.tracks[state.index[1]];
@@ -202,8 +230,8 @@ export default {
         t.classList.toggle('sk-sel', i === state.tab);
         t.classList.toggle('skp-focus', i === state.tab && state.focus === 'tabs');
       });
-      const grid = tab === 'racers' ? racerEls : tab === 'tracks' ? trackEls : [];
-      [...racerEls, ...trackEls].forEach((b) => b.classList.remove('sk-sel'));
+      const grid = tab === 'racers' ? racerEls : tab === 'tracks' ? trackEls : tab === 'goals' ? goalEls : [];
+      [...racerEls, ...trackEls, ...goalEls].forEach((b) => b.classList.remove('sk-sel'));
       if (state.focus === 'grid' && grid.length) {
         const b = grid[state.index[state.tab]];
         b?.classList.add('sk-sel');
@@ -217,7 +245,12 @@ export default {
       const res = bookReduce(state, ev);
       state = res.state;
       ctx.fx(res);
-      if (res.cheer) {
+      if (res.cheer && BOOK_TABS[state.tab] === 'goals') {
+        const g = goalBook.goals[state.index[3]];
+        const b = goalEls[state.index[3]];
+        ctx.sfx(g?.earned ? 'goal-sticker' : 'back');
+        if (g?.earned) { b?.classList.remove('skp-boing'); void b?.offsetWidth; b?.classList.add('skp-boing'); } else shake(b);
+      } else if (res.cheer) {
         const tab = BOOK_TABS[state.tab];
         const item = tab === 'racers' ? book.racers[state.index[0]] : book.tracks[state.index[1]];
         const b = (tab === 'racers' ? racerEls : trackEls)[state.index[state.tab]];
