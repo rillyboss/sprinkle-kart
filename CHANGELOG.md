@@ -2,7 +2,11 @@
 
 What's new in Sprinkle Kart, newest first. Player-facing details live in the [README](README.md).
 
-## Unreleased — Play with friends online 🌐
+## v3.0.0 — Play with friends online 🌐 (2026-09-26)
+
+Online play is here: race friends in other houses straight from the website, friends-only and kid-safe.
+A grown-up can make it even more reliable with our own free Cloudflare helper and relay, set up once with
+[docs/INFRA_SETUP.md](docs/INFRA_SETUP.md) (it works without it too).
 
 ### Online play (Free Race)
 - **🌐 Online** on the title screen once a grown-up turns on *Online play with friends* in ⚙️ Grown-ups
@@ -40,6 +44,13 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
 - The Grand Prix trophy ceremony shows its *Play again* / *Menu* buttons again after an unlock reveal.
 
 ### Under the hood
+- Matchmaking works with **zero setup** over free public relays (WebTorrent trackers and Nostr) behind a
+  pluggable signaling layer, or with our own Cloudflare Worker `sprinkle-kart-signal` (`infra/signal-worker/`,
+  Durable Object `SignalRoom`) when the site is built with `VITE_SIGNAL_URL`. The worker hands out
+  short-lived Cloudflare TURN relay passwords; without it, public STUN only.
+- **🌐 Online → Check connection** reports the matchmaker, direct connections and the relay.
+- `npm run worker:dev` / `worker:test` / `worker:deploy`; a two-browser online e2e
+  (`scripts/smoke-online.mjs`) drives both matchmaker paths with no internet at all.
 - `src/online/` wires the netcode and the room into the game; `runHeadlessNetSession` races a host and
   guest houses in node (with network delay and loss) through the real glue for the tests.
 

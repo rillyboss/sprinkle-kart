@@ -137,10 +137,28 @@ describe('README: modes, toys and grown-up features', () => {
 describe('version and changelog', () => {
   it('package.json (and the lockfile) carry the newest CHANGELOG version', () => {
     const newest = /^## v(\d+\.\d+\.\d+)/m.exec(changelog)?.[1];
-    expect(newest).toBe('2.0.1');
+    expect(newest).toBe('3.0.0');
     expect(pkg.version).toBe(newest);
     expect(lock.version).toBe(newest);
     expect(lock.packages[''].version).toBe(newest);
+  });
+
+  it('v3.0.0 sits above v2.0.1 and is the online play release', () => {
+    const v3 = changelog.indexOf('## v3.0.0');
+    const v201 = changelog.indexOf('## v2.0.1');
+    expect(v3).toBeGreaterThan(-1);
+    expect(v201).toBeGreaterThan(v3);
+    expect(changelog).not.toMatch(/^## Unreleased/m);
+    const text = changelog.slice(v3, v201);
+    for (const s of ['Online', 'SPRINKLE-4821', 'secret sweets', 'Check connection', 'Reconnecting', 'sprinkle-kart-signal',
+      'VITE_SIGNAL_URL', 'docs/INFRA_SETUP.md']) expect(text, s).toContain(s);
+  });
+
+  it('the README online section mentions reconnecting and the version check', () => {
+    const at = readme.indexOf('## Online play');
+    const section = readme.slice(at, readme.indexOf('\n## ', at + 5));
+    expect(section).toContain('Reconnecting… 🔌');
+    expect(section).toContain('Different game version');
   });
 
   it('v2.0.1 sits above v2.0.0 and covers the Peekaberry rename and the new Bruno look', () => {

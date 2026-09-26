@@ -415,3 +415,13 @@ describe('docs/INFRA_SETUP.md rev 2', () => {
     }
   });
 });
+
+describe('docs/INFRA_SETUP.md at v3.0.0', () => {
+  it('the status table is for v3.0.0 and steps 5–8 are ready now', () => {
+    expect(infra).toContain('## Status right now (v3.0.0)');
+    expect(infra).not.toMatch(/v2\.0\.x/);
+    expect(infra).not.toMatch(/⏳/);
+    for (const row of ['| 5–6. Deploy + worker secrets | ✅ **Ready now**', '| 7. `VITE_SIGNAL_URL` variable | ✅ **Ready now**',
+      '| 8. In-game check | ✅ **Ready now**']) expect(infra, row).toContain(row);
+  });
+});

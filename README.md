@@ -365,6 +365,10 @@ The host picks what's next on the results screen. Every house keeps **its own** 
 records: nobody is ever credited for someone else's win, and races with friends count for the
 *race with a friend* goals.
 
+If the Wi-Fi hiccups, a friend's screen says **Reconnecting… 🔌** and the same house comes back (Robo
+Driver drives meanwhile); a reloaded tab rejoins its own house. A tab opened before a game update meets
+*"Different game version — everyone refresh the page 🔄"*.
+
 An invite link on a computer where online play is off just says
 *"Ask a grown-up to turn on online play in Settings → Grown-ups 🔒"*. iPads and iPhones can join but not host.
 **🌐 Online → Check connection** tells you if online play works on your network. It works right away with free public

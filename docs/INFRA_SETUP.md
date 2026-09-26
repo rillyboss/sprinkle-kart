@@ -15,9 +15,10 @@ Most of it is already automated. Only the Cloudflare part needs you.
 > Once the worker is set up, the host still joins the public relays too, so friends whose browser shows an
 > older copy of the page can still find the room, and online keeps working if the worker is ever down.
 
-## Status right now (v2.0.x)
+## Status right now (v3.0.0)
 
-Online play is still being built, so not every step works yet. What you can do today:
+Online play shipped in **v3.0.0**. Everything in the repo is done and tested; the only steps left are the
+Cloudflare ones (2–7), which need your own Cloudflare account. The game already plays online without them.
 
 | Step | Ready? | Notes |
 |---|---|---|
@@ -25,10 +26,10 @@ Online play is still being built, so not every step works yet. What you can do t
 | 2. Cloudflare account | ✅ Do it now | Nothing in the repo is needed. |
 | 3. Log in with wrangler | ✅ Do it now | Needs **Node.js 22 or newer**. Run `npm run worker:login` (it installs the worker's pinned wrangler on first use). Note your **Account ID**. |
 | 4. TURN key | ✅ Do it now | Copy the **Turn Token ID** and **API Token** somewhere safe (a password manager); the API token is shown only once. Also set up the usage notification (step 4.4). |
-| 5–6. Deploy + worker secrets | ✅ **Ready** | The worker code is in `infra/signal-worker/` and its tests pass (`npm run worker:test`). `npm run worker:deploy`, then `npm run worker:secret -- TURN_KEY_ID` and `npm run worker:secret -- TURN_KEY_API_TOKEN`. |
-| 7. `VITE_SIGNAL_URL` variable | ⏳ After step 6 | The Pages workflow already passes this variable into the build. With it set, the game uses the worker (and the free public matchmakers as a backup); without it, public matchmaking only. |
-| 8. In-game check | ✅ **Ready** | Turn on **Online play with friends** in ⚙️ Grown-ups, then **🌐 Online → Check connection** (step 8). Before step 7 it reports the public relays. |
-| Online menu | ✅ **Ready** (Free Race) | **🌐 Online → Host a game / Join a friend**: invite link or room code + secret sweets, a match check before anyone gets in, lock and remove, Pause everyone. Grand Prix and more come next. |
+| 5–6. Deploy + worker secrets | ✅ **Ready now** | The worker code is in `infra/signal-worker/` and its tests pass (`npm run worker:test`). `npm run worker:deploy`, then `npm run worker:secret -- TURN_KEY_ID` and `npm run worker:secret -- TURN_KEY_API_TOKEN`. |
+| 7. `VITE_SIGNAL_URL` variable | ✅ **Ready now** (right after step 6) | The Pages workflow already passes this variable into the build. With it set, the game uses the worker (and the free public matchmakers as a backup); without it, public matchmaking only. |
+| 8. In-game check | ✅ **Ready now** | Turn on **Online play with friends** in ⚙️ Grown-ups, then **🌐 Online → Check connection** (step 8). Before step 7 it reports the public relays. |
+| Online menu | ✅ **Shipped in v3.0.0** (Free Race) | **🌐 Online → Host a game / Join a friend**: invite link or room code + secret sweets, a match check before anyone gets in, lock and remove, Pause everyone. Grand Prix and more come next. |
 | Optional auto-deploy | ✅ **Ready** | `.github/workflows/worker.yml` deploys worker changes on `main` once the two Cloudflare secrets exist, and skips itself until then. |
 
 ---

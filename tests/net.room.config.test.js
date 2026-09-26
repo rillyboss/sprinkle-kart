@@ -175,7 +175,7 @@ describe('docs/INFRA_SETUP.md matches the worker', () => {
   const statusRow = (label) => infra.split(/\r?\n/).find((l) => l.startsWith(`| ${label}`));
 
   it('marks deploy + secrets and the optional auto-deploy as ready', () => {
-    expect(statusRow('5–6. Deploy + worker secrets')).toMatch(/\| ✅ \*\*Ready\*\* \|/);
+    expect(statusRow('5–6. Deploy + worker secrets')).toMatch(/\| ✅ \*\*Ready now\*\* \|/);
     expect(statusRow('Optional auto-deploy')).toMatch(/\| ✅ \*\*Ready\*\* \|/);
     expect(statusRow('3. Log in with wrangler')).toContain('npm run worker:login');
     expect(infra).not.toContain('npx wrangler@'); // everything goes through the pinned npm scripts now
