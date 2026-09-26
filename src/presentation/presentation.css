@@ -189,7 +189,15 @@ body.skx-podium3d .sk-results .sk-step-portrait { visibility: hidden; animation:
 body.skx-podium3d .sk-results .sk-crown { top: -2.1em; }
 /* the Grand Prix trophy ceremony gets the same dancing racers */
 body.skx-podium3d .sk-cer .sk-cer-portrait { visibility: hidden; animation: none; }
-body.skx-podium3d .sk-cer .sk-cer-cup { position: relative; z-index: 2; }
+/* with real 3D racers the trophy moves down beside the kart ("look what I won!"), so it
+   never covers a face: portrait (the racer's spot) -> trophy tucked in front -> name -> step */
+body.skx-podium3d .sk-cer .sk-cer-step > * { order: 2; }
+body.skx-podium3d .sk-cer .sk-cer-step > .sk-cer-portrait { order: 0; }
+body.skx-podium3d .sk-cer .sk-cer-step > .sk-cer-cup {
+  order: 1; position: relative; z-index: 2; align-self: flex-end;
+  margin: -3.4em -1.2em -0.6em 0; transform: scale(0.62); transform-origin: 50% 100%;
+}
+body.skx-podium3d .sk-cer .sk-cer-1 > .sk-cer-cup { margin-top: -4.2em; transform: scale(0.55); }
 
 /* ---------- Racer chatter: speech bubble above the place badge ---------- */
 .skx-bubble-wrap {
