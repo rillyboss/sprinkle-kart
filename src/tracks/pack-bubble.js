@@ -2,12 +2,12 @@
  * Bubble Cup tracks — OWNER: track builder (Bubble Cup).
  * Tracks, in cup order (see src/content/lineup.js for names, themes + unlock rules):
  *   bubblegum-bay, mermaid-lagoon, teddy-toyland, honeycomb-hive
- *
- * Add one module per track (src/tracks/<id>.js, default-exporting
- * { def, buildScenery, prepare?, buildRoadDetails? }) and list it here, e.g.
- *   import bubblegumBay from './bubblegum-bay.js';
- *   export default [bubblegumBay, ...];
+ * Shared Bubble Cup props live in src/tracks/props/bubble-*.js.
  */
+import bubblegumBay from './bubblegum-bay.js';
+import mermaidLagoon from './mermaid-lagoon.js';
+import teddyToyland from './teddy-toyland.js';
+import honeycombHive from './honeycomb-hive.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [];
+export default [bubblegumBay, mermaidLagoon, teddyToyland, honeycombHive];

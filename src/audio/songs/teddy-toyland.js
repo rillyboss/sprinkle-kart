@@ -1,0 +1,60 @@
+// Teddy Toyland: a wind-up toy-soldier march in C major (friendly, never
+// military!). Toy-trumpet lead, music-box sparkles, a tick-tock snare and a
+// plonky bass like a teddy bear marching round the playroom.
+// OWNER: Tracks — Bubble Cup.
+export default {
+  id: 'teddy-toyland',
+  bpm: 120,
+  instruments: { lead: 'brass', counter: 'musicbox', arp: 'musicbox', pad: 'pluck', bass: 'bass' },
+  mix: { lead: 0.4, counter: 0.2, arp: 0.13, pad: 0.12, bass: 0.44, drums: 0.38 },
+  reverb: { lead: 0.25, counter: 0.35, arp: 0.3, pad: 0.15 },
+  kit: {
+    A: 'k . . . s . s . k . . . s . s s',
+    B: 'k . s . k . s . k . s s k . s .',
+    F: 'k . s s s . s s m . m . s s s s',
+  },
+  main: {
+    bassStyle: 'bounce',
+    arpStyle: 'musicbox',
+    padStyle: 'stabs',
+    chords: ['C', 'G7', 'C', 'F', 'C', 'G', 'C', 'G', 'Am', 'Em', 'F', 'C', 'F', 'G', 'C', 'C'],
+    drums: 'ABABABAF ABABABAF',
+    lead: [
+      'G4 . C5 . E5 . G5 .',
+      'F5 - E5 D5 B4 - G4 .',
+      'C5 . E5 . G5 . C6 .',
+      'A5 - G5 F5 C5 - . .',
+      'E5 . E5 F5 G5 - E5 .',
+      'D5 . D5 E5 G5 - D5 .',
+      'C5 . E5 G5 C6 - B5 A5',
+      'G5 - - - D5 . . .',
+      'E5 . A5 . C6 - B5 A5',
+      'B5 - G5 - E5 - G5 .',
+      'A5 . G5 F5 C6 - A5 .',
+      'G5 - E5 - C5 - . .',
+      'F5 . A5 . C6 . A5 .',
+      'G5 . B5 . D6 . B5 .',
+      'C6 - G5 - E5 - D5 -',
+      'C5 - - - G4 . . .',
+    ],
+    // wind-up key "tinks" in the gaps
+    counter: [
+      '. . . . . . . .',
+      '. . . . . . . G6',
+      '. . . . . . . .',
+      '. . . . . . C6 E6',
+      '. . . . . . . .',
+      '. . . . . . . B5',
+      '. . . . . . . .',
+      '. . . . . . G5 B5',
+      '. . . . . . . .',
+      '. . . . . . . B5',
+      '. . . . . . . .',
+      '. . . . . . E6 G6',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . C6 . E6 G6',
+    ],
+  },
+};

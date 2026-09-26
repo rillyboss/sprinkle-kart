@@ -1,0 +1,60 @@
+// Honeycomb Hive: a jaunty, buzzy swing in B-flat major. Vibes carry the tune
+// with "buzz-buzz" repeated notes, a soft synth bee zips around in the second
+// half, and a walking bass waddles along like a happy bumblebee.
+// OWNER: Tracks — Bubble Cup.
+export default {
+  id: 'honeycomb-hive',
+  bpm: 138,
+  swing: 0.22,
+  instruments: { lead: 'vibes', counter: 'lead', arp: 'pluck', pad: 'pluck', bass: 'bass' },
+  mix: { lead: 0.5, counter: 0.14, arp: 0.08, pad: 0.15, bass: 0.46, drums: 0.36 },
+  reverb: { lead: 0.3, counter: 0.2, pad: 0.2 },
+  kit: {
+    A: 'kh . t . sh . t h kh . t . sh . t .',
+    F: 'kh . t . sh . t h k . s . s s c c',
+  },
+  main: {
+    bassStyle: 'walk',
+    arpStyle: 'none',
+    padStyle: 'stabs',
+    chords: ['Bb', 'Gm', 'Eb', 'F', 'Bb', 'Gm', 'Cm7', 'F7', 'Eb', 'F', 'Dm', 'Gm', 'Cm7', 'F7', 'Bb', 'F'],
+    drums: 'AAAAAAAF AAAAAAAF',
+    lead: [
+      'D5 D5 F5 . Bb5 - A5 Bb5',
+      'G5 - D5 - Bb4 - D5 .',
+      'Eb5 Eb5 G5 . Bb5 - C6 Bb5',
+      'A5 - F5 - C5 - . .',
+      'D5 D5 F5 . Bb5 - D6 -',
+      'D6 C6 Bb5 A5 G5 - D5 .',
+      'Eb5 . G5 . Bb5 - G5 .',
+      'A5 - - - F5 . . .',
+      'G5 . Bb5 G5 Eb6 - D6 C6',
+      'C6 . A5 C6 F6 - Eb6 D6',
+      'D6 - A5 - F5 - A5 .',
+      'Bb5 - - - G5 - . .',
+      'C6 . Eb6 . G5 . Bb5 .',
+      'A5 . C6 . Eb6 - C6 -',
+      'Bb5 - F5 - D5 - F5 -',
+      'Bb5 - - - . . F5 .',
+    ],
+    // a little bee buzzing around the melody (second half only)
+    counter: [
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      '. . . . . . . .',
+      'Bb4 C5 Bb4 C5 Bb4 - . .',
+      'A4 Bb4 A4 Bb4 A4 - . .',
+      'F4 G4 F4 G4 F4 - . .',
+      'G4 A4 G4 A4 G4 - . .',
+      'Eb5 D5 Eb5 D5 C5 - . .',
+      'C5 D5 C5 D5 Eb5 - . .',
+      'D5 Eb5 D5 C5 Bb4 - . .',
+      'A4 - - - C5 - . .',
+    ],
+  },
+};

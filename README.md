@@ -199,6 +199,15 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | **Starlight Galaxy** | Stella's glowing star road floating in space, with planets, crystal islands and an observatory |
 | **Sundae Slopes** | Ice-cream mountains, waffle-cone towers, a chocolate river and sprinkle snow |
 
+### 🫧 Bubble Cup
+
+| Track | What's there | Unlock |
+|---|---|---|
+| **Bubblegum Bay** | A pink-sea beach: a bubblegum road, a boardwalk pier hump, a sandcastle hairpin, a gumball-machine lighthouse and giant wobbly gum bubbles | Finish 1 race |
+| **Mermaid Lagoon** | Dive through a glass bubble tunnel UNDER the lagoon (fish, coral and a glowing pearl), then wiggle through coral S-bends on a mermaid-scale road | Win 1 race |
+| **Teddy Toyland** | Toy-sized racing on a play-mat road that snakes round the playroom floor, up a crayon ramp onto giant picture books, past a waving teddy and a toy train | Finish 3 races |
+| **Honeycomb Hive** | Bizzy's home: a hexagon honey road round a flower-shaped loop, over a hilltop honey pot and straight through a giant beehive full of friendly bees | Use 10 items |
+
 ---
 
 ## For developers
