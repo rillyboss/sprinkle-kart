@@ -970,25 +970,45 @@ The host has exactly **one** authoritative accumulator; two things may *drive* i
 
 ## 10. Session, lobby state machine and screens
 
-### 10.1 Entry, gates and screens
+### 10.1 Entry, gates, invite links and screens
 
-- **Settings → Grown-ups** (parent gate): "Online play with friends 🌐" (`settings.onlineEnabled`, default
-  false, schema + `mergeProgress` clamp) and, when a relay exists, "Hide our address (use the relay)".
+- **Settings → Grown-ups** (parent gate) gets three rows (`src/progress/schema.js` defaults + `mergeProgress`
+  clamp): "Online play with friends 🌐" (`settings.onlineEnabled`, default false) · "Only a grown-up can let
+  houses in" (`settings.approvalGate`, default false) · when a relay exists, "Use the relay for game traffic"
+  (`settings.relayOnly`, default false). Switching online **on** first shows the privacy sentence of §1 rule 6
+  and needs a second press ("Okay, turn it on"); the sentence is tone-tested.
 - Title: `menuEntry: { label: 'Online', emoji: '🌐', when: (ctx) => ctx.progress.getSettings().onlineEnabled }`
   (new optional `menuEntry.when(ctx)` in `screenFlow.menuEntries`).
+- **Invite link.** The host lobby shows the label, the secret sweets, a **"Copy invite link 📋"** button
+  (Clipboard API; falls back to showing the link) and a **QR code** of the link. Format:
+  `https://rillyboss.github.io/sprinkle-kart/#join=SPRINKLE-4821~<6 base64url chars>` (one char per sweet).
+  It is a `#` fragment, never a query string, so it is not sent to GitHub Pages, trackers, relays or the
+  Worker. `src/net/session/inviteLink.js`: `makeInviteLink(secret, baseUrl) → string`,
+  `parseInviteFragment(hash) → RoomSecret | null` (forgiving of case/spaces, strict on the alphabet).
+  On start-up `main.js` reads `location.hash` **once**, clears it with `history.replaceState` (so a reload or a
+  screenshot of the address bar does not keep it) and hands the parsed secret to the Online flow:
+  - online enabled → the Online hub opens straight into "Join 🏡 SPRINKLE-4821?" (one press to confirm);
+  - online **off** → a friendly screen "Ask a grown-up to turn on online play in Settings → Grown-ups 🔒" with
+    one button back to the title. It never bypasses the parent gate, and the parsed secret is kept only in
+    memory for this page load (after the grown-up enables online, "Join" offers it once).
 - New screens (`src/ui/screens/`): `online-hub` (Host a game · Join · Check connection) · `code-entry`
-  (word wheel + 4 digit wheels, keyboard digits/letters work; pure `codeEntryReduce`) · `online-lobby` (houses,
-  seats, racers, ping icons, emotes, host: approve / remove / lock / "Let's pick!") · `check-connection` ·
-  `net-waiting` (generic "Host is picking… 🎨" with optional preview from FOCUS).
+  (word wheel + 4 digit wheels + an 8 × 8 **sweets grid** for 6 picks; keyboard digits/letters work; pure
+  `codeEntryReduce`) · `online-lobby` (houses, seats, racers, ping icons, emotes, the label + sweets + invite +
+  QR, host: approve (with match check) / remove / lock / "Let's pick!") · `check-connection` · `net-waiting`
+  (generic "Host is picking… 🎨" with optional preview from FOCUS, milestone M3) · `invite-gate` (the
+  "ask a grown-up" screen above).
 - Router hooks in `Menus.js` (all no-ops when `ctx.net === null`, so offline paths are unchanged):
   `ScreenDef.net = { role: 'host' | 'local' | 'all' }`; `goto()` shows `net-waiting` on guests for `host`
   screens; `_finish()` calls `ctx.net.composeSetup(localSetup)` on the host; public `menus.resolveCurrent(v)`.
+- **Which modes the Online menu shows** comes from one list, `ONLINE_MODES` in `src/net/session/modes.js`,
+  which each milestone extends (M1: `['free']`; M2: + `'grand-prix'`; M3: + `'team'`, `'battle'`). The §11
+  matrix lists the final state; the menu never shows a mode whose milestone is not done.
 
 ### 10.2 State machines
 
 Host (`src/net/session/hostSession.js`):
 ```
-idle → opening (signaling join, code shown) → lobby ⇄ approving
+idle → opening (signaling join on every matchmaker, label + sweets shown) → lobby ⇄ approving
 lobby → mode-select → character-select → course-select (track | cup | arena | my-cup) → loading
 loading → countdown/race → results → (again | next-track) → loading
                                     → gp-standings → loading (next cup race) | ceremony → lobby
@@ -996,26 +1016,28 @@ results/ceremony → lobby ("Back to the lobby") → … → closing (host ends 
 ```
 Guest (`src/net/session/guestSession.js`):
 ```
-idle → code-entry → connecting (signaling, ICE ≤ 15 s) → handshake → waiting-approval → joined
+idle → code-entry | invite → connecting (signaling, ICE ≤ 15 s) → handshake → waiting-approval (shows match check) → joined
 joined: follows PHASE (lobby | net-waiting | character-select | loading | race | results | gp-standings |
         ceremony) → removed | host-gone | version-mismatch | left → online-hub
 ```
 Both are pure reducers `(state, event) → { state, effects[] }` (effects = send, show screen, start race…),
 tested without a browser.
 
-### 10.3 LobbyState (host-owned, sent whole in LOBBY)
+### 10.3 LobbyState (host-owned, sent in LOBBY, coalesced ≤ 4/s)
 
 ```js
-{ v: 1, code: 'SPRINKLE-4821', phase: 'lobby'|'mode'|'characters'|'course'|'loading'|'race'|'results'|'standings'|'ceremony',
+{ v: 1, label: 'SPRINKLE-4821', phase: 'lobby'|'mode'|'characters'|'course'|'loading'|'race'|'results'|'standings'|'ceremony',
   locked: false, capacity: 8,
   houses: [{ houseId: 0, emoji: '🏰', isHost: true, net: 'ok'|'wobbly'|'asleep', rttMs: 0,
              players: [{ globalPi: 0, seat: 0, characterId: 'luna'|null, paintId: 'original', easyDrive: false, ready: false }] }],
-  hostChoice: { mode: 'free', trackId, cupId, arenaId, speedClass: 'zippy', laps: 3, customTrackIds? },
-  pending: [{ houseId, emoji }] /* waiting for approval (host screen only) */ }
+  hostChoice: { mode: 'free', trackId, cupId, arenaId, speedClass: 'zippy', laps: 3, customTrackIds? } }
 ```
-Global player index 0..7 is assigned by the host in join order and kept for the whole session; a house's local
-split-screen slots map to its global indices. `MAX_LOCAL_PLAYERS = 4`, `MAX_HUMANS = 8`,
-`PLAYER_COLORS` grows to 8 entries; `joinReduce` gets a `capacity` (seats left).
+The secret sweets are **never** in LobbyState (guests already know them; the host screen reads them locally).
+The pending-approval queue `[{ peerId, emoji, match: [a, b], since }]` is host-local state, never sent.
+Global player index 0..7 is assigned by the host in join order and kept for the whole session; it decides
+nothing about the grid (§8.6). A house's local split-screen slots map to its global indices.
+`MAX_LOCAL_PLAYERS = 4`, `MAX_HUMANS = 8`, `PLAYER_COLORS` grows to 8 entries; `joinReduce` gets a `capacity`
+(seats left).
 
 ### 10.4 Screen-by-screen sync
 
@@ -1023,11 +1045,12 @@ split-screen slots map to its global indices. `MAX_LOCAL_PLAYERS = 4`, `MAX_HUMA
 |---|---|---|
 | join ("Who's playing at your house?") | each machine for its own pads, capped by seats left; sends `seat-join/leave` | lobby updates |
 | online-lobby | host (approve, remove, lock, Let's pick) ; everyone emotes | same screen |
-| mode-select (online list: Free Race, Grand Prix, Team Race, Bubble Battle) | host | net-waiting "Host is picking a mode…" |
+| approval prompt | host; **queued while the host's players are racing** and shown at results or in the lobby (a small "🏡 wants to join" badge on the results screen only); with `approvalGate` on, Yes opens the parent gate first | the joining guest sees "Waiting for the host… show them 🦊🐸" |
+| mode-select (online list = `ONLINE_MODES`) | host | net-waiting "Host is picking a mode…" |
 | character-select | **every machine at once** for its own players, gated by **its own unlocks**, with its own paint choice; remote picks shown read-only with house emoji | everyone-ready computed on the host |
-| track / cup / arena / my-cup select | host, gated by the host's unlocks | net-waiting with FOCUS preview (track card) |
+| track / cup / arena / my-cup select | host, gated by the host's unlocks | net-waiting (FOCUS preview of the track card in M3) |
 | loading | every machine builds scene, reports LOADED | "Waiting for 🏡…" list |
-| countdown + race | START at the same host tick everywhere | – |
+| countdown + race | START names `startTick` and `goTick`; each machine's countdown runs on its own prediction timeline (§9.1) | – |
 | pause | guest Start = local overlay (Keep racing / Leave room), Robo Driver drives meanwhile; host Start = "Pause everyone 🍪" / Start over / Back to lobby | PAUSE: "Snack break at the host's house 🍪" |
 | results / team-results / battle-results | host picks the option | same screen with "Waiting for host…" + **their own** unlock celebrations |
 | gp-standings, ceremony (podium) | host continues | same data (GP), own unlocks |
@@ -1036,26 +1059,31 @@ split-screen slots map to its global indices. `MAX_LOCAL_PLAYERS = 4`, `MAX_HUMA
 
 ```js
 { raceId: u32, seed: u32, mode, trackId | arenaId, cupId?, customTrackIds?, speedClass, laps,
-  participants: [ { kartId, playerIndex /* global or null for CPU */, houseId|null, seat|null,
-                    characterId, easyDrive, paintId } ],   // authoritative order = race.karts order
+  participants: [ { kartId, gridSlot, playerIndex /* global or null for CPU */, houseId|null, seat|null,
+                    characterId, easyDrive, paintId } ],   // authoritative order = race.karts order (§8.6)
   cpuIds: [...], rules: <resolved rules object>, gp?: { raceIndex, raceCount }, teamSeries?, protocol: 1 }
 ```
 Each machine maps its own seats to local devices (`deviceId` is filled locally, never sent). The host picks
-`cpuIds` from **its** unlocked racers and CPU paints `original`.
+`cpuIds` from **its** unlocked racers and CPU paints `original`; `gridSlot` comes from §8.6.
 
 ### 10.6 Ready and countdown sync
 
 Host sends SETUP → each machine builds the race (`Race` on the host, `ReplicaRace` on guests) and replies
 LOADED. When all are loaded (or 20 s passed — stragglers' karts start with Robo Driver and they join via
-RESYNC), host sends START with `startTick = hostTickNow + 90` (1.5 s). Everyone's countdown (sim state) starts
-at that tick, so "3-2-1-Go!" plays within one frame + clock error (≤ 20 ms target) on every machine.
+RESYNC), host sends START with `startTick = hostTickNow + 90` (1.5 s) and `goTick = startTick + 3 × 60`, then
+TIMEBASE. The countdown is sim state derived from the tick: on the host from `T`, on each guest from its own
+prediction timeline P (§9.1), so every player's GO lines up with **host tick `goTick`** for their own inputs
+(± 1 tick, acceptance M1-9). START's 1.5 s lead is checked against the realistic ctrl retransmit model of
+§4.1: at 250 ms RTT with 5 % loss START still arrives before `startTick` in ≥ 99.9 % of 10 000 harness trials,
+and a guest whose START arrives late simply joins the countdown already running (its P timeline jumps to
+the right tick before GO; nothing is lost).
 
 ### 10.7 Emotes
 
 8 presets (`src/net/emotes.js`, ids 0..7): 👋 Hi! · 😄 Hee hee · 🎉 Yay! · 👍 Nice! · 😮 Whoa! · 💖 Love it ·
-🍭 Sweet! · 🐢 Wait for me! Picked with a d-pad wheel (lobby: Y button; race: hold Look-back + d-pad, off by
-default in race for players under Kid-Assist). Shown as a bubble over the kart / lobby card with a soft chime.
-Rate 1 per 1.5 s per player; the host can mute emotes for everyone.
+🍭 Sweet! · 🐢 Wait for me! Picked with a d-pad wheel (lobby: Y button). **In-race emotes are milestone M3**
+(hold Look-back + d-pad, off by default for players under Kid-Assist). Shown as a bubble over the kart / lobby
+card with a soft chime. Rate 1 per 1.5 s per player; the host can mute emotes for everyone.
 
 ### 10.8 Session helpers and labels
 
@@ -1067,20 +1095,26 @@ work unchanged); new `session.allHumans`, `isAnyHuman(kart)`, `isLocal(kart)` fo
 ### 10.9 Removing players
 
 Host lobby → a house card → "Remove this house 👋" or a single player. KICK → guest shows "The host said
-bye-bye for now 👋" and returns to the Online hub; the host calls `signaling.block(peerId)` (Worker: `kick`),
-and a removed house cannot rejoin this session. Mid-race removal hands their karts to Robo Driver until the
-race ends.
+bye-bye for now 👋" and returns to the Online hub. Removing a **house** also **locks the room** in the same
+step (`signaling.setLocked(true)` on every matchmaker + Worker `drop`, which remembers the dropped socket's
+salted IP hash until unlock) and the lobby shows "Room locked 🔒 — tap to open again". A reload of the removed
+house gets a new peer id but meets a locked room (REJECT `locked`). If the host re-opens the room, anyone with
+the invite can ask again, and the approval prompt (with a fresh match check) is the barrier; we do not promise
+more. Removing a single seat does not lock. Mid-race removal hands their karts to Robo Driver until the race
+ends. Acceptance M1-17 tests exactly this.
 
 ---
 
 ## 11. Mode matrix
 
+The *Notes* column names the milestone (§16.4) that turns the mode on in `ONLINE_MODES`.
+
 | Mode | Online? | Host-only logic | Every machine | Notes |
 |---|---|---|---|---|
-| Free Race 🏁 | ✅ | race sim, CPUs, items, completion | results screen, own records (local players' best times only) | again / next-track / lobby |
-| Grand Prix 🏆 (incl. My Cup) | ✅ | `createGrandPrix`, `gpRecordRace`, cpu picks fixed for the cup | standings, ceremony podium, `gp-race-end`/`gp-end` **localized** | My Cup tracks must be unlocked on the host |
-| Team Race 🤝 | ✅ | team series + scoring | badges, team-results | all humans are Team Sprinkle |
-| Bubble Battle 🫧 | ✅ | `battleSim` (pops, bonus, ranking, end) | `battleView` from snapshot battle block + battle events | arenas unlocked on host |
+| Free Race 🏁 | ✅ | race sim, CPUs, items, completion | results screen, own records (local players' best times only) | **M1**; again / next-track / lobby |
+| Grand Prix 🏆 (incl. My Cup) | ✅ | `createGrandPrix`, `gpRecordRace`, cpu picks fixed for the cup | standings, ceremony podium, `gp-race-end`/`gp-end` **localized** | **M2**; My Cup tracks must be unlocked on the host |
+| Team Race 🤝 | ✅ | team series + scoring | badges, team-results | **M3**; all humans are Team Sprinkle |
+| Bubble Battle 🫧 | ✅ | `battleSim` (pops, bonus, ranking, end) | `battleView` from snapshot battle block + battle events | **M3**; arenas unlocked on host; convergence rows need WS1's battle split |
 | Time Trial ⏱️ | ❌ local | – | – | solo + ghost |
 | Daily Sprinkle ☀️ | ❌ local (later: host sends `setup.daily`) | – | – | date/time-zone based |
 | How to Play 🎓 | ❌ local | – | – | solo coached |
@@ -1095,6 +1129,10 @@ race ends.
   local rows only (with their stats), `winner` = a **local** human 1st or null, `totals` from local humans,
   `humanCount` = all humans (so *multiplayerRaces* counts), `online: true` — then emits `race-end` locally.
   progressUnlocks, funGoals, timingRecords/recordHolders and the Sticker Book work unchanged.
+- **One source of truth for counters.** Online, every progress/goal/sticker counter comes from the host's
+  per-player stats in `HostRaceSummary` (the host's `createRaceStats` tally), never from events the guest
+  predicted locally (those carry `predicted: true` and feed presentation only, §9.6). `localizeSummary`'s
+  stats and the goal counters therefore always agree.
 - GP: `localizeGp(gp, localPis)` recomputes `humanWinner` and `bestHumanPlace` for local humans (today
   `cups.js` treats *any* human as a winner — without this a guest would get *cupsWon* for the host's win).
 - Unlock gating: each machine gates its own racer picks; tracks/cups/arenas/My Cup/CPU fill use the host's.
@@ -1110,12 +1148,14 @@ race ends.
 `wobbly` at 3 s (icon + gentle HUD line), `asleep` at 8 s: their karts get **Robo Driver** ("🤖"), their seats
 stay reserved. In the lobby an asleep house is greyed and removed after the reconnect window.
 
-### 13.2 Reconnect window (60 s)
+### 13.2 Reconnect window (60 s) — milestone M2
 
 WELCOME gives each house a random 128-bit `token` (sessionStorage). A guest whose link drops retries
 signaling automatically (1 s, 2 s, 4 s … ≤ 60 s total, "Reconnecting… 🔌"); HELLO with the token re-attaches the
-same house and global indices without approval; mid-race the host sends RESYNC (cold state + `lastEventSeq`),
-snapshots resume, control returns on the next tick. iOS/iPadOS (WebRTC suspended when locked or backgrounded):
+same house and global indices without approval (also while the room is locked, since that house was never
+removed); mid-race the host sends RESYNC (cold state + `lastEventSeq`, as FRAG pieces paced per §4.1),
+snapshots resume, the input baseline resets (§9.3) and control returns on the next tick. In M1 a dropped
+guest simply stays with Robo Driver until the race ends and can rejoin (with approval) in the lobby. iOS/iPadOS (WebRTC suspended when locked or backgrounded):
 on `visibilitychange → visible` the guest shows "Tap to reconnect 👆" (audio also needs the gesture).
 
 ### 13.3 Host leaves
@@ -1138,21 +1178,35 @@ connection's categories).
 | version mismatch | "Different game version — everyone refresh the page 🔄" | – (logged in overlay) |
 | room full (8 racers) | "This room is full of racers 🚗" | – |
 | declined / locked | "The host's room is closed for now 🔒" | – |
-| wrong code / no host | "We couldn't find that room. Check the code? 🔍" | – |
+| wrong code / sweets, or no host | "We couldn't find that room. Check the code and the secret sweets? 🔍 If it still won't work, ask everyone to refresh 🔄" | – |
 | matchmaker unreachable | "Couldn't reach the matchmaker" (+ auto fallback torrent → nostr) | same |
 | host tab hidden / starved | "Waiting for the host… ⏳" | banner on return |
-| iPad tries to host | "Hosting needs a computer 💻 — you can still join!" | – |
+| iPad / iPhone tries to host | "Hosting needs a computer 💻 — you can still join!" | – |
+| approval not answered in 120 s | "The host didn't open the door this time 🚪" | prompt disappears |
 | too many seats requested | join screen stops at seats left | – |
+
+**iPad / iPhone detection** (`src/net/platform.js`, pure `canHost({ userAgent, platform, maxTouchPoints })`):
+iPadOS Safari reports a desktop Mac user agent by default, so a user-agent test alone lets iPads host. Rule:
+`isAppleMobile = /iPad|iPhone|iPod/.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1)`
+(real Macs report `maxTouchPoints = 0`); hosting needs `!isAppleMobile`. Unit tests use fixtures for iPadOS
+17/18 desktop-mode UA + `maxTouchPoints 5`, iPhone, a real Mac, Windows, ChromeOS and Android. As a second
+guard a host that sees its tab go hidden for > 10 s with the pump failing to tick (any platform) shows the
+"Keep this tab open" banner and pauses (§9.9).
 
 ### 13.6 Check connection screen (`check-connection`, pure `diagnose()` in `src/net/diagnose.js`)
 
 | Row | Probe | ✅ / ⚠️ / ❌ |
 |---|---|---|
-| Matchmaker | Worker: `GET /health` ok → **"Sprinkle Kart server"**; else public: a tracker WebSocket opens → **"Public relays"** | reachable / slow / unreachable |
-| Direct connection | gather ICE with STUN only: a `srflx` candidate appears | yes / only local network / no |
-| Relay (TURN) | Worker `/ice` returns TURN + a `relay` candidate gathers | ready / not set up (no worker) / blocked |
+| Matchmaker | Worker build: `GET /health` ok → **"Sprinkle Kart server"** (and public relays as backup); `/health` failing → "Server napping, using public relays"; public build: a tracker WebSocket opens → **"Public relays"** | reachable / slow / unreachable |
+| Direct connection | gather ICE with STUN only: a `srflx` candidate appears | yes / only local network / no → "Relay needed" |
+| Relay (TURN) | Worker `GET /ice` (rate-limited, ttl 900 s) returns TURN + a `relay` candidate gathers | ready / not set up (no worker) / blocked |
 
-Result rows are kid-friendly with a "For grown-ups" detail line (candidate types, RTT to STUN). This matches
+A network that blocks UDP (school Chromebook policy, some hotspots) must come out as Direct ❌ "Relay needed"
+and, with the Worker, Relay ✅ via TURN/TLS 443: `tests/net.diagnose.test.js` simulates it with the fake ICE
+gatherer (no `srflx`, only `relay` over tcp/tls).
+
+Result rows are kid-friendly with a "For grown-ups" detail line (candidate **types** and RTT to STUN; never raw
+IP addresses, since screens get shared). This matches
 INFRA_SETUP.md step 8.
 
 ---
@@ -1163,10 +1217,12 @@ INFRA_SETUP.md step 8.
 widget without an anchor in the top-left, plus `window.__game.net`):
 
 per peer: role · transport (`public-torrent` / `public-nostr` / `worker`) · direct/relayed · RTT, jitter, loss %
-(from INPUT/SNAPSHOT seq gaps) · snapshot Hz in / kbps in/out · interp delay (ms) · input lead + slack (ticks) ·
+and burst length (from INPUT/SNAPSHOT seq gaps) · snapshot Hz in / **wire** kbps in/out · state skips · interp delay (ms) · input lead + slack (ticks) ·
 extrapolating? · reconcile error p50/p99 (cm, last 10 s) · snaps count · events/s · lastEventSeq · ctrl
-bufferedAmount · clock offset ± · build/proto/content of both sides · host tick vs local estimate. A tiny
-sparkline of RTT and error. `window.__game.net` exposes the same numbers for smoke/e2e assertions.
+bufferedAmount · clock offset ± · timebase epoch · build/proto/content of both sides · host tick vs local
+estimate · matchmaker(s) in use. Candidate **types** only (host / srflx / relay, udp / tcp / tls) — **never
+raw IP addresses or ports**, because screens are shared and streamed (a test renders the overlay with a fake
+stats report containing IPs and asserts none appear). A tiny sparkline of RTT and error. `window.__game.net` exposes the same numbers for smoke/e2e assertions.
 
 ---
 
@@ -1177,16 +1233,17 @@ moving on.** New test files are named `tests/net.*.test.js`, `tests/race.fixedst
 
 | Layer | What | Where |
 |---|---|---|
-| Unit | codec round-trips + saturation, every message encode/decode, size caps (cap-case snapshot ≤ 1150 B), schema validation, fuzz (never throws), clock filter (offset within 2 ms under 50 ms jitter), heartbeat state machine, inputBuffer policy table, lead controller convergence, Hermite/extrapolation, reconciler (replay + smoothing + snap), eventPlayer (dedupe, release at renderTick, own-kart drop rules), lobby / host / guest reducers, roomCode (format, 320k space, parse forgiving of spaces/case), localizeSummary/localizeGp, composeSetup, playerLabel, contentHash stability, diagnose() | `tests/net.*.test.js` |
-| Sim | fixed-tick golden (30/60/75/144 Hz + jitter identical), rng state round-trip, captureSimState/applySimState bit-identical continuation, entity ids unique, events carry ids, predictTick = host in contact-free windows (bit-exact) and ≤ 1.5 m in disturbed windows, `Math.random` absent from sim path, all existing race/fairness/QA tests unchanged | `tests/race.*.test.js` |
-| Node multi-peer sims | `tests/helpers/netHarness.js`: `runNetRace({ track, houses: [[2],[1],[1]], cpus, laps, conditions, seed })` runs a real host Race + N guest ReplicaRaces over MemoryTransport with fake clock; scripted or CPU-brain inputs for "human" seats | `tests/net.sim.test.js` |
-| | Matrix: RTT 0 / 50 / 150 / 250 ms × loss 0 / 1 / 5 % × jitter 0 / 20 ms × reorder 0 / 10 % (+ 1 % duplication) | |
-| | Asserts: every guest's final standings, finish places, lap times (ms) and RESULT are **identical** to the host's; localized summaries correct; each guest applied the exact host event seq list once (no gaps, no dups); final replica kart states within quantisation (≤ 4 cm) of host; own-kart reconcile error p99 ≤ 0.5 m outside contact windows at ≤ 150 ms; remote render pose continuity (no frame-to-frame jump > 1.5 m at ≤ 5 % loss); no unhandled errors | |
-| Session sims | join/approve/remove/lock, 8-human cap, reconnect with token mid-race (RESYNC, control returns), guest drop → Robo Driver, host leave → graceful end, version mismatch reject, GP 4 races + ceremony sync, rematch, emote rate limit | `tests/net.session.test.js` |
-| Real WebRTC in node | optional `node-datachannel/polyfill` RTCPeerConnection: two WebRtcTransports over an in-process signaling pair, negotiated channels 8/9 open, unreliable channel drops don't block ctrl; skipped with a clear message if the binary won't load | `tests/net.webrtc.node.test.js` |
-| Worker | pure `roomReduce` in the main suite (any Node); full Worker via `@cloudflare/vitest-plugin` (Node 22+, `npm run worker:test`): Origin check, CORS on /health + /ice only, `/ice` with mocked TURN API (`TURN_API_BASE` var → local mock), `:53` filtered, caching, `/health.turn` true iff both secrets, room caps/kick/lock/rate/alarm | `infra/signal-worker/test/` |
-| Browser e2e | `scripts/smoke-online.mjs` (Playwright, system Chrome, two contexts in one headless browser, `--disable-features=WebRtcHideLocalIpsWithMdns` + the swiftshader args): (a) public-signaling path against `scripts/dev/localTracker.mjs` (minimal WebTorrent-tracker WebSocket relay; never real public relays); (b) Worker path against `npm run worker:dev`. Scenario: enable online (test param bypasses the gate on localhost only), host + guest (2 players) join by code, pick racers, Free Race 1 lap with autodrive, both reach results with identical standings, rematch, remove guest. Screenshots of every online screen. | `SMOKE_PORT=<p> node scripts/smoke-online.mjs` |
-| Soak | node: 3 houses × 2–3 players + CPUs, a full 4-race GP + 10 Free Races at 150 ms / 3 % loss / 20 ms jitter (fake time ≈ 40 min): memory buffers bounded, no drift in clock offset, zero divergence; browser: 10-minute two-context run, heap growth < 30 MB, no errors | `tests/net.soak.test.js` (`SOAK=1` long mode) |
+| Unit | codec round-trips + saturation, **timer fields vs every `TUNING` duration**, every message encode/decode (incl. TIMEBASE, FRAG), size caps (cap-case snapshot ≤ 1150 B), schema validation, fuzz (never throws), clock filter (offset within 2 ms under 50 ms jitter), **host timeline** (TIMEBASE resync, pause freeze, snapshot-arrival filter), **host clock** (rAF + pump, each tick once, alpha in [0,1), catch-up vs skip), heartbeat state machine, inputBuffer policy table (every row of §9.3), lead controller convergence (both directions), Hermite/extrapolation, reconciler (joint replay + smoothing + snap + Robo Driver hand-over), eventPlayer (dedupe, release at R, own-kart drop rules, `predicted` flag), lobby / host / guest reducers, approval queue + match check + lock-on-remove, **roomKey** (KDF vectors; label alone never yields the ids), **inviteLink** (parse, reject junk, fragment cleared, gate respected), roomCode, `canHost` platform fixtures, grid slots fairness, localizeSummary/localizeGp (predicted events never counted), composeSetup, playerLabel, contentHash stability, diagnose() incl. UDP blocked → "Relay needed", debug overlay never prints IPs, `scripts/worker.mjs` command planning | `tests/net.*.test.js` |
+| Sim | fixed-tick golden (30/60/75/144 Hz + jitter identical), 144 Hz input-to-render latency ≤ 1 tick, rng state round-trip, captureSimState/applySimState bit-identical continuation, `checkSimStateShape` contract, entity ids unique, events carry ids, gridSlot placement, joint local `collideKarts`, predictTick = host in contact-free windows (bit-exact) and ≤ 1.5 m in disturbed windows, `Math.random` absent from sim path, battleSim/battleView and team split parity with v2 (same results for the same seed), all existing race/fairness/QA tests unchanged | `tests/race.*.test.js`, `tests/modes.*.test.js` |
+| Node multi-peer sims | `tests/helpers/netHarness.js`: `runNetRace({ track, mode, houses: [[2],[1],[1]], cpus, laps, conditions, seed })` runs a real host Race + N guest ReplicaRaces over MemoryTransport with fake clock; scripted or CPU-brain inputs for "human" seats; it reports **wire bytes** (§4.1) | `tests/net.sim.test.js` |
+| | Matrix: RTT 0 / 50 / 150 / 250 ms × loss 0 / 1 / 5 % (random) and **5 % in 3-packet bursts** × jitter 0 / 20 ms × reorder 0 / 10 % (+ 1 % duplication); modes Free Race (M1), GP (M2), Team + Battle (M3) | |
+| | Asserts: every guest's final standings, finish places, lap times (ms) and RESULT are **identical** to the host's; localized summaries correct; each guest applied the exact host event seq list once (no gaps, no dups); final replica kart states within quantisation (≤ 4 cm) of host; own-kart reconcile error p99 ≤ 0.5 m outside contact windows at ≤ 150 ms (≤ 0.75 m under bursts); couch siblings `[[2]]` colliding locally: reconcile error ≤ 0.5 m; a press on the guest's visible GO earns the start boost; every press applied exactly once; remote render pose continuity (no frame-to-frame jump > 1.5 m at ≤ 5 % loss); timeline recovers within 1 s after pause / stall / starvation; wire-byte budgets of §9.4; no unhandled errors | |
+| Session sims | join/approve (match check)/remove (→ locked, reload refused)/lock/unlock, approvals queued during a race, 8-human cap, dual matchmaker (host = worker + public / guest = public only; Worker down → public on both sides), reconnect with token mid-race (M2: RESYNC, control returns), guest drop → Robo Driver, host leave → graceful end, version mismatch reject, GP 4 races + ceremony sync (M2), rematch, emote rate limit, START under the realistic ctrl model | `tests/net.session.test.js` |
+| Real WebRTC in node | optional `node-datachannel/polyfill` RTCPeerConnection (dynamic import; skipped with a clear message if missing or the binary won't load): two WebRtcTransports over an in-process signaling pair, negotiated channels 8/9 open, unreliable channel drops don't block ctrl, state backpressure skip with a real `bufferedAmount` | `tests/net.webrtc.node.test.js` |
+| Worker | pure `roomReduce` + `guardReduce` in the main suite (any Node); full Worker via `@cloudflare/vitest-plugin` (Node 22+, `npm run worker:test`): Origin check (+ dev wildcard only for localhost/127.0.0.1), CORS on /health + /ice only, TURN in `joined` only for a room with a host, `/ice` rate limit 5/min + ttl 900, room creds never reused across rooms, ttl ≤ 1800, daily mint cap flips `/health.turn`, `:53` filtered, room caps/drop/lock/IP-hash block until unlock, forged Origin still hits the join cap, alarm GC | `infra/signal-worker/test/` |
+| Browser e2e | `scripts/smoke-online.mjs` (Playwright, system Chrome, two contexts in one headless browser, `--disable-features=WebRtcHideLocalIpsWithMdns` + the swiftshader args): (a) public-signaling path against `scripts/dev/localTracker.mjs` (minimal WebTorrent-tracker WebSocket relay; never real public relays); (b) Worker path against `npm run worker:dev` on the port the script passes through. Scenario: enable online (test param bypasses the gate on localhost only), host + guest (2 players) join **by invite link** and once **by code + sweets using only controller events**, approve with match check, pick racers, Free Race 1 lap with autodrive, both reach results with identical standings, emotes in the lobby, rematch, remove guest (room locks). Measures **time from code entry to lobby**. Screenshots of every online screen. | `SMOKE_PORT=<p> node scripts/smoke-online.mjs` |
+| Manual pre-release | `docs/ONLINE_CHECKLIST.md` (WS8): two real homes (or one home + phone hotspot) against the **real** public relays and, once it exists, the real Worker; invite link by text message; check connection on a UDP-blocking network; not run in CI | checklist, results pasted into the release PR |
+| Soak | node: 3 houses × 2–3 players + CPUs, a full 4-race GP + 10 Free Races at 150 ms / 3 % loss / 20 ms jitter (fake time ≈ 40 min) with two 30 s snack breaks: memory buffers bounded, no drift in clock offset, zero divergence; browser: 10-minute two-context run, heap growth < 30 MB, no errors | `tests/net.soak.test.js` (`SOAK=1` long mode) |
 | Regression | `dev/net-design/measure-*.mjs` baselines (snapshot size, event rate, prediction error) re-run in CI as a test with thresholds | `tests/net.baseline.test.js` |
 
 CI: the main suite (incl. MemoryTransport sims) stays in `test-and-build`. Worker tests run in a separate job
