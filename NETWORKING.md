@@ -943,6 +943,19 @@ Mitigations, in order of impact:
 Results record `net.hostAdvantageMs` (median guest one-way latency) in the debug overlay so the family can see
 it is small.
 
+**Where a guest sees its own bonks (the trade-off).** A guest's own kart is drawn at P (its prediction, ahead
+of the host) while items are drawn on R (the past). When the host's "bonked" arrives the kart has already rolled
+on — measured 2.6 m (p50) at RTT 0, 6.6 m at 150 ms and 7.9 m at 250 ms from the gumdrop it saw — which is what
+makes a kid say "I didn't touch it!". Every hit is still seen by the victim and results agree everywhere. The
+guest softens it with **local gumdrop hits** (`src/net/guest/localHits.js`): gumdrops are static, so when its
+predicted kart overlaps one from the newest snapshot it bonks itself at that very tick (the host's own bonk rules:
+star = immune, a shield pops), hides the gumdrop and drops the host's duplicate event. Only gumdrops that nobody
+else could reach first are predicted — another kart within 10 m of it in the snapshot (the host often lets a CPU
+eat it first: measured, that was every unconfirmed local hit) or a gumdrop that first appeared right behind our
+own kart (maybe our own drop, which its owner can't touch for 0.8 s) stays host-decided; a local hit the host
+disagrees with is corrected by the next reconcile. Rockets stay host-only. So in traffic the old offset remains;
+on an open stretch the twirl starts at the gumdrop. The debug overlay shows "local bonks / confirmed".
+
 ### 9.9 Host tick source: one accumulator, two drivers — `src/net/host/hostClock.js`, `src/net/tickPump.js`
 
 The host has exactly **one** authoritative accumulator; two things may *drive* it, never both at once:

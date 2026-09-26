@@ -142,6 +142,8 @@ export function createGuestDriver({
         interpDelayMs: replica.interpDelayMs, epoch: timeline.epoch, paused: timeline.paused, sender: { ...sender.stats },
         reconcileP50: replica.reconciler.percentile(0.5), reconcileP99: replica.reconciler.percentile(0.99),
         lastEventSeq: replica.events.lastSeq, clock: { rttMs: clock.rttMs, jitterMs: clock.jitterMs, ready: clock.ready, offset: clock.offset ?? null },
+        localHits: replica.stats?.localHits ?? 0, localHitsConfirmed: replica.stats?.localHitsConfirmed ?? 0,
+        lossPct: replica.arrivals?.lossPct ?? null, snapshotIntervalMs: replica.arrivals?.intervalMs ?? null,
       };
     },
     get lead() { return lead; },

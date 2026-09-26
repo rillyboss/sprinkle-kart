@@ -34,6 +34,15 @@ import { createEventPlayer } from './eventPlayer.js';
 import { createReplicaItems } from './replicaItems.js';
 import { createInputHistory, createLocalResolver } from './inputHistory.js';
 
+/** A gumdrop first seen less than this long ago is never hit locally (it may be one we just dropped). */
+export const LOCAL_HIT_GRACE_TICKS = 60;
+/** A gumdrop with another kart this close in the snapshot may be eaten before we get there: host decides. */
+export const LOCAL_HIT_CONTEST_M = 10;
+/** A gumdrop first seen this close to one of our own karts may be our own drop (the grace above applies). */
+export const LOCAL_HIT_OWN_RADIUS_M = 16;
+/** The host's bonk is the same as a local one when their ticks are this close. */
+export const LOCAL_HIT_MATCH_TICKS = 45;
+
 /** Shortest signed turn from heading a to heading b (radians, −π..π). */
 function angleDelta(a, b) {
   let d = (b - a) % (2 * Math.PI);
@@ -141,6 +150,11 @@ export class ReplicaRace {
     this._predicting = new Set(this.localKartIds); // own karts currently predicted (not Robo-driven)
     this._auto = new Set(); // own karts that finished: the host's CPU brain drives them home, we autopilot the prediction
     this._bumpTimes = new Map();
+    // local gumdrop hits (§9.8): ids our own karts bonked into, when each gumdrop was first seen, and how many
+    // of the host's "bonked" for each own kart are duplicates of a local one
+    this._hitGumdrops = new Set();
+    this._gumdropSeen = new Map();
+    this._localBonks = new Map();
     this._countdownShown = 4;
     this._goEmitted = false;
     this.predictedTick = this.startTick - 1; // P: the newest predicted tick
@@ -210,12 +224,74 @@ export class ReplicaRace {
     return Math.max(0, (goR - r) / 60);
   }
 
-  _ctxFor(tick, emit) {
+  _ctxFor(tick, emit, hazards = null) {
     return {
       path: this.path, boostPads: this.boostPads, gameplay: this.gameplay, rules: this.rules, tick,
       startTick: this.startTick, goTick: this.goTick, countdownAfter: this._countdownAfter, emit,
       bumpTimes: this._bumpTimes, lapsTotal: this.lapsTotal, time: Math.max(0, (tick - this.goTick) / 60),
+      ...(hazards ? { hazards } : {}),
     };
+  }
+
+  /** Gumdrops the host still has (newest snapshot): first-seen ticks, and forget hits the host has resolved. */
+  _trackGumdrops(snap) {
+    const alive = new Set();
+    for (const g of snap.gumdrops || []) {
+      alive.add(g.id);
+      if (this._gumdropSeen.has(g.id)) continue;
+      // snapshots don't say who dropped it: one that first shows up next to one of our karts may be ours, and
+      // its owner can't touch it for a moment — leave that one to the host; any other can be hit at once
+      const nearMine = this.localKartIds.some((id) => {
+        const k = this.karts[id];
+        const dx = g.x - k.position.x;
+        const dz = g.z - k.position.z;
+        // our own drops land behind us; a gumdrop AHEAD of us was dropped by someone in front
+        return Math.hypot(dx, dz) < LOCAL_HIT_OWN_RADIUS_M && dx * Math.sin(k.heading) + dz * Math.cos(k.heading) <= 0;
+      });
+      this._gumdropSeen.set(g.id, nearMine ? snap.tick : -Infinity);
+    }
+    for (const id of [...this._gumdropSeen.keys()]) if (!alive.has(id)) this._gumdropSeen.delete(id);
+    for (const id of [...this._hitGumdrops]) if (!alive.has(id)) this._hitGumdrops.delete(id);
+  }
+
+  /**
+   * Hazards for predicting our own karts: the gumdrops of `snap` (default the newest). A gumdrop seen for less
+   * than LOCAL_HIT_GRACE_TICKS NEXT TO one of our karts is left to the host (it may be ours: its owner can't touch it
+   * yet).
+   */
+  _hazards(consumed, snap = this._newest) {
+    const contested = this._contested(snap);
+    return {
+      gumdrops: snap?.gumdrops || [],
+      consumed,
+      skip: (g) => {
+        if (contested.has(g.id)) return true;
+        const seen = this._gumdropSeen.get(g.id);
+        return seen === undefined || this.predictedTick - seen < LOCAL_HIT_GRACE_TICKS;
+      },
+    };
+  }
+
+  /**
+   * Gumdrops another kart may reach first: our snapshot is older than P, and a CPU or friend near the gumdrop
+   * then often eats it before we get there (measured: that was every local hit the host did not confirm).
+   * Those stay host-decided. Cached per snapshot.
+   */
+  _contested(snap) {
+    if (!snap) return new Set();
+    this._contestedCache ??= new WeakMap();
+    let set = this._contestedCache.get(snap);
+    if (set) return set;
+    set = new Set();
+    for (const g of snap.gumdrops || []) {
+      for (let id = 0; id < (snap.karts?.length ?? 0); id++) {
+        if (this._local.has(id)) continue;
+        const p = snap.karts[id]?.position;
+        if (p && Math.hypot(p[0] - g.x, p[2] - g.z) < LOCAL_HIT_CONTEST_M) { set.add(g.id); break; }
+      }
+    }
+    this._contestedCache.set(snap, set);
+    return set;
   }
 
   _predictedKarts() {
@@ -301,8 +377,18 @@ export class ReplicaRace {
     for (const k of karts) this._prevPose.set(k.id, { x: k.position.x, y: k.position.y, z: k.position.z, heading: k.heading });
     const inputs = [];
     this.localKartIds.forEach((id, seat) => { if (this._predicting.has(id)) inputs.push(resolved[seat]); });
-    const emit = (e) => this._emit({ ...e, predicted: true });
-    this._predictTick(karts, inputs, this._ctxFor(tick, emit));
+    const emit = (e) => {
+      if ((e.type === 'bonked' || e.type === 'shield-pop') && e.gumdrop !== undefined && e.kart) {
+        const list = this._localBonks.get(e.kart.id) || [];
+        list.push(tick);
+        this._localBonks.set(e.kart.id, list.filter((t) => tick - t < LOCAL_HIT_MATCH_TICKS * 3));
+        this.stats.localHits = (this.stats.localHits || 0) + 1;
+        const g = (this._newest?.gumdrops || []).find((x) => x.id === e.gumdrop);
+        this.lastLocalHit = { kart: e.kart.id, tick, gumdrop: e.gumdrop, x: g?.x ?? null, z: g?.z ?? null };
+      }
+      this._emit({ ...e, predicted: true });
+    };
+    this._predictTick(karts, inputs, this._ctxFor(tick, emit, this._hazards(this._hitGumdrops)));
     this.stats.predicted++;
   }
 
@@ -344,6 +430,7 @@ export class ReplicaRace {
     if (snap.tick <= this._newestSnapTick) return true; // older (reordered): only useful for interpolation
     this._newestSnapTick = snap.tick;
     this._newest = snap;
+    this._trackGumdrops(snap);
 
     // host-authoritative display state from the newest snapshot
     if (snap.flags?.finished && !this.hostFinished) {
@@ -401,9 +488,11 @@ export class ReplicaRace {
       if (snap.tick > this.predictedTick) this.predictedTick = snap.tick; // (re)start from the snapshot
       this._lastReconciled = snap.tick;
       const before = karts.map((k) => ({ x: k.position.x, y: k.position.y, z: k.position.z, heading: k.heading }));
+      // the replay meets the same static gumdrops (this snapshot's) at the same ticks as the first prediction
+      const replayHaz = this._hazards(new Set(), snap);
       const res = this.reconciler.reconcile({
         karts, snap, inputsFor: (t) => this._inputsFor(t), toTick: this.predictedTick, predictTick: this._predictTick,
-        ctxFor: (t) => this._ctxFor(t, () => {}), forceSnap: handBack.length > 0, path: this.path,
+        ctxFor: (t) => this._ctxFor(t, () => {}, replayHaz), forceSnap: handBack.length > 0, path: this.path,
         normalizeOwner: (o) => this._normalizeOwner(o),
       });
       // the previous-tick pose moves with the correction, so the drawn prev→cur blend stays continuous (the
@@ -417,6 +506,7 @@ export class ReplicaRace {
         p.z += k.position.z - b.z;
         p.heading += angleDelta(b.heading, k.heading);
       });
+      for (const id of replayHaz.consumed) this._hitGumdrops.add(id);
       this.lastCorrections = res.errors;
       for (const e of res.errors) e.auto = this._auto.has(e.kart);
       this.onCorrection?.(snap, res.errors);
@@ -465,6 +555,16 @@ export class ReplicaRace {
   }
 
   _releaseEvent(e) {
+    // the host's bonk of one of our karts that we already played locally (same gumdrop, §9.8): drop the copy
+    const localAt = (e.type === 'bonked' || e.type === 'shield-pop') && e.cause === 'gumdrop' && this._local.has(e.kart)
+      ? (this._localBonks.get(e.kart) || []).findIndex((t) => Math.abs(t - e.tick) <= LOCAL_HIT_MATCH_TICKS) : -1;
+    if (localAt >= 0) {
+      this._localBonks.get(e.kart).splice(localAt, 1);
+      this.stats.localHitsConfirmed = (this.stats.localHitsConfirmed || 0) + 1;
+      this.appliedSeqs.push(e.seq);
+      this.itemsReplica.onEvent(e);
+      return;
+    }
     this.onReleased?.(e);
     this.appliedSeqs.push(e.seq);
     if (this.appliedSeqs.length > 100000) this.appliedSeqs.splice(0, 50000);
@@ -526,7 +626,7 @@ export class ReplicaRace {
       k.velocity.set(pose.vx, 0, pose.vz);
       this._setRender(k, drawn.x, drawn.y, drawn.z, drawn.heading, frameDt);
     }
-    this.itemsReplica.update(this.buffer, R);
+    this.itemsReplica.update(this.buffer, R, this._hitGumdrops);
     this.items.bursts?.update?.(frameDt);
   }
 

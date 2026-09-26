@@ -999,6 +999,8 @@ function netInfo(o) {
         interpDelayMs: st?.interpDelayMs, lead: st?.lead, slack: st?.lastSlack, epoch: st?.epoch, lastEventSeq: st?.lastEventSeq,
         reconcileP50Cm: st?.reconcileP50 != null ? st.reconcileP50 * 100 : null, reconcileP99Cm: st?.reconcileP99 != null ? st.reconcileP99 * 100 : null,
         bufferedCtrl: s.bufferedCtrl ?? 0, hostTick: o.role === 'host' ? st?.tick : null,
+        localHits: st?.localHits ?? null, localHitsConfirmed: st?.localHitsConfirmed ?? null, lossPct: st?.lossPct ?? null,
+        snapshotHz: st?.snapshotIntervalMs ? 1000 / st.snapshotIntervalMs : null,
       };
     }),
   };
