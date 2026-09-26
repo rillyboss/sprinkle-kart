@@ -62,7 +62,7 @@ import { todayString } from './progress/goals.js';
 import { MY_CUP_ID, myCupDef } from './modes/myCup.js';
 import { tutorialTrackId, TUTORIAL_LAPS, TUTORIAL_SPEED } from './modes/tutorial.js';
 import { createTutorialSession } from './modes/tutorialSession.js';
-import { paintStore, paintFor, paintedDef } from './modes/paint.js';
+import { paintedBuilder } from './modes/paint.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -333,9 +333,7 @@ async function runDaily(setup) {
 
 /** Kart models in the racers' Paint Shop colours (src/modes/paint.js), read fresh for every race. */
 function paintedKartBuilder() {
-  let paints = {};
-  try { paints = paintStore().load(); } catch { /* storage off: own colours */ }
-  return (def) => buildKartModel(paintedDef(def, paintFor(paints, def?.id)));
+  return paintedBuilder(buildKartModel);
 }
 
 /**

@@ -24,6 +24,7 @@ import { isAvailable } from '../progress/access.js';
 import { TrackPath } from '../track/TrackPath.js';
 import { buildTrack } from '../tracks/core.js';
 import { buildKartModel } from '../characters/model.js';
+import { paintedBuilder } from '../modes/paint.js';
 import { Race } from '../race/Race.js';
 import { hideOccluders, restoreKarts } from '../render/occlusion.js';
 
@@ -54,7 +55,7 @@ export function pickAttractRacers(characters, isUnlocked, n = 8, seed = 1) {
  * @returns {{ scene, camera, race, built, path, trackDef, director, dispose(), update(dt), render(renderer, w, h) }}
  */
 export function buildAttractShow({ trackDef, racers, seed = 1, preroll = 3.5, deps = {} }) {
-  const { buildTrackFn = buildTrack, buildKartModelFn = buildKartModel } = deps;
+  const { buildTrackFn = buildTrack, buildKartModelFn = paintedBuilder(buildKartModel) } = deps;
   const theme = trackDef.theme || {};
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(theme.skyBottom ?? 0xffd6ec);

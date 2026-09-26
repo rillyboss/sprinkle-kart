@@ -32,7 +32,7 @@ export const LAYERS = Object.freeze({
 });
 
 /** Menu screens that are quiet grown-up / browsing corners. */
-export const CALM_SCREENS = new Set(['settings', 'collection', 'records', 'effects', 'item-guide']);
+export const CALM_SCREENS = new Set(['settings', 'collection', 'records', 'effects', 'item-guide', 'daily', 'my-cup', 'paint-shop', 'how-to-play']);
 
 /** The song a menu screen wants, or null to leave the music alone. */
 export function menuSongFor(state, screenId, current) {

@@ -10,6 +10,8 @@
  *                                          (colors.kart + def.paint, which the shared kart
  *                                          base honours for every racer; see characters/model.js)
  *   paintStore(backend)                 -> { load(): {racerId: paintId}, save(map), set(racerId, paintId) }
+ *   paintedBuilder(build, load?)        -> (def) => build(def in its saved paint) — races, the
+ *                                          3D podium and the title show all use it
  *   createPaintShopState({ racerIds, paints, racerId }) / paintShopReduce(state, ev)
  * Screen: src/ui/screens/paintShop.js. Races: main.js wraps buildKartModel.
  *
@@ -75,6 +77,18 @@ export function paintStore(backend) {
 
 /** The paint a racer wears (from a loaded map). */
 export const paintFor = (map, racerId) => (map && getPaint(map[racerId]) ? map[racerId] : ORIGINAL);
+
+/**
+ * Wrap a kart-model builder so every kart wears its saved paint. Paints are
+ * read once, when the wrapper is made; storage trouble means own colours.
+ * @param {(def: object) => object} build  e.g. buildKartModel
+ * @param {() => Record<string,string>} [load]
+ */
+export function paintedBuilder(build, load = () => paintStore().load()) {
+  let paints = {};
+  try { paints = load() || {}; } catch { /* storage off: own colours */ }
+  return (def) => build(paintedDef(def, paintFor(paints, def?.id)));
+}
 
 const wrap = (i, n) => ((i % n) + n) % n;
 const out = (state, fx = [], go = null) => ({ state, fx, go });

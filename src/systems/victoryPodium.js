@@ -19,6 +19,7 @@ import { prefs as sharedPrefs, effectivePrefs } from '../presentation/prefs.js';
 import { buildPodiumStage } from '../presentation/podium.js';
 import { getCharacter } from '../characters/index.js';
 import { buildKartModel } from '../characters/model.js';
+import { paintedBuilder } from '../modes/paint.js';
 
 export const PODIUM_CLASS = 'skx-podium3d';
 
@@ -129,7 +130,7 @@ export default {
         const defs = podiumCharacters(src.standings);
         if (!defs.length) return;
         try {
-          stage = buildPodiumStage({ charDefs: defs, buildKartModel: app.buildKartModel ?? buildKartModel, gentle: effectivePrefs(store.get()).gentle });
+          stage = buildPodiumStage({ charDefs: defs, buildKartModel: app.buildKartModel ?? paintedBuilder(buildKartModel), gentle: effectivePrefs(store.get()).gentle });
         } catch (err) {
           console.warn('[podium] could not build', err);
           stage = null;
