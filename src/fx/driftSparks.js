@@ -27,7 +27,7 @@ export const POP_TIME = 0.3;
 /** Spark size multiplier for a level (+ pop 0..1). */
 export function sparkSize(level, pop = 0) {
   const l = Math.max(0, Math.min(3, level | 0));
-  return (l === 0 ? 0.75 : 1.25 + l * 0.32) * (1 + 0.8 * Math.max(0, Math.min(1, pop)));
+  return (l === 0 ? 0.75 : 1.55 + l * 0.35) * (1 + 0.8 * Math.max(0, Math.min(1, pop)));
 }
 
 /** Rainbow colour for spark `i` at time t (level 3). */
@@ -55,7 +55,7 @@ export default {
     root.add(sparks);
 
     // A soft glow ball at each rear wheel, coloured by the turbo level.
-    const glowGeo = new THREE.IcosahedronGeometry(0.2, 1);
+    const glowGeo = new THREE.IcosahedronGeometry(0.14, 1);
     owned.geometries.push(glowGeo);
     const glowMat = new THREE.MeshBasicMaterial({ color: SPARK_COLORS[1], transparent: true, opacity: 0.55, depthWrite: false });
     owned.materials.push(glowMat);
@@ -123,11 +123,11 @@ export default {
       const glowOn = lv > 0;
       if (lv === 3) glowMat.color.setHSL(rainbowHue(tt, 0), 0.9, 0.7);
       else if (glowOn) glowMat.color.set(SPARK_COLORS[lv]);
-      glowMat.opacity = 0.45 + 0.1 * lv;
+      glowMat.opacity = 0.38 + 0.08 * lv;
       for (let g = 0; g < glows.length; g++) {
         glows[g].visible = glowOn;
         const pulse = 1 + 0.18 * Math.sin(tt * 22 + g * 1.7);
-        glows[g].scale.setScalar((0.8 + 0.35 * lv) * pulse * (1 + 0.9 * pop));
+        glows[g].scale.setScalar((0.9 + 0.25 * lv) * pulse * (1 + 0.9 * pop));
       }
     }
 

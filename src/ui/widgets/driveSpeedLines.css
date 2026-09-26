@@ -18,8 +18,8 @@
     rgba(255, 255, 255, 0) 4.9deg 9.3deg,
     rgba(255, 238, 250, 0.8) 9.5deg 9.8deg,
     rgba(255, 255, 255, 0) 10deg 13deg);
-  -webkit-mask-image: radial-gradient(ellipse 58% 52% at 50% 60%, transparent 55%, rgba(0, 0, 0, 0.5) 72%, #000 100%);
-  mask-image: radial-gradient(ellipse 58% 52% at 50% 60%, transparent 55%, rgba(0, 0, 0, 0.5) 72%, #000 100%);
+  -webkit-mask-image: radial-gradient(ellipse 58% 52% at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.45) 76%, #000 100%);
+  mask-image: radial-gradient(ellipse 58% 52% at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.45) 76%, #000 100%);
 }
 .sk-speedlines > .sk-speedlines-b { transform: rotate(2.2deg); opacity: 0.6; }
 .sk-speedlines.on > .sk-speedlines-a { animation: sk-speedlines-flick 0.24s steps(2) infinite; }

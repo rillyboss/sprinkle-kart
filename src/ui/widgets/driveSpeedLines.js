@@ -30,7 +30,7 @@ export function easeSpeedLines(cur, target, dt) {
 }
 
 /** Largest opacity the lines ever reach (kept subtle). */
-export const SPEED_LINES_MAX_OPACITY = 0.55;
+export const SPEED_LINES_MAX_OPACITY = 0.42;
 
 export default {
   id: 'drive-speed-lines',

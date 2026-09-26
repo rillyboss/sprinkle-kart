@@ -21,14 +21,14 @@ export const SKID = Object.freeze({ capacity: 1024, life: 3.2, spacing: 0.9, wid
 
 /** Puff colours per off-road surface (two tints each) + candy sprinkle colours. */
 export const PUFF_COLORS = Object.freeze({
-  grass: Object.freeze([0xd8f2c4, 0xfff4cf]),
-  sand: Object.freeze([0xfff0cc, 0xffe0b0]),
+  grass: Object.freeze([0xeefbe4, 0xfffbea]),
+  sand: Object.freeze([0xfff6de, 0xffeccb]),
   snow: Object.freeze([0xffffff, 0xe6f4ff]),
   squish: Object.freeze([0xffd0ec, 0xe0d2ff]),
   space: Object.freeze([0xdcd6ff, 0xfff5cc]),
 });
 export const SPRINKLE_COLORS = Object.freeze([0xff6fb5, 0xffe066, 0x6fc3ff, 0x9be58a, 0xc59bff]);
-export const PUFF = Object.freeze({ capacity: 160, sprinkles: 96, rate: 16, minSpeed: 6, life: 0.7 });
+export const PUFF = Object.freeze({ capacity: 160, sprinkles: 96, rate: 18, minSpeed: 6, life: 0.6 });
 
 // ------------------------------------------------------------------ materials
 
@@ -296,7 +296,7 @@ export function offRoadPuffRate(kart) {
 export function createDrivingFx(scene, { surface = 'grass' } = {}) {
   const skids = new SkidMarks();
   const dust = new PuffPool({ name: 'drive-dust' });
-  const sprinkles = new PuffPool({ capacity: PUFF.sprinkles, geometry: new THREE.CapsuleGeometry(0.05, 0.2, 2, 6), name: 'drive-sprinkles' });
+  const sprinkles = new PuffPool({ capacity: PUFF.sprinkles, geometry: new THREE.CapsuleGeometry(0.07, 0.26, 2, 6), name: 'drive-sprinkles' });
   const group = new THREE.Group();
   group.name = 'driving-fx';
   group.add(skids.mesh, dust.mesh, sprinkles.mesh);
@@ -312,19 +312,24 @@ export function createDrivingFx(scene, { surface = 'grass' } = {}) {
     return st;
   };
 
-  function puffBehind(k, { up = 1.2, back = 3, color, sprinkle = false } = {}) {
+  function puffBehind(k, { color, sprinkle = false } = {}) {
+    // Puffs pop out sideways from the rear wheels and stay low, so they never
+    // bloom right in front of the chase camera.
     const h = k.heading;
     const fx = Math.sin(h), fz = Math.cos(h);
-    const side = (n++ % 2 ? 1 : -1) * 0.7;
-    const x = k.position.x - fx * 1.0 - fz * side;
-    const z = k.position.z - fz * 1.0 + fx * side;
-    const y = (k.phys?.groundY ?? k.position.y) + 0.25;
+    const rx = -fz, rz = fx; // kart's right
+    const side = n++ % 2 ? 1 : -1;
+    const x = k.position.x - fx * 0.9 + rx * 0.75 * side;
+    const z = k.position.z - fz * 0.9 + rz * 0.75 * side;
+    const y = (k.phys?.groundY ?? k.position.y) + 0.2;
     const jitter = ((n * 0.618) % 1) - 0.5;
+    const out = 2.2 + jitter;
+    const carry = Math.max(0, k.speed || 0) * 0.6; // mostly travel along with the kart
     const pool = sprinkle ? sprinkles : dust;
     pool.spawn({
       x, y, z,
-      vx: -fx * back + jitter * 1.5, vy: up + (sprinkle ? 1.8 : 0), vz: -fz * back - jitter * 1.5,
-      size: sprinkle ? 1 : 0.8 + (n % 3) * 0.2, grow: sprinkle ? 0.2 : 1.7, life: sprinkle ? 0.9 : PUFF.life,
+      vx: rx * out * side + fx * carry, vy: sprinkle ? 2.6 : 0.9, vz: rz * out * side + fz * carry,
+      size: sprinkle ? 1 : 0.6 + (n % 3) * 0.15, grow: sprinkle ? 0.2 : 1.4, life: sprinkle ? 0.8 : PUFF.life,
       color: color ?? tints[n % 2],
     });
   }
