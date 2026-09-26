@@ -7,6 +7,8 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
 ### Racers
 - Pack A's shy blueberry ghost has her own original name now: **Peekaberry** 🫐. Saved unlocks,
   per-racer tallies, paint, record holders and ghosts all carry over by themselves.
+- **Bruno Bananas** has a brand-new look: soft lavender fur, a waffle-cone party hat and a pink
+  sprinkle scarf that flips up and boops his nose when he boosts (it used to be a necktie).
 
 ## v2.0.0 — The Big Sprinkle Update (2026-09-26)
 

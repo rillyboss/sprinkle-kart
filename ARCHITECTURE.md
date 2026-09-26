@@ -62,7 +62,7 @@ All ids are kebab-case and unique across characters **and** tracks (they share o
 
 | Pack | id | Name | Concept | Unlock |
 |---|---|---|---|---|
-| A | bruno | Bruno Bananas | gentle giant gorilla, banana-split kart, licorice necktie | finish 2 races |
+| A | bruno | Bruno Bananas | gentle giant lavender gorilla, banana-split kart, sprinkle scarf + waffle-cone hat | finish 2 races |
 | A | shelly | Shelly Macaroon | speedy turtle with a pastel macaron shell | win on Gumdrop Meadow `{track gumdrop-meadow win}` |
 | A | peekaberry | Peekaberry | shy, giggly blueberry ghost who blushes see-through | top-3 on Starlight Galaxy |
 | A | twiggy | Twiggy Licorice | dramatically tall licorice showman, top hat, strikes poses | win 3 races |

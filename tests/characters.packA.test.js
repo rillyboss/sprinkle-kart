@@ -146,7 +146,7 @@ describe('pack A matches the binding lineup', () => {
 
   it('spells out the concept of each racer in their personality', () => {
     const concept = {
-      bruno: [/gorilla/i, /banana/i, /licorice/i, /neck ?tie/i],
+      bruno: [/gorilla/i, /banana/i, /lavender/i, /sprinkle scarf/i, /waffle-cone/i],
       shelly: [/turtle/i, /macaron/i],
       'peekaberry': [/blueberry/i, /ghost/i, /see-through/i, /shy/i],
       twiggy: [/licorice/i, /tall/i, /top hat/i, /pose/i],
@@ -396,10 +396,11 @@ describe('pack A models', () => {
 });
 
 describe('pack A personality animations', () => {
-  it("Bruno's licorice tie flutters with speed and flips up to boop his nose on boosts", () => {
+  it("Bruno's sprinkle scarf flutters with speed and flips up to boop his nose on boosts", () => {
     const m = buildKartModel(getCharacter('bruno'));
-    const tie = part(m, 'bruno:tie');
+    const tie = part(m, 'bruno:scarf');
     const brow = part(m, 'bruno:brow');
+    part(m, 'bruno:hat');
     run(m, 60, { speed: 0 });
     const rest = tie.rotation.x;
     const browRest = brow.position.y;
@@ -416,6 +417,24 @@ describe('pack A personality animations', () => {
     expect(brow.position.y).toBeGreaterThan(browRest + 0.03); // surprised brows
     run(m, 90, { speed: 0 });
     expect(Math.abs(tie.rotation.x - rest)).toBeLessThan(0.15); // back on his tummy
+    m.dispose();
+  });
+
+  it('Bruno is an original look: soft lavender fur (not brown), no necktie, a sprinkle scarf and a waffle-cone hat', () => {
+    const d = getCharacter('bruno');
+    const rgb = (hex) => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+    const [r, g, b] = rgb(d.colors.primary);
+    expect(b).toBeGreaterThan(r); // cool lavender, not a warm brown
+    expect(r + g + b).toBeGreaterThan(450); // light and soft
+    const text = `${d.tagline} ${d.personality} ${Object.values(d.quotes).join(' ')}`;
+    expect(text).not.toMatch(/neck ?tie|tie|brown/i);
+    expect(lineupCharacter('bruno').concept).not.toMatch(/neck ?tie/i);
+    const m = buildKartModel(d);
+    const names = [];
+    m.group.traverse((o) => { if (o.name) names.push(o.name); });
+    expect(names).toContain('bruno:scarf');
+    expect(names).toContain('bruno:hat');
+    expect(names.some((n) => /tie/.test(n))).toBe(false);
     m.dispose();
   });
 
