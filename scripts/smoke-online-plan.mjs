@@ -359,6 +359,33 @@ export function standingsProblems(host, guest, { who = 'guest' } = {}) {
   return out;
 }
 
+/** Netcode quality budgets for the online e2e on this machine's loopback (net review #14). */
+export const QUALITY_BUDGET = Object.freeze({ minFps: 20, reconcileP99Cm: 60, minSnapshotHz: 24, maxLead: 12, maxStateSkips: 30, maxLossPct: 6 });
+
+/**
+ * Netcode quality from a guest's `window.__game.net.debug.peers[0]` sample mid-race: reconcile p99, snapshot
+ * rate, input lead, state skips, loss. Standings alone can't catch a netcode regression. Only asserted when the
+ * page renders at least `minFps` (a real GPU): the swiftshader runner at 1–5 fps can't keep up by design and
+ * gets a note instead.
+ * @param {{ fps?: number, reconcileP99Cm?: number|null, snapshotHz?: number|null, lead?: number|null,
+ *           stateSkips?: number|null, lossPct?: number|null }|null} s
+ * @returns {{ asserted: boolean, problems: string[], note: string }}
+ */
+export function qualityProblems(s, budget = QUALITY_BUDGET) {
+  if (!s) return { asserted: false, problems: ['no netcode sample from the guest'], note: '' };
+  const f = (v, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : '—');
+  const note = `guest netcode: ${f(s.fps)} fps, reconcile p99 ${f(s.reconcileP99Cm)} cm, snapshots ${f(s.snapshotHz)} Hz, lead ${f(s.lead, 1)}, `
+    + `state skips ${f(s.stateSkips)}, loss ${f(s.lossPct, 1)} %`;
+  if (!(s.fps >= budget.minFps)) return { asserted: false, problems: [], note: `${note} (not asserted below ${budget.minFps} fps)` };
+  const out = [];
+  if (Number.isFinite(s.reconcileP99Cm) && s.reconcileP99Cm > budget.reconcileP99Cm) out.push(`reconcile p99 ${f(s.reconcileP99Cm)} cm > ${budget.reconcileP99Cm} cm`);
+  if (Number.isFinite(s.snapshotHz) && s.snapshotHz < budget.minSnapshotHz) out.push(`snapshots at ${f(s.snapshotHz)} Hz < ${budget.minSnapshotHz} Hz`);
+  if (Number.isFinite(s.lead) && s.lead > budget.maxLead) out.push(`input lead ${f(s.lead, 1)} ticks > ${budget.maxLead}`);
+  if (Number.isFinite(s.stateSkips) && s.stateSkips > budget.maxStateSkips) out.push(`${s.stateSkips} state skips > ${budget.maxStateSkips}`);
+  if (Number.isFinite(s.lossPct) && s.lossPct > budget.maxLossPct) out.push(`loss ${f(s.lossPct, 1)} % on loopback > ${budget.maxLossPct} %`);
+  return { asserted: true, problems: out, note };
+}
+
 /**
  * Heap growth over a soak (MB): median of the last 3 samples minus the median of the first 3 after
  * `warmup` samples. Samples: [{ t, usedMB }].

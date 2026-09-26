@@ -34,6 +34,11 @@ import { createEventPlayer } from './eventPlayer.js';
 import { createReplicaItems } from './replicaItems.js';
 import { createInputHistory, createLocalResolver } from './inputHistory.js';
 
+/** Ticks predicted in one frame at most (a slower frame records inputs for the rest without predicting them). */
+export const MAX_PREDICT_TICKS = 24;
+/** Ticks before those whose input is still recorded and sent (beyond: a tab stall, jump). */
+export const MAX_FILL_TICKS = 60;
+
 /** A gumdrop first seen less than this long ago is never hit locally (it may be one we just dropped). */
 export const LOCAL_HIT_GRACE_TICKS = 60;
 /** A gumdrop with another kart this close in the snapshot may be eaten before we get there: host decides. */
@@ -315,15 +320,24 @@ export class ReplicaRace {
    * @param {{ P: number, R: number, maxTicks?: number }} timing
    * @returns {number[]} the ticks predicted this frame
    */
-  frame(frameDt, sample, { P, R, maxTicks = 12 } = {}) {
+  frame(frameDt, sample, { P, R, maxTicks = MAX_PREDICT_TICKS } = {}) {
     this.stats.frames++;
     this.clock += frameDt;
     const ticks = [];
     if (Number.isFinite(P)) {
       let target = Math.floor(P);
       if (target - this.predictedTick > maxTicks) {
-        // far behind (tab stall / first frame): jump without predicting the gap
-        this.predictedTick = target - maxTicks;
+        // far behind (a very slow machine, a tab stall, the first frame): predict only the newest maxTicks, but
+        // still RECORD an input for up to MAX_FILL_TICKS before them, so the host never has to repeat a stale
+        // input for those ticks (net review #14); the next snapshot's replay catches the kart up
+        const recordUntil = target - maxTicks;
+        const from = Math.max(this.predictedTick + 1, recordUntil - MAX_FILL_TICKS + 1);
+        for (let tick = from; tick <= recordUntil; tick++) {
+          this._predictOne(tick, sample, { recordOnly: true });
+          ticks.push(tick);
+        }
+        this.stats.filled = (this.stats.filled || 0) + Math.max(0, recordUntil - from + 1);
+        this.predictedTick = recordUntil;
       }
       while (this.predictedTick < target) {
         const tick = this.predictedTick + 1;
@@ -361,7 +375,7 @@ export class ReplicaRace {
     });
   }
 
-  _predictOne(tick, sample) {
+  _predictOne(tick, sample, { recordOnly = false } = {}) {
     const raw = (sample ? sample(tick) : null) || this.localKartIds.map(() => ({ steer: 0, accel: 0, brake: 0, drift: false, itemCount: 0, hopCount: 0 }));
     const wire = this._assistWire(tick, raw);
     const q = wire.map((x) => this._quantize(x));
@@ -372,6 +386,7 @@ export class ReplicaRace {
       if (this._auto.has(id) && this._predicting.has(id)) resolved[seat] = { ...aiDriveInput(this, this.karts[id], TICK_DT), useItem: false };
     });
     this.history.put(tick, q, resolved);
+    if (recordOnly) return;
     const karts = this._predictedKarts();
     if (!karts.length) return;
     for (const k of karts) this._prevPose.set(k.id, { x: k.position.x, y: k.position.y, z: k.position.z, heading: k.heading });

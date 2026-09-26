@@ -47,7 +47,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import {
   resolveOnlineProfile, onlineTimeout, planOnlineScenarios, neededServices, gameUrl, pickWorkerNode, nvmCandidates,
-  workerDevCommand, pathWithNodeFirst, mockTurnAnswer, timingSummary, timingRow, standingsProblems, heapProblems,
+  workerDevCommand, pathWithNodeFirst, mockTurnAnswer, timingSummary, timingRow, standingsProblems, qualityProblems, heapProblems,
   missingScreenshots, isIgnorableOnlineError, chromeArgs, scenarioStatus, planCodeEntry, padButtonFor, PAD,
 } from './smoke-online-plan.mjs';
 import { startLocalTracker } from './dev/localTracker.mjs';
@@ -726,6 +726,15 @@ async function raceSteps(sc, host, guest, r, prefix) {
   }
   await shot(host, `${prefix}race-host`);
   await shot(guest, `${prefix}race-guest`);
+  // netcode quality mid-race (asserted only with a real GPU: see qualityProblems)
+  await waitGame(guest, () => (window.__game?.race?.time ?? 0) > 8 || window.__game?.state === 'results', null, T(120000), 'the guest race 8 s in');
+  const sample = await guest.page.evaluate(() => {
+    const p = window.__game?.net?.debug?.peers?.[0];
+    return p ? { fps: window.__game?.fps ?? 0, reconcileP99Cm: p.reconcileP99Cm, snapshotHz: p.snapshotHz, lead: p.lead, stateSkips: p.stateSkips, lossPct: p.lossPct } : null;
+  });
+  const q = qualityProblems(sample);
+  r.notes.push(q.note);
+  r.problems.push(...q.problems);
   await waitGame(host, atResults, null, T(400000), 'the host results');
   await waitGame(guest, atResults, null, T(90000), 'the guest results');
   const standings = (p) => p.page.evaluate(() => {
