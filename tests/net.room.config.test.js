@@ -170,6 +170,35 @@ describe('.github/workflows/worker.yml (optional auto-deploy)', () => {
   });
 });
 
+describe('docs/INFRA_SETUP.md matches the worker', () => {
+  const infra = read('docs/INFRA_SETUP.md');
+  const statusRow = (label) => infra.split(/\r?\n/).find((l) => l.startsWith(`| ${label}`));
+
+  it('marks deploy + secrets and the optional auto-deploy as ready', () => {
+    expect(statusRow('5–6. Deploy + worker secrets')).toMatch(/\| ✅ \*\*Ready\*\* \|/);
+    expect(statusRow('Optional auto-deploy')).toMatch(/\| ✅ \*\*Ready\*\* \|/);
+    expect(statusRow('3. Log in with wrangler')).toContain('npm run worker:login');
+    expect(infra).not.toContain('npx wrangler@'); // everything goes through the pinned npm scripts now
+  });
+
+  it('keeps every binding name and documents the local port', () => {
+    for (const name of ['sprinkle-kart-signal', 'SignalRoom', 'new_sqlite_classes', 'TURN_KEY_ID', 'TURN_KEY_API_TOKEN',
+      'ALLOWED_ORIGINS', 'VITE_SIGNAL_URL', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', '.github/workflows/worker.yml',
+      'worker:dev', 'worker:test', 'worker:deploy', 'worker:login', 'worker:secret']) {
+      expect(infra, name).toContain(name);
+    }
+    expect(infra).toContain('http://localhost:8787');
+    expect(infra).toContain('npm run worker:dev -- --port 8792');
+  });
+
+  it('states the worker limits the code enforces', () => {
+    expect(infra).toMatch(/1 host \+ 7 guests per room/);
+    expect(infra).toMatch(/12 guest joins\/min per room/);
+    expect(infra).toMatch(/30 room joins\/min and 5 `\/ice`\/min per address/);
+    expect(infra).toMatch(/500 relay passwords per day/);
+  });
+});
+
 describe('ci.yml worker-test job', () => {
   const job = ciYml.slice(ciYml.indexOf('\n  worker-test:'), ciYml.indexOf('\n  smoke:'));
 
