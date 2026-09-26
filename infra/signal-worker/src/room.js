@@ -7,6 +7,15 @@
 // A room holds at most 1 host + 7 guest sockets. The host creates it; guests need a host; the host may drop a
 // guest (its salted IP hash stays blocked until the host unlocks) and lock the room. Guests only ever learn
 // about the host. Raw IP addresses never reach this file: the Durable Object passes a salted hash.
+//
+// Open-games list (§4.2 "Games you can join"): a host may open its socket with `&code=CAKE&who=<racer id>
+// &players=<n>&list=1|0`; the Durable Object checks that the code really hashes to this room before it passes
+// `listing` in here. While the host is connected, wants the room listed and the room is not locked, results
+// carry `registry: { op: 'put', room, entry }`, otherwise `{ op: 'remove', room }`, for the reserved 'lobby'
+// instance (registry.js). The host updates the entry with `{ t: 'list', on, who?, players? }` (also its
+// periodic refresh). Old games never send any of this, and old workers ignore the extra query parameters.
+import { LIST_CODE_RE } from './codes.js';
+import { WHO_RE, MAX_PLAYERS } from './registry.js';
 
 export const PROTO = 1;
 export const ROOM_CODE_RE = /^r[0-9a-f]{24}$/;
@@ -63,7 +72,25 @@ export function parseRoomRequest(url) {
   if (role !== 'host' && role !== 'guest') return { ok: false, error: 'proto' };
   if (!PEER_RE.test(peer ?? '')) return { ok: false, error: 'proto' };
   if (proto !== String(PROTO)) return { ok: false, error: 'proto' };
-  return { ok: true, code, role, peer };
+  return { ok: true, code, role, peer, listing: role === 'host' ? parseListing(url.searchParams) : null };
+}
+
+/** A clean player count 1..8 (anything else → fallback). */
+function playersOf(v, fallback = 1) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_PLAYERS ? n : fallback;
+}
+
+/**
+ * The host's optional listing parameters: `code` (4 letters), `who` (racer id), `players`, `list` ('0' = hidden).
+ * @param {URLSearchParams} q
+ * @returns {{ code: string, who: string|null, players: number, on: boolean } | null}
+ */
+export function parseListing(q) {
+  const code = q.get('code');
+  if (!code || !LIST_CODE_RE.test(code)) return null;
+  const who = q.get('who');
+  return { code, who: who && WHO_RE.test(who) ? who : null, players: playersOf(q.get('players')), on: q.get('list') !== '0' };
 }
 
 /** A fresh, empty room. */
@@ -76,13 +103,21 @@ export function createRoomState() {
     joins: [], // timestamps of recent guest join attempts (per-room cap)
     n: 0, // join counter; tells a replaced socket's late close apart from the current one
     emptySince: null, // when the last socket left (null while anyone is connected)
+    room: null, // this room's id ('r' + 24 hex), learned from the first join (for the open-games list)
+    listing: null, // { code, who, players, on } while a listing-capable host is here
   };
 }
 
 /** The part of a room that must survive hibernation (peers are rebuilt from the sockets). */
 export function durablePart(state) {
   return {
-    locked: state.locked, blocked: [...state.blocked], joins: [...state.joins], n: state.n, emptySince: state.emptySince,
+    locked: state.locked,
+    blocked: [...state.blocked],
+    joins: [...state.joins],
+    n: state.n,
+    emptySince: state.emptySince,
+    room: state.room ?? null,
+    listing: state.listing ? { ...state.listing } : null,
   };
 }
 
@@ -99,6 +134,8 @@ export function restoreRoomState(durable, sockets = []) {
     s.joins = Array.isArray(durable.joins) ? [...durable.joins] : [];
     s.n = Number.isFinite(durable.n) ? durable.n : 0;
     s.emptySince = durable.emptySince ?? null;
+    s.room = typeof durable.room === 'string' && ROOM_CODE_RE.test(durable.room) ? durable.room : null;
+    s.listing = durable.listing && LIST_CODE_RE.test(durable.listing.code ?? '') ? { ...durable.listing } : null;
   }
   for (const a of sockets) {
     if (!a || a.gone || !PEER_RE.test(a.peer ?? '') || (a.role !== 'host' && a.role !== 'guest')) continue;
@@ -112,13 +149,26 @@ export function restoreRoomState(durable, sockets = []) {
     s.n = Math.max(s.n, a.n ?? 0);
   }
   if (Object.keys(s.peers).length) s.emptySince = null;
+  if (!s.host) s.listing = null;
   return s;
+}
+
+/** What the open-games list should say about this room now (null = nothing to tell it). */
+export function registryOp(state) {
+  if (!state.room) return null;
+  const l = state.listing;
+  if (state.host && l && l.on && !state.locked) {
+    return { op: 'put', room: state.room, entry: { code: l.code, who: l.who, players: l.players } };
+  }
+  return { op: 'remove', room: state.room };
 }
 
 function clone(state) {
   const peers = {};
   for (const [id, p] of Object.entries(state.peers)) peers[id] = { ...p, win: { ...p.win } };
-  return { ...state, peers, blocked: [...state.blocked], joins: [...state.joins] };
+  return {
+    ...state, peers, blocked: [...state.blocked], joins: [...state.joins], listing: state.listing ? { ...state.listing } : null,
+  };
 }
 
 function guestIds(state) {
@@ -144,8 +194,12 @@ function removePeer(r, peer, now) {
   const p = s.peers[peer];
   if (!p) return;
   delete s.peers[peer];
-  if (p.role === 'host') s.host = null;
-  else if (s.host) r.sends.push({ to: s.host, msg: { t: 'peer-leave', peer } });
+  if (p.role === 'host') {
+    s.host = null;
+    const hadListing = !!s.listing;
+    s.listing = null;
+    if (hadListing) r.registry = registryOp(s);
+  } else if (s.host) r.sends.push({ to: s.host, msg: { t: 'peer-leave', peer } });
   if (!Object.keys(s.peers).length) {
     s.emptySince = now ?? s.emptySince ?? 0;
     r.gcAt = s.emptySince + ROOM_GC_MS;
@@ -193,10 +247,17 @@ function join(state, ev) {
   s.emptySince = null;
   r.n = s.n;
   r.cancelGc = true;
-  if (role === 'host') s.host = peer;
+  if (typeof ev.room === 'string' && ROOM_CODE_RE.test(ev.room)) s.room = ev.room;
+  if (role === 'host') {
+    s.host = peer;
+    const hadListing = !!s.listing;
+    s.listing = ev.listing ? { ...ev.listing } : null;
+    if (s.listing || hadListing) r.registry = registryOp(s);
+  }
   const peers = role === 'host' ? guestIds(s) : [];
-  // iceServers/turn are filled in by the Durable Object (STUN + this room's TURN creds).
-  r.sends.push({ to: peer, msg: { t: 'joined', you: peer, host: s.host, peers, iceServers: [], turn: false }, withIce: true });
+  // iceServers/turn are filled in by the Durable Object (STUN + this room's TURN creds). `list: true` tells a
+  // host that this worker keeps the open-games list (so it may send { t: 'list' }).
+  r.sends.push({ to: peer, msg: { t: 'joined', you: peer, host: s.host, peers, iceServers: [], turn: false, list: true }, withIce: true });
   if (role === 'guest' && !existing) r.sends.push({ to: s.host, msg: { t: 'peer-join', peer } });
   return r;
 }
@@ -267,8 +328,18 @@ function message(state, ev) {
     case 'lock': {
       if (!isHost || typeof msg.locked !== 'boolean') return errorAndClose(s, peer, 'proto', now);
       s.locked = msg.locked;
-      if (!msg.locked) s.blocked = []; // unlocking forgives removed houses (the host approves them again)
-      return result(s, { persist: true });
+      if (!msg.locked) s.blocked = []; // unlocking forgives removed houses
+      const r = result(s, { persist: true });
+      if (s.listing) r.registry = registryOp(s);
+      return r;
+    }
+    case 'list': {
+      if (!isHost || typeof msg.on !== 'boolean') return errorAndClose(s, peer, 'proto', now);
+      if (!s.listing) return result(s); // this host never gave a (checked) code: nothing to list
+      s.listing.on = msg.on;
+      if (msg.who === null || (typeof msg.who === 'string' && WHO_RE.test(msg.who))) s.listing.who = msg.who;
+      if (msg.players !== undefined) s.listing.players = playersOf(msg.players, s.listing.players);
+      return result(s, { persist: true, registry: registryOp(s) });
     }
     case 'ice': {
       // ≤ 1 fresh set per 30 s per socket; a faster ask still gets an answer, but never causes a new mint.
@@ -291,14 +362,15 @@ function alarm(state, ev) {
 /**
  * The room reducer.
  * @param {ReturnType<typeof createRoomState>} state
- * @param {{ type: 'join', peer: string, role: 'host'|'guest', ipHash: string, now: number }
+ * @param {{ type: 'join', peer: string, role: 'host'|'guest', ipHash: string, now: number, room?: string,
+ *           listing?: { code: string, who: string|null, players: number, on: boolean } | null }
  *       | { type: 'leave', peer: string, n?: number, now: number }
  *       | { type: 'message', peer: string, n?: number, raw: string | ArrayBuffer, now: number }
  *       | { type: 'alarm', now: number }} event
  * @returns {{ state: object, sends: Array<{ to: string, msg: object | string, withIce?: boolean }>,
  *   close: Array<{ peer: string, code: number, reason: string, n?: number }>, accept?: boolean, error?: string,
  *   n?: number, ice?: { peer: string, mint: boolean }, persist?: boolean, gc?: boolean, gcAt?: number,
- *   cancelGc?: boolean }}
+ *   cancelGc?: boolean, registry?: { op: 'put'|'remove', room: string, entry?: object } | null }}
  */
 export function roomReduce(state, event) {
   switch (event?.type) {

@@ -22,7 +22,7 @@ function hits(state, n, kind, key, now = T0) {
 
 describe('guard constants', () => {
   it('matches NETWORKING.md §19', () => {
-    expect(GUARD_LIMITS).toEqual({ join: 30, ice: 5 });
+    expect(GUARD_LIMITS).toEqual({ join: 30, ice: 5, rooms: 30 });
     expect(GUARD_WINDOW_MS).toBe(60_000);
     expect(TURN_DAILY_MINTS).toBe(500);
     expect(GUARD_NAME).toBe('guard');

@@ -2,13 +2,13 @@
 //
 // Abuse limits live in a Durable Object, not in isolate memory, because a Worker runs in many isolates and
 // colos at once. The guard counts, per salted IP hash (SHA-256 of a daily-rotated salt + the IP; raw IPs are
-// never stored): room joins (30/min) and GET /ice calls (5/min). It also counts TURN credential mints per UTC
+// never stored): room joins (30/min), GET /ice calls (5/min) and GET /rooms calls (30/min). It also counts TURN credential mints per UTC
 // day (TURN_DAILY_MINTS). guardReduce is pure; the Durable Object stores its state and does the hashing.
 import { TURN_DAILY_MINTS } from './turn.js';
 
 export const GUARD_WINDOW_MS = 60_000;
 /** Allowed hits per GUARD_WINDOW_MS per salted IP hash. */
-export const GUARD_LIMITS = Object.freeze({ join: 30, ice: 5 });
+export const GUARD_LIMITS = Object.freeze({ join: 30, ice: 5, rooms: 30 });
 export const GUARD_NAME = 'guard';
 
 /** 'YYYY-MM-DD' for a ms timestamp, in UTC. */
@@ -35,7 +35,7 @@ function prune(hits, now) {
 
 /**
  * @param {ReturnType<typeof createGuardState>} state
- * @param {{ type: 'hit', kind: 'join'|'ice', key: string, now: number }
+ * @param {{ type: 'hit', kind: 'join'|'ice'|'rooms', key: string, now: number }
  *       | { type: 'mint', now: number, cap?: number }
  *       | { type: 'status', now: number, cap?: number }} event
  * @returns {{ state: object, allow: boolean, newDay: boolean, retryAfterMs?: number, mintsLeft?: number }}

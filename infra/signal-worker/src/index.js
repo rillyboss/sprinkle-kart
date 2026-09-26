@@ -1,6 +1,7 @@
 // Sprinkle Kart signal worker: entry point (NETWORKING.md §3, §4.2; setup in docs/INFRA_SETUP.md).
 //
-//   GET /health       → { ok, turn, version }   (CORS for allowed origins)
+//   GET /health       → { ok, turn, version, rooms }   (CORS for allowed origins)
+//   GET /rooms        → { rooms: [{ code, who, players, ageS }] }   open games ("Games you can join"; 30/min per IP; CORS)
 //   GET /ice          → { iceServers, turn }    (Check connection only: 5/min per IP, TURN ttl 900 s; CORS)
 //   GET /room/:code   → WebSocket signaling in the room's Durable Object (Origin checked here, no CORS)
 //
@@ -12,7 +13,7 @@ import {
   mintTurn, turnConfigured, stunServers, withStun, TURN_TTL_ICE,
 } from './turn.js';
 import {
-  json, errorSocketResponse, clientIp, guardStub, VERSION,
+  json, errorSocketResponse, clientIp, guardStub, registryStub, VERSION,
 } from './http.js';
 
 export { SignalRoom };
@@ -26,7 +27,25 @@ async function health(env, cors) {
       turn = false;
     }
   }
-  return json({ ok: true, turn, version: VERSION }, 200, cors);
+  // rooms: true = this worker keeps the open-games list (GET /rooms). Older workers leave it out.
+  return json({ ok: true, turn, version: VERSION, rooms: true }, 200, cors);
+}
+
+async function rooms(request, env, cors) {
+  const origin = request.headers.get('Origin');
+  if (!isOriginAllowed(origin, env.ALLOWED_ORIGINS)) return json({ ok: false, error: 'bad-origin' }, 403);
+  const hit = await guardStub(env).guard('rooms', clientIp(request));
+  if (!hit.allow) {
+    const retry = String(Math.max(1, Math.ceil((hit.retryAfterMs ?? 60_000) / 1000)));
+    return json({ ok: false, error: 'rate' }, 429, { ...cors, 'Retry-After': retry });
+  }
+  let list = [];
+  try {
+    list = (await registryStub(env).registry('list')).rooms ?? [];
+  } catch {
+    list = [];
+  }
+  return json({ rooms: list }, 200, cors);
 }
 
 async function ice(request, env, cors) {
@@ -70,11 +89,12 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
-    if (pathname === '/health' || pathname === '/ice') {
+    if (pathname === '/health' || pathname === '/ice' || pathname === '/rooms') {
       const cors = corsHeaders(request.headers.get('Origin'), env.ALLOWED_ORIGINS);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
       if (request.method !== 'GET') return json({ ok: false, error: 'method' }, 405, cors);
-      return pathname === '/health' ? health(env, cors) : ice(request, env, cors);
+      if (pathname === '/health') return health(env, cors);
+      return pathname === '/ice' ? ice(request, env, cors) : rooms(request, env, cors);
     }
     if (pathname.startsWith('/room/')) {
       if (request.method !== 'GET') return json({ ok: false, error: 'method' }, 405);

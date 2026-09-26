@@ -32,13 +32,13 @@ describe('GET /health', () => {
     await mockReset();
   });
 
-  it('answers { ok, turn, version } and nothing else', async () => {
+  it('answers { ok, turn, version, rooms } and nothing else', async () => {
     const res = await get('/health');
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toMatch(/application\/json/);
     const body = await res.json();
-    expect(Object.keys(body).sort()).toEqual(['ok', 'turn', 'version']);
-    expect(body).toEqual({ ok: true, turn: true, version: VERSION });
+    expect(Object.keys(body).sort()).toEqual(['ok', 'rooms', 'turn', 'version']);
+    expect(body).toEqual({ ok: true, turn: true, version: VERSION, rooms: true });
     expect(typeof body.version).toBe('string');
   });
 
@@ -51,7 +51,7 @@ describe('GET /health', () => {
       { TURN_KEY_ID: '   ' },
     ]) {
       const body = await (await fetchWith(patch, '/health')).json();
-      expect(body, JSON.stringify(patch)).toEqual({ ok: true, turn: false, version: VERSION });
+      expect(body, JSON.stringify(patch)).toEqual({ ok: true, turn: false, version: VERSION, rooms: true });
     }
     expect((await (await fetchWith({}, '/health')).json()).turn).toBe(true);
   });

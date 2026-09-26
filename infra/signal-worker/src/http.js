@@ -1,9 +1,10 @@
 // Small runtime helpers shared by the Worker entry and the Durable Object.
 import { CLOSE_CODES } from './room.js';
 import { GUARD_NAME } from './guard.js';
+import { REGISTRY_NAME } from './registry.js';
 
 /** Worker version reported by GET /health. Bump when the worker's behaviour changes. */
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 export function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -44,4 +45,9 @@ export function clientIp(request) {
 /** The global guard: the reserved SignalRoom instance named 'guard'. */
 export function guardStub(env) {
   return env.SIGNAL_ROOM.get(env.SIGNAL_ROOM.idFromName(GUARD_NAME));
+}
+
+/** The open-games list: the reserved SignalRoom instance named 'lobby'. */
+export function registryStub(env) {
+  return env.SIGNAL_ROOM.get(env.SIGNAL_ROOM.idFromName(REGISTRY_NAME));
 }

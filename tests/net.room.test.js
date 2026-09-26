@@ -59,7 +59,7 @@ describe('parseRoomRequest', () => {
   const code = `r${'0123456789abcdef01234567'}`;
 
   it('accepts the key-derived room id with host/guest, a 16-hex peer and proto=1', () => {
-    expect(parseRoomRequest(url(`/room/${code}?role=host&peer=${H}&proto=1`))).toEqual({ ok: true, code, role: 'host', peer: H });
+    expect(parseRoomRequest(url(`/room/${code}?role=host&peer=${H}&proto=1`))).toEqual({ ok: true, code, role: 'host', peer: H, listing: null });
     expect(parseRoomRequest(url(`/room/${code}?role=guest&peer=${peer(9)}&proto=1`)).role).toBe('guest');
   });
 
@@ -89,7 +89,7 @@ describe('joining', () => {
     const r = roomReduce(createRoomState(), hostJoin());
     expect(r.accept).toBe(true);
     expect(r.state.host).toBe(H);
-    expect(r.sends).toEqual([{ to: H, msg: { t: 'joined', you: H, host: H, peers: [], iceServers: [], turn: false }, withIce: true }]);
+    expect(r.sends).toEqual([{ to: H, msg: { t: 'joined', you: H, host: H, peers: [], iceServers: [], turn: false, list: true }, withIce: true }]);
     expect(r.cancelGc).toBe(true);
   });
 
@@ -109,7 +109,7 @@ describe('joining', () => {
     const r = roomReduce(hosted(1), guestJoin(2, T0 + 10));
     expect(r.accept).toBe(true);
     expect(r.sends).toEqual([
-      { to: peer(2), msg: { t: 'joined', you: peer(2), host: H, peers: [], iceServers: [], turn: false }, withIce: true },
+      { to: peer(2), msg: { t: 'joined', you: peer(2), host: H, peers: [], iceServers: [], turn: false, list: true }, withIce: true },
       { to: H, msg: { t: 'peer-join', peer: peer(2) } },
     ]);
   });
@@ -352,7 +352,7 @@ describe('hibernation: durable part and restore', () => {
   it('stores locks, blocks, join counts and the join counter; peers come back from socket attachments', () => {
     const s = run([hostJoin(), guestJoin(1, T0 + 1), guestJoin(2, T0 + 2, 'bad'), msg(H, { t: 'drop', peer: peer(2) }, T0 + 3)]).state;
     const d = durablePart(s);
-    expect(d).toEqual({ locked: false, blocked: ['bad'], joins: [T0 + 1, T0 + 2], n: 3, emptySince: null });
+    expect(d).toEqual({ locked: false, blocked: ['bad'], joins: [T0 + 1, T0 + 2], n: 3, emptySince: null, room: null, listing: null });
     expect(JSON.parse(JSON.stringify(d))).toEqual(d);
     const back = restoreRoomState(d, [
       { peer: H, role: 'host', ipHash: 'hh', n: 1 },

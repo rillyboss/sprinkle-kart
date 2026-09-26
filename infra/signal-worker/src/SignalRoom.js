@@ -3,7 +3,9 @@
 // One instance per room (idFromName(workerRoom), where workerRoom is the key-derived 'r' + 24 hex id) relays
 // SDP/ICE between the host and its guests over hibernatable WebSockets. One reserved instance,
 // idFromName('guard'), holds the global per-IP counters and the daily TURN mint cap (the `guard` RPC method).
-// Same class for both, so the wrangler migration never changes.
+// Another reserved instance, idFromName('lobby'), keeps the open-games list for GET /rooms (the `registry`
+// RPC method; rooms tell it when they are listed or not). Same class for all, so the wrangler migration never
+// changes.
 //
 // All rules live in the pure reducers (room.js, guard.js); this file only does I/O: sockets, storage (a tiny
 // key/value table in the object's SQLite database), alarms, hashing and TURN minting.
@@ -12,11 +14,13 @@ import {
   roomReduce, restoreRoomState, durablePart, parseRoomRequest,
 } from './room.js';
 import { guardReduce, createGuardState, utcDay } from './guard.js';
+import { registryReduce, createRegistryState } from './registry.js';
+import { roomIdForCode } from './codes.js';
 import {
   mintTurn, turnConfigured, stunServers, withStun, TURN_TTL_ROOM, TURN_CACHE_MS,
 } from './turn.js';
 import {
-  errorSocketResponse, sha256Hex, randomHex, clientIp, guardStub,
+  errorSocketResponse, sha256Hex, randomHex, clientIp, guardStub, registryStub,
 } from './http.js';
 
 const OPEN = 1; // WebSocket.READY_STATE_OPEN
@@ -64,14 +68,14 @@ export class SignalRoom extends DurableObject {
   }
 
   /**
-   * Global limits (RPC). op: 'join' | 'ice' (per salted IP hash), 'mint' (take one TURN mint from today's
+   * Global limits (RPC). op: 'join' | 'ice' | 'rooms' (per salted IP hash), 'mint' (take one TURN mint from today's
    * cap) or 'status' (is TURN still under today's cap?).
    * @returns {Promise<{ allow: boolean, retryAfterMs?: number, mintsLeft?: number }>}
    */
   async guard(op, ip = '') {
     const now = Date.now();
     let event;
-    if (op === 'join' || op === 'ice') {
+    if (op === 'join' || op === 'ice' || op === 'rooms') {
       const key = await sha256Hex(this.dailySalt(now) + String(ip));
       event = { type: 'hit', kind: op, key, now };
     } else if (op === 'mint' || op === 'status') {
@@ -86,6 +90,29 @@ export class SignalRoom extends DurableObject {
     if (r.retryAfterMs !== undefined) out.retryAfterMs = r.retryAfterMs;
     if (r.mintsLeft !== undefined) out.mintsLeft = r.mintsLeft;
     return out;
+  }
+
+  // ---- open-games list (the instance named 'lobby') ---------------------------------------------------
+
+  /**
+   * The open-games list (RPC). op: 'put' (room, entry) | 'remove' (room) | 'list'.
+   * @returns {Promise<{ ok: boolean, rooms?: Array<object> }>}
+   */
+  async registry(op, room = '', entry = null) {
+    if (!['put', 'remove', 'list'].includes(op)) return { ok: false };
+    const r = registryReduce(this.kvGet('registry') ?? createRegistryState(), { type: op, room, entry, now: Date.now() });
+    if (r.changed) this.kvPut('registry', r.state);
+    return op === 'list' ? { ok: true, rooms: r.rooms } : { ok: true };
+  }
+
+  /** Tell the open-games list about this room (never breaks signaling when the list is unreachable). */
+  async tellRegistry(op) {
+    if (!op) return;
+    try {
+      await registryStub(this.env).registry(op.op, op.room, op.entry ?? null);
+    } catch {
+      // the list is a nicety; the room itself keeps working
+    }
   }
 
   // ---- room --------------------------------------------------------------------------------------------
@@ -168,6 +195,7 @@ export class SignalRoom extends DurableObject {
     }
     if (r.cancelGc) await this.ctx.storage.deleteAlarm();
     if (r.gcAt !== undefined) await this.ctx.storage.setAlarm(r.gcAt);
+    if (r.registry) await this.tellRegistry(r.registry);
   }
 
   /** STUN + this room's TURN servers (cached ≤ 5 min in this object only). `mint: false` never mints. */
@@ -205,8 +233,19 @@ export class SignalRoom extends DurableObject {
     if (!p.ok) return errorSocketResponse('proto');
 
     const ipHash = await this.roomIpHash(clientIp(request));
+    // A host's listing counts only when its code really belongs to this room (so nobody can list another code).
+    let listing = null;
+    if (p.listing) {
+      try {
+        if ((await roomIdForCode(p.listing.code)) === p.code) listing = p.listing;
+      } catch {
+        listing = null;
+      }
+    }
     const now = Date.now();
-    const r = roomReduce(this.roomState(), { type: 'join', peer: p.peer, role: p.role, ipHash, now });
+    const r = roomReduce(this.roomState(), {
+      type: 'join', peer: p.peer, role: p.role, ipHash, now, room: p.code, listing,
+    });
     if (!r.accept) {
       await this.apply(r);
       return errorSocketResponse(r.error);
