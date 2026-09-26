@@ -786,7 +786,8 @@ async function progressionTest(t) {
  * Each press waits for the screen to change (a reveal may not be dismissed before its minimum
  * show time, and intros are skipped by the first press).
  */
-async function pressThrough(t, done, what, max = 24) {
+async function pressThrough(t, done, what, max = 24, { onlyReveals = false } = {}) {
+  let idle = 0;
   for (let i = 0; i < max; i++) {
     if (await t.page.evaluate(done)) return;
     await waitGame(t.page, () => {
@@ -794,6 +795,14 @@ async function pressThrough(t, done, what, max = 24) {
       return !u || u.classList.contains('sk-can-continue');
     }, null, T(30000), 'unlock reveal ready to continue');
     if (await t.page.evaluate(done)) return;
+    // onlyReveals: the target screen shows up by itself once the reveals are gone, so press
+    // only while a reveal is up; a press racing the screen's arrival would pick its first
+    // button (e.g. the ceremony's Race again = a whole second Grand Prix)
+    if (onlyReveals && !(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')))) {
+      await waitFrames(t.page, 10);
+      if (++idle < 300) i--;   // waiting is not a press; bounded (~50 s at 60 fps)
+      continue;
+    }
     const before = await t.page.evaluate(() => window.__smokeUiKey());
     try {
       await pressKey(t, 'Enter', { until: (prev) => window.__smokeUiKey() !== prev, arg: before, what: `${what} (step ${i + 1})`, tries: 1, timeout: T(4000) });
@@ -874,7 +883,7 @@ async function grandPrixTest(t) {
     tick();
   }));
   if (covered !== null) t.check(covered, 'the unlock reveal does not cover the trophy ceremony underneath');
-  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options');
+  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options', 24, { onlyReveals: true });
   await waitFrames(t.page, 3);
   await shot('3-ceremony');
   await layoutAt(t, 'trophy ceremony', CEREMONY_LAYOUT);
@@ -1187,7 +1196,7 @@ async function myCupTest(t) {
     if (r === 0) await pressThrough(t, () => window.__game?.state === 'race', 'My Cup race 2 to start');
     else await pressThrough(t, () => !!document.querySelector('.sk-cer-podium'), 'trophy ceremony');
   }
-  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options');
+  await pressThrough(t, () => !!document.querySelector('.sk-cer-podium') && !!document.querySelector('.sk-gp-opts.sk-show'), 'ceremony options', 24, { onlyReveals: true });
   await waitFrames(t.page, 3);
   await shot('4-ceremony');
   const end = await t.page.evaluate(() => ({ gp: window.__game.lastGp, kicker: document.querySelector('.sk-gp-kicker')?.textContent }));

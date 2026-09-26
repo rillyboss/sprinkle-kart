@@ -167,3 +167,17 @@ describe('isIgnorableError', () => {
     expect(isIgnorableError('TypeError: kart is undefined')).toBe(false);
   });
 });
+
+describe('smoke flow: no stray presses on the trophy ceremony', () => {
+  const src = readFileSync(new URL('../scripts/smoke.mjs', import.meta.url), 'utf8');
+  it('pressThrough can hold its presses unless an unlock reveal is up (bounded wait)', () => {
+    expect(src).toMatch(/async function pressThrough\(t, done, what, max = 24, \{ onlyReveals = false \} = \{\}\)/);
+    expect(src).toMatch(/if \(onlyReveals && !\(await t\.page\.evaluate\(\(\) => !!document\.querySelector\('\.sk-unlock:not\(\.sk-leaving\)'\)\)\)\)/);
+    expect(src).toMatch(/if \(\+\+idle < \d+\) i--;/);
+  });
+  it('every wait for the ceremony options only presses through reveals (a racing Enter = Race again = a second GP)', () => {
+    const calls = [...src.matchAll(/pressThrough\([^\n]*'ceremony options'[^\n]*\);/g)].map((m) => m[0]);
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const c of calls) expect(c, c).toContain('{ onlyReveals: true }');
+  });
+});
