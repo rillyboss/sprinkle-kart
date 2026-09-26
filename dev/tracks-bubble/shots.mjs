@@ -19,7 +19,7 @@ for (const k of kinds) {
     let i = 0;
     for (const t of times) {
       await pg.waitForTimeout(t);
-      const info = await pg.evaluate(() => { const g = window.__game; const k = g?.race?.karts?.find((q) => !q.isCPU); return { fps: g?.fps, s: k?.s, lap: k?.lap, place: k?.place, errors: g?.errors?.length }; });
+      const info = await pg.evaluate(() => { const g = window.__game; const hs = (g?.race?.karts || []).filter((q) => !q.isCPU).map((k) => ({ pi: k.playerIndex, s: Math.round(k.s), lat: +k.lateral.toFixed(1), y: +k.position.y.toFixed(2), place: k.place, off: k.offRoad })); return { fps: g?.fps, hs, errors: g?.errors?.length }; });
       console.log('race', i, JSON.stringify(info));
       await pg.screenshot({ path: out(`race-mid${++i}`) });
     }
