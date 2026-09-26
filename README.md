@@ -5,6 +5,18 @@ Up to **4 players** race together on one screen with game controllers or the key
 and CPU friends fill the rest of the 8-kart grid. Nobody gets hurt: karts just get
 *bonked* into a happy twirl.
 
+**21 racers · 20 tracks in 5 cups · 2 battle arenas · 8 ways to play.** Everything is
+original: every racer, track, tune and sound was made just for this game.
+
+**Contents:** [Starting the game](#how-to-start-the-game-for-grown-ups) ·
+[Playing](#playing) · [Game modes](#game-modes) · [Controls](#controls) ·
+[Kid-Assist](#kid-assist-) · [Items & drifting](#drifting-and-turbos) ·
+[Unlocks & Sticker Book](#unlocks-the-sticker-book-and-fun-goals-) ·
+[Paint Shop](#paint-shop-) · [Grown-ups corner](#the-grown-ups-corner-and-parent-gate-) ·
+[Effects & comfort](#effects--comfort-) · [Racers](#the-racers) · [Tracks](#the-tracks) ·
+[Online play (coming soon)](#coming-soon-online-play-) · [What's new](CHANGELOG.md) ·
+[For developers](#for-developers)
+
 ---
 
 ## How to start the game (for grown-ups)
@@ -29,6 +41,10 @@ You need [Node.js](https://nodejs.org) 18 or newer. Chrome or Edge works best.
 If the game doesn't see a controller, press any button on it once.
 Xbox, PlayStation and Switch Pro controllers all work.
 
+**Is it OK for little ones?** Yes. There are no ads, no purchases, no accounts and no chat, and
+nothing is sent over the internet: the game and its saves live in your browser. Karts never
+crash or get hurt, they *bonk* and twirl, and every finish (even 8th) gets a cheer.
+
 ---
 
 ## Playing
@@ -36,46 +52,43 @@ Xbox, PlayStation and Switch Pro controllers all work.
 1. **Title:** press **A** (or **Enter**). Whoever presses first is **P1**.
 2. **Who's playing?:** every other player presses **A** on their controller (or their keyboard's confirm key) to join.
    Press **Y** to switch on **Kid-Assist 🧸** for that player. **B** leaves. When everyone's in, P1 presses **A**.
-3. **How do you want to play?** P1 picks **Free Race**, **Grand Prix** or **Time Trial** (see *Game modes* below).
+3. **How do you want to play?** P1 picks a mode (see *Game modes* below).
 4. **Pick your racer:** each player moves their own coloured cursor and presses **A**. Friends can pick the same racer!
-5. **Choose a track** (or a **cup** in a Grand Prix): P1 picks the track, the speed (Cozy 🐢 / Zippy 🐇 / Zoomy 🚀) and how many laps.
+5. **Choose a track** (or a **cup** in a Grand Prix, or an **arena** in Bubble Battle): P1 picks it, the speed
+   (Cozy 🐢 / Zippy 🐇 / Zoomy 🚀) and how many laps.
 6. **Race!** Press the gas when the countdown says **GO**. Tip: press the gas just before GO for a sparkly
    *Rocket Start*!
 
-### Game modes 🏁🏆⏱️
+## Game modes
 
-- **Free Race 🏁** — pick any unlocked track and race with friends and CPU pals (the classic mode).
-- **Grand Prix 🏆** — pick a cup and race its 4 tracks with the same racers. Every race gives points
-  (15 / 12 / 10 / 8 / 6 / 4 / 2 / 1); the standings count up between races and the top three get
-  gold, silver and bronze cups at the trophy ceremony. A cup can be played once all 4 of its tracks
-  are unlocked (locked cups show which track to unlock next).
-- **Time Trial ⏱️** — a solo run for P1 (friends cheer!): no CPUs, no item boxes, but you start with
-  **3 sprinkle boosts**. Your best run is saved as a sparkly **ghost** that races you next time, and the
-  timer shows how far ahead (green) or behind you are.
-- **Timers & records:** every race shows the race clock, the current lap time and your lap splits (top
-  middle). Beat your fastest lap for a *Best lap!*, beat the saved record for a *New record!*. The
-  **Records 🏆** button on the mode screen lists the best race and lap on every track, with the racer
-  who set them. (Race records count only for the track's normal number of laps.)
+The five big cards on the *How do you want to play?* screen:
 
-### Even more fun 🎉
+| Mode | What happens |
+|---|---|
+| **Free Race 🏁** | Pick any unlocked track and race with friends and CPU pals (the classic mode). |
+| **Grand Prix 🏆** | Pick a cup and race its 4 tracks with the same racers. Every race gives points (15 / 12 / 10 / 8 / 6 / 4 / 2 / 1), the standings count up between races, and the top three get gold, silver and bronze cups at the trophy ceremony. A cup opens once all 4 of its tracks are unlocked (locked cups show which track to unlock next). |
+| **Time Trial ⏱️** | A solo run for P1 (friends cheer!): no CPUs, no item boxes, but you start with **3 sprinkle boosts**. Your best run is saved as a sparkly **ghost** that races you next time, and the timer shows how far ahead (green) or behind you are. |
+| **Team Race 🤝** | The family (plus CPU buddies) is **Team Sprinkle** against CPU **Team Sparkle**. Every place gives points, the team with the most points wins, and the score carries over to rematches. |
+| **Bubble Battle 🫧** | No laps: everyone floats 3 bubbles in an arena (**Bubble Bath Bowl** or **Gumball Garden**), surprises pop them, and the last one still bobbing wins. |
 
-- **Team Race 🤝** — the family (plus CPU buddies) is **Team Sprinkle** against CPU **Team Sparkle**.
-  Every place gives points, the team with the most points wins, and the score carries over to rematches.
-- **Bubble Battle 🫧** — no laps: everyone floats 3 bubbles in a battle arena, surprises pop them,
-  and the last one still bobbing wins (2 arenas).
-- **Daily Sprinkle ☀️** (button on the mode screen) — one fun challenge a day (a track, a goal and a
+And three more:
+
+- **Daily Sprinkle ☀️** (button on the mode screen): one fun challenge a day (a track, a goal and a
   silly twist). Do it on several days in a row for a 🔥 streak.
-- **My Cup ✨** (last card on the cup screen) — pick **any 4 unlocked tracks** in your own order,
+- **My Cup ✨** (last card on the cup screen): pick **any 4 unlocked tracks** in your own order,
   tap the badge and name to style the cup (e.g. *Rocco Ravioli's Cup* 🦄), and race it as a Grand
   Prix. Your cup is remembered. (It's just for fun: it doesn't count as winning a real cup.)
-- **How to Play 🎓** (title screen) — a calm practice race with no other racers. A friendly coach at
+- **How to Play 🎓** (title screen): a calm practice race with no other racers. A friendly coach at
   the bottom shows one trick at a time (gas, steering, drifting, grabbing and using a surprise,
   finishing) with the right button for your controller, and cheers each one. Learn them all for the
   *Sprinkle Scholar* sticker.
-- **Paint Shop 🎨** (title screen) — give any racer's kart a new colour (11 paints, or *Original*)
-  and see the whole kart in its new paint. It's saved, and every race uses it.
-- **Fun Goals 🏅** — a page in the Sticker Book with achievement stickers (first win, drift turbos,
-  Bubble Battles, Daily Sprinkles, How to Play...), each with a progress bar.
+
+**Timers & records:** every race shows the race clock, the current lap time and your lap splits (top
+middle). Beat your fastest lap for a *Best lap!*, beat the saved record for a *New record!*. The
+**Records 🏆** button on the mode screen lists the best race and lap on every track, with the racer
+who set them. (Race records count only for the track's normal number of laps.)
+
+## Controls
 
 ### Controller buttons
 
@@ -110,16 +123,18 @@ On PlayStation pads, **A** is ✕, **B** is ○, **X** is □ and **Y** is △.
 
 You can also click the menus with the mouse.
 
-### Kid-Assist 🧸
+## Kid-Assist 🧸
 
 This is for little racers. With Kid-Assist on, the kart **always presses the gas** (even before
 **GO**, so it gets a sparkly Rocket Start), **helps steer** along the best line round every bend
 and **steers away from the fences**. Pushing the stick left or right picks a lane (to grab an item
 box, say); let go and the helper drifts gently back to the best line. Bumping a fence doesn't slow
 it down. Pressing **brake** firmly still brakes (and reverses), and drifting still works for kids
-who want to try it. Turn it on for each player with **Y** (or **Tab**) on the *Who's playing?* screen.
+who want to try it. Turn it on for each player with **Y** (or **Tab**) on the *Who's playing?*
+screen, or make it the default for every new player in the **Grown-ups** corner. Finishing a race
+with Kid-Assist on unlocks **Baby Bonbon**!
 
-### Drifting and turbos
+## Drifting and turbos
 
 Hold drift while you turn: the kart does a little hop and eases into a slide (no sudden jerk).
 While drifting, push **into** the turn to tighten it or **away** to widen it. The sparkles change
@@ -149,34 +164,62 @@ on the title screen (press Down) for a picture of every item.
 
 ---
 
-## Unlocks, the Sticker Book and the Grown-ups corner 📒
+## Unlocks, the Sticker Book and Fun Goals 📒
 
-**Win any race (finish 1st) and Cotton Candy Girl joins the team!** She has a giant fluffy
-pink-and-blue cotton-candy cloud of hair, a sparkly cape and a cotton-candy wand, and she drives
-a fluffy cloud kart. After you unlock her, pick her on the *Pick your racer!* screen.
+You start with **8 racers** and the **4 Sprinkle Cup tracks**. Everything else unlocks by playing:
+finish races, win on certain tracks, do drift turbos, use items, race with a friend, try a Time
+Trial or win a Grand Prix cup (every goal is in the [racer](#the-racers) and [track](#the-tracks)
+tables below). **Win any race (finish 1st) and Cotton Candy Girl joins the team!**
 
-Every other new racer and track unlocks the same way: finish races, win on certain tracks, do
-drift turbos, use items, race with a friend, try a Time Trial or win a Grand Prix cup. When
-**anyone** in the family reaches a goal, the results screen throws a big party for each new
+When **anyone** in the family reaches a goal, the results screen throws a big party for each new
 friend or track, one after the other ("Surprise 1 of 3!"), and a **Next sticker** card shows
 what is closest to unlocking. Locked racers and tracks show their goal and a progress bar
 (e.g. *Win 3 races — 1/3 ⭐*).
 
-- **📒 Sticker Book** (on the title screen: press Down, pick it, press A): every racer and track
+- **📒 Sticker Book** (title screen: press Down, pick it, press A): every racer and track
   as a sticker (locked ones are mystery silhouettes with a hint), trophies and best places per
-  track and cup, and the family's totals. Y / Tab flips the page, B goes back.
-- **⚙️ Grown-ups** (next to it): music and sound volume, *Kid-Assist for new players*,
-  **Unlock everything** and **Start a fresh Sticker Book** (reset). The last two sit behind a
-  little parent gate: answer an addition question with the d-pad (Up/Down) and press A.
+  track and cup, and the family's totals. **Y / Tab** flips the page, **B** goes back.
+- **🏅 Fun Goals** (a page in the Sticker Book): achievement stickers (first win, drift turbos,
+  Bubble Battles, Daily Sprinkles, How to Play...), each with a progress bar.
 
-The game remembers everything in this browser. `?unlockreset=1` added to the address (for
-example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book.
+## Paint Shop 🎨
+
+On the title screen, pick **Paint Shop**. Choose any racer and give their kart a new colour
+(10 paints, from *Bubblegum Pink* to *Midnight Blue*, or back to *Original*) and see the whole
+kart in its new paint. It's saved, and every race, the podium and the title show use it.
+
+## The Grown-ups corner and parent gate ⚙️
+
+**⚙️ Grown-ups** on the title screen has:
+
+- **Music** and **Sounds** volume
+- **Kid-Assist for new players** (on or off by default)
+- **Unlock everything** (every racer and track, right away) 🔒
+- **Start a fresh Sticker Book** (clears stickers, trophies and totals, but keeps your settings) 🔒
+
+The two 🔒 rows sit behind a little **parent gate**: answer an addition question with the d-pad
+(Up/Down) and press A. The game remembers everything in this browser.
+`?unlockreset=1` added to the address (for example `http://localhost:5173/?unlockreset=1`) also
+starts a fresh Sticker Book.
+
+## Effects & comfort ✨
+
+**✨ Effects** on the title screen (press Down) tunes how busy the game feels:
+
+- **Motion: Gentle** for calmer cameras, fewer wiggles and sparkles (it starts on Gentle if the
+  device asks for reduced motion)
+- **Screen wobble**, **Racer chatter**, **Weather & sparkles** and the **Title show**, each on or off
+- **Colour-friendly shapes**: every player gets a shape as well as a colour (P1 ♥ · P2 ★ · P3 ◆ ·
+  P4 ●) on the race HUD and on the P1–P4 tags in the menus, with a different border pattern in
+  split-screen
+
+These are saved separately from the Sticker Book, so starting a fresh book keeps them.
 
 ---
 
-## Showtime: the sparkly extras ✨
+## Showtime: the sparkly extras 🎬
 
-- **Title show 🎬:** while the title screen waits, eight racers zoom round one of your unlocked
+- **Title show:** while the title screen waits, eight racers zoom round one of your unlocked
   tracks behind the logo, and the camera cuts like a TV show: the pack racing at you, a slow
   circle round a *"⭐ Starring …"* racer, a camera by the fence, a helicopter view.
 - **Track intro card:** every race starts with a card over the countdown: the cup (or
@@ -190,39 +233,33 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 - **Finish line party 🎉:** crossing the line throws a confetti fountain and the camera swings up
   and round to the front of your kart. Two karts within a quarter of a second? *"📸 Photo finish!"*
 - **3D podium 🏆:** on the results screen and at the Grand Prix trophy ceremony the top three are
-  real 3D racers dancing their own happy dance (gigglers twirl, ho-ho-ers wobble, boing-ers bounce
-  like springs), and they cheer in their own voices as they pop up.
+  real 3D racers dancing their own happy dance, and they cheer in their own voices as they pop up.
 - **Music that follows along 🎵:** the title screen has its own bouncy theme; the band goes lighter
-  on "Who's playing?", calm (no drums) in the grown-up corners, soft and dreamy when you pause or
-  take photos, plays just a heartbeat during the countdown until everyone joins in at GO, and turns
-  up the drums on the final lap. Didn't make the top 3? Instead of the big fanfare you get the
-  cosy *"Good try!"* tune, because every finish is worth a little dance.
+  on "Who's playing?", calm in the grown-up corners, soft and dreamy when you pause or take photos,
+  plays just a heartbeat during the countdown until everyone joins in at GO, and turns up the drums
+  on the final lap. Didn't make the top 3? You get the cosy *"Good try!"* tune instead.
 - **Photo mode 📸:** pause the race and pick **Photo mode**. Move the camera round your kart with the
   stick / arrows (Up/Down = closer/further, Start = tilt), **Y / Tab** picks a frame (snapshot,
   hearts, sprinkles, stars), **A / Enter** snaps and saves a picture (it lands in your downloads),
   **B / Esc** goes back.
-- **✨ Effects & comfort** (on the title screen, press Down): **Motion: Gentle** for calmer cameras,
-  fewer wiggles and sparkles (it starts on Gentle if the device asks for reduced motion), **Screen
-  wobble**, **Racer chatter**, **Weather & sparkles**, **Title show**, and **Colour-friendly shapes**,
-  which give every player a shape as well as a colour (P1 ♥ · P2 ★ · P3 ◆ · P4 ●, on the race HUD
-  and on the P1–P4 tags in the menus, with a different border pattern in split-screen). These are saved separately from the Sticker Book, so starting a
-  fresh book keeps them.
 
 ---
 
 ## The racers
 
-| Racer | Who they are |
-|---|---|
-| **Rocco Ravioli** | A jolly pasta chef with a giant wiggly mustache and a tall red chef hat |
-| **Lenny Linguine** | Rocco's tall, noodly, nervous little brother, whose knees wobble |
-| **Stella Starbloom** | A dreamy space princess with a glowing star wand and her star buddy Twinkle |
-| **Princess Peachy Pie** | A sweet princess whose crown is a tiny peach pie |
-| **Gumbo Gummybear** | A grumpy-but-huggable gummy bear with candy-corn horns |
-| **Muffin Button** | A tiny, excited cupcake kid with a wobbly cherry on top |
-| **Doodle Dino** | A goofy, always-hungry dinosaur who drives an eggshell kart |
-| **Bizzy Bumble** | A silly bumblebee who talks in puns |
-| **Cotton Candy Girl** 🔒 | Fluffy, sparkly and super sweet. Win a race to unlock her! |
+### Ready from the start
+
+| Racer | Who they are | How to unlock |
+|---|---|---|
+| **Rocco Ravioli** 🍝 | A jolly pasta chef with a giant wiggly mustache and a tall red chef hat | Ready to race |
+| **Lenny Linguine** 🍜 | Rocco's tall, noodly, nervous little brother, whose knees wobble | Ready to race |
+| **Stella Starbloom** ⭐ | A dreamy space princess with a glowing star wand and her star buddy Twinkle | Ready to race |
+| **Princess Peachy Pie** 🍑 | A sweet princess whose crown is a tiny peach pie | Ready to race |
+| **Gumbo Gummybear** 🐻 | A grumpy-but-huggable gummy bear with candy-corn horns | Ready to race |
+| **Muffin Button** 🧁 | A tiny, excited cupcake kid with a wobbly cherry on top | Ready to race |
+| **Doodle Dino** 🦕 | A goofy, always-hungry dinosaur who drives an eggshell kart | Ready to race |
+| **Bizzy Bumble** 🐝 | A silly bumblebee who talks in puns | Ready to race |
+| **Cotton Candy Girl** 🍭 | A giant fluffy pink-and-blue cotton-candy cloud of hair, a sparkly cape and a cotton-candy wand, in a fluffy cloud kart | Win any race |
 
 ### More racers to unlock (pack A)
 
@@ -248,12 +285,16 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 
 ## The tracks
 
-| Track | What's there |
-|---|---|
-| **Cotton Candy Castle** | Princess Peachy Pie's pink candy palace, with heart flags, a strawberry-milk moat, rainbow bridges and cotton-candy trees |
-| **Gumdrop Meadow** | Sunny rolling hills, giant gumdrops, lollipop trees and candy-cane fences, all on a heart-shaped road |
-| **Starlight Galaxy** | Stella's glowing star road floating in space, with planets, crystal islands and an observatory |
-| **Sundae Slopes** | Ice-cream mountains, waffle-cone towers, a chocolate river and sprinkle snow |
+Five cups of four tracks. A cup can be raced as a Grand Prix once all four of its tracks are unlocked.
+
+### 🍭 Sprinkle Cup
+
+| Track | What's there | Unlock |
+|---|---|---|
+| **Cotton Candy Castle** | Princess Peachy Pie's pink candy palace, with heart flags, a strawberry-milk moat, rainbow bridges and cotton-candy trees | Ready to race |
+| **Gumdrop Meadow** | Sunny rolling hills, giant gumdrops, lollipop trees and candy-cane fences, all on a heart-shaped road | Ready to race |
+| **Starlight Galaxy** | Stella's glowing star road floating in space, with planets, crystal islands and an observatory | Ready to race |
+| **Sundae Slopes** | Ice-cream mountains, waffle-cone towers, a chocolate river and sprinkle snow | Ready to race |
 
 ### 🫧 Bubble Cup
 
@@ -290,6 +331,12 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | **Aurora Ice Palace** 🏰 | A snowy night under dancing northern lights: an ice bridge over a frozen river, two zig-zag switchbacks, glowing crystal arches, the Crystal Palace, snowmen and a huddle of hopping penguins | Win on any Cozy Cup track |
 | **Moonbounce Base** 🌙 | A crescent-moon road with boing-boing moon moguls, a glass tube tunnel, a friendly rocket in the big crater and moon bunnies doing floaty hops. Low gravity makes your hops extra floaty! | Win 8 races |
 | **Ribbon Sky Rally** 🎀 | The grand finale: a rainbow ribbon road over the clouds that twirls over and under itself, with hot-air balloons, giant bows, rainbow gates and the Superstar Trophy | Win on 6 different tracks |
+
+## Coming soon: online play 🌐
+
+We're building friends-only online races: room codes, no public matchmaking, no typed chat (just
+cute preset emotes), and a grown-up switches it on behind the parent gate. The one-time hosting
+setup for grown-ups is in **[docs/INFRA_SETUP.md](docs/INFRA_SETUP.md)** (coming soon: online play).
 
 ---
 
