@@ -1,0 +1,52 @@
+name: Deploy to GitHub Pages
+
+# Publishes the production build to https://rillyboss.github.io/sprinkle-kart/ on every push to
+# main (and on demand). vite.config.js uses base './', so the build works from the /sprinkle-kart/
+# sub-path without changes. The Pages source must be set to "GitHub Actions" once
+# (docs/INFRA_SETUP.md, step 1).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy half-way; a newer push just queues behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+        env:
+          # Optional: our own Cloudflare signaling worker for online play (a public repo
+          # *variable*, not a secret). Empty = the game's built-in default.
+          VITE_SIGNAL_URL: ${{ vars.VITE_SIGNAL_URL }}
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

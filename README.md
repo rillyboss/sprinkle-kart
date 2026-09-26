@@ -41,8 +41,9 @@ You need [Node.js](https://nodejs.org) 18 or newer. Chrome or Edge works best.
 If the game doesn't see a controller, press any button on it once.
 Xbox, PlayStation and Switch Pro controllers all work.
 
-**Is it OK for little ones?** Yes. There are no ads, no purchases, no accounts and no chat, and
-nothing is sent over the internet: the game and its saves live in your browser. Karts never
+**Is it OK for little ones?** Yes. There are no ads, no purchases, no accounts and no chat. Saves
+stay in your browser and nothing about your family is sent anywhere (the only thing the game fetches
+online is its bubbly font). Karts never
 crash or get hurt, they *bonk* and twirl, and every finish (even 8th) gets a cheer.
 
 ---

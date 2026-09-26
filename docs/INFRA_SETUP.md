@@ -13,6 +13,21 @@ Most of it is already automated. Only the Cloudflare part needs you.
 > The game works online before you do any of this: it uses public signaling plus direct connections.
 > The Cloudflare steps make connecting more reliable and let nearly every home network join.
 
+## Status right now (v2.0.0)
+
+Online play is still being built, so not every step works yet. What you can do today:
+
+| Step | Ready? | Notes |
+|---|---|---|
+| 1. GitHub Pages | ✅ **Done** | Pages is switched on (source: GitHub Actions) and `.github/workflows/pages.yml` deploys every push to `main`. The site already hosts the local split-screen game. |
+| 2. Cloudflare account | ✅ Do it now | Nothing in the repo is needed. |
+| 3. `wrangler login` | ✅ Do it now | `npx wrangler login` downloads wrangler on the fly. Note your **Account ID**. |
+| 4. TURN key | ✅ Do it now | Copy the **Turn Token ID** and **API Token** somewhere safe (a password manager); the API token is shown only once. |
+| 5–6. Worker secrets + deploy | ⏳ Waits for the online-play code | Needs `infra/signal-worker/` and the `worker:*` npm scripts, which land with online play. |
+| 7. `VITE_SIGNAL_URL` variable | ⏳ After step 6 | The Pages workflow already passes this variable into the build. |
+| 8. In-game check | ⏳ Waits for the **Online** menu | |
+| Optional auto-deploy | ⏳ Waits for `.github/workflows/worker.yml` | You can already create the Cloudflare API token and add the two secrets. |
+
 ---
 
 ## 0. Before you start
@@ -22,6 +37,8 @@ Most of it is already automated. Only the Cloudflare part needs you.
 - Your GitHub login (you already have it, since the `gh` CLI is logged in as `rillyboss`).
 
 ## 1. Check GitHub Pages (2 min)
+
+(Already switched on for you. These steps just confirm it.)
 
 1. Open https://github.com/rillyboss/sprinkle-kart/settings/pages
 2. **Build and deployment → Source** should say **GitHub Actions**. If it doesn't, pick it.

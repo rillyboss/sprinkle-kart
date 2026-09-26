@@ -65,3 +65,38 @@ describe('CI workflow', () => {
     for (const f of ['menu-flow', 'gamepad-flow', 'results-unlock', 'modes-menu']) expect(flowNames).toContain(f);
   });
 });
+
+describe('GitHub Pages workflow', () => {
+  const pages = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
+  const viteCfg = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+  const infra = readFileSync(new URL('../docs/INFRA_SETUP.md', import.meta.url), 'utf8');
+
+  it('deploys the production build on main pushes and on demand', () => {
+    expect(pages).toMatch(/push:\s*\n\s*branches: \[main\]/);
+    expect(pages).toMatch(/\n {2}workflow_dispatch:/);
+    expect(pages).toContain('npm run build');
+    expect(pages).toMatch(/upload-pages-artifact@v\d+\s*\n\s*with:\s*\n\s*path: dist/);
+    expect(pages).toContain('actions/deploy-pages@');
+    expect(pages).toMatch(/deploy:\s*\n\s*needs: build/);
+  });
+
+  it('has only the permissions Pages needs and never cancels a live deploy', () => {
+    expect(pages).toMatch(/permissions:\s*\n\s*contents: read\s*\n\s*pages: write\s*\n\s*id-token: write/);
+    expect(pages).toMatch(/concurrency:\s*\n\s*group: pages\s*\n\s*cancel-in-progress: false/);
+  });
+
+  it('passes the optional signaling URL as a public variable, never a secret', () => {
+    expect(pages).toContain('VITE_SIGNAL_URL: ${{ vars.VITE_SIGNAL_URL }}');
+    expect(pages).not.toMatch(/secrets\./);
+  });
+
+  it('the build uses a relative base so it works from the /sprinkle-kart/ sub-path', () => {
+    expect(viteCfg).toMatch(/base: '\.\/'/);
+  });
+
+  it('the infra guide says which steps are ready today and names the workflow', () => {
+    expect(infra).toContain('## Status right now');
+    expect(infra).toContain('.github/workflows/pages.yml');
+    expect(infra).toContain('https://rillyboss.github.io/sprinkle-kart/');
+  });
+});
