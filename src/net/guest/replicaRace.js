@@ -34,6 +34,14 @@ import { createEventPlayer } from './eventPlayer.js';
 import { createReplicaItems } from './replicaItems.js';
 import { createInputHistory, createLocalResolver } from './inputHistory.js';
 
+/** Shortest signed turn from heading a to heading b (radians, −π..π). */
+function angleDelta(a, b) {
+  let d = (b - a) % (2 * Math.PI);
+  if (d > Math.PI) d -= 2 * Math.PI;
+  else if (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
 export const GRID_SPACING = 6.3; // Race.js GRID_SPACING (metres between grid slots)
 const TICK_DT = 1 / 60;
 const NO_KART = 255;
@@ -369,10 +377,22 @@ export class ReplicaRace {
     if (karts.length && snap.owner?.length && snap.tick > this._lastReconciled) {
       if (snap.tick > this.predictedTick) this.predictedTick = snap.tick; // (re)start from the snapshot
       this._lastReconciled = snap.tick;
+      const before = karts.map((k) => ({ x: k.position.x, y: k.position.y, z: k.position.z, heading: k.heading }));
       const res = this.reconciler.reconcile({
         karts, snap, inputsFor: (t) => this._inputsFor(t), toTick: this.predictedTick, predictTick: this._predictTick,
         ctxFor: (t) => this._ctxFor(t, () => {}), forceSnap: handBack.length > 0, path: this.path,
         normalizeOwner: (o) => this._normalizeOwner(o),
+      });
+      // the previous-tick pose moves with the correction, so the drawn prev→cur blend stays continuous (the
+      // reconciler's decaying offset covers the jump itself)
+      karts.forEach((k, i) => {
+        const p = this._prevPose.get(k.id);
+        if (!p) return;
+        const b = before[i];
+        p.x += k.position.x - b.x;
+        p.y += k.position.y - b.y;
+        p.z += k.position.z - b.z;
+        p.heading += angleDelta(b.heading, k.heading);
       });
       this.lastCorrections = res.errors;
       for (const e of res.errors) e.auto = this._auto.has(e.kart);
@@ -460,11 +480,13 @@ export class ReplicaRace {
         const d = this.reconciler.drawn(k);
         const prev = this._prevPose.get(k.id);
         let x = d.x, y = d.y, z = d.z, heading = d.heading;
-        if (prev && alpha < 1) {
+        if (prev) {
+          const a = Math.max(0, Math.min(1, Number.isFinite(alpha) ? alpha : 1));
           const o = this.reconciler.offset(k.id);
-          x = prev.x + (k.position.x - prev.x) * alpha + o.x;
-          y = prev.y + (k.position.y - prev.y) * alpha + o.y;
-          z = prev.z + (k.position.z - prev.z) * alpha + o.z;
+          x = prev.x + (k.position.x - prev.x) * a + o.x;
+          y = prev.y + (k.position.y - prev.y) * a + o.y;
+          z = prev.z + (k.position.z - prev.z) * a + o.z;
+          heading = prev.heading + angleDelta(prev.heading, k.heading) * a + o.h;
         }
         this._setRender(k, x, y, z, heading, frameDt);
         continue;

@@ -124,8 +124,9 @@ export function createGuestDriver({
         const b = sender.afterTick(tick, { slackTarget: lead.targetSlack, lastSnapTick });
         if (b) stats.inputsSent++;
       }
-      const alpha = P - Math.floor(P);
-      replica.present(ticks.length ? Math.min(1, alpha + 1e-9) : 1, dt);
+      // Always draw between the last two predicted poses at P's fraction — also on frames that predicted no tick
+      // (120/144 Hz screens): drawing the full current pose there made the own kart jump ahead and back.
+      replica.present(P - Math.floor(P), dt);
       return { ticks, P, R, T };
     },
     onMessage(peerId, ch, bytes) {

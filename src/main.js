@@ -1290,7 +1290,7 @@ function startNetRace(setup, done, { net }) {
   // guests draw their karts at the smoothed render pose (prediction corrections decay, remotes interpolate)
   const camKarts = new Map();
   const camKart = (k) => {
-    if (host || !k?.render) return k;
+    if (!k?.render) return k;
     let v = camKarts.get(k);
     if (!v) {
       v = Object.create(k, { position: { get: () => k.render.position }, heading: { get: () => k.render.heading } });
@@ -1489,7 +1489,8 @@ function startNetRace(setup, done, { net }) {
         }
       }
       latch.setFrame(inputs);
-      link.frame(performance.now(), 'raf');
+      const fr = link.frame(performance.now(), 'raf');
+      if (fr.started) link.present(fr.alpha); // draw between tick poses: smooth at any refresh rate
       session.net.paused = link.paused;
       const houses = link.started ? Object.values(link.stats().houses ?? {}) : [];
       session.net.wobbly = houses.some((h) => h.robo);

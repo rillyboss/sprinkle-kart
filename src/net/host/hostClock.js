@@ -59,6 +59,9 @@ export const PAUSE_REASON = Object.freeze({ snack: 0, starved: 1, skip: 2 });
  * @param {number} [o.rafStaleMs]
  * @param {number} [o.starveMs]
  * @param {number} [o.periodMs]             periodic TIMEBASE interval (0 = off)
+ * @param {number} [o.phaseMs]              put the tick grid this far BEFORE the start / resume frame (the game
+ *                                          uses half a tick): vsync-locked frames then land mid-tick instead of on
+ *                                          the boundary, where any callback jitter gave 0- and 2-tick frames
  * @param {(tb: Timebase) => void} [o.onTimebase]
  * @param {(p: PauseInfo) => void} [o.onPause]
  */
@@ -70,10 +73,12 @@ export function createHostClock({
   rafStaleMs = RAF_STALE_MS,
   starveMs = PUMP_STARVE_MS,
   periodMs = TIMEBASE_PERIOD_MS,
+  phaseMs = 0,
   onTimebase,
   onPause,
 } = {}) {
   const tickMs = 1000 / tickHz;
+  const phase = Math.max(0, Math.min(tickMs * 0.99, Number(phaseMs) || 0));
   const tbListeners = new Set();
   const pauseListeners = new Set();
   if (onTimebase) tbListeners.add(onTimebase);
@@ -103,7 +108,7 @@ export function createHostClock({
   const emitPause = (p) => { for (const fn of pauseListeners) fn(p); };
   const reanchor = (ms) => {
     anchorTick = lastTick + 1;
-    anchorMs = ms;
+    anchorMs = ms - phase;
     epoch = (epoch + 1) & 0xff;
   };
 
@@ -111,7 +116,7 @@ export function createHostClock({
     started = true;
     paused = false;
     anchorTick = startTick;
-    anchorMs = ms;
+    anchorMs = ms - phase;
     lastTick = startTick - 1;
     lastRafMs = null;
     lastPumpMs = null;
