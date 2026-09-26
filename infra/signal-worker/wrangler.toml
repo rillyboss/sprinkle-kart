@@ -1,0 +1,26 @@
+# Sprinkle Kart signal worker (NETWORKING.md §3 and §4.2; grown-up setup in docs/INFRA_SETUP.md).
+# Free-plan compatible: one SQLite-backed Durable Object class with hibernatable WebSockets.
+# Secrets TURN_KEY_ID and TURN_KEY_API_TOKEN are set with `npm run worker:secret -- <name>`; never put them here.
+name = "sprinkle-kart-signal"
+main = "src/index.js"
+compatibility_date = "2026-09-20"
+workers_dev = true
+
+# `npm run worker:dev` serves http://localhost:8787 with no Cloudflare account
+# (pass another port through: `npm run worker:dev -- --port 8792`).
+[dev]
+port = 8787
+
+[vars]
+# Production origins, exactly. Local dev overrides this in the gitignored .dev.vars (see .dev.vars.example).
+ALLOWED_ORIGINS = "https://rillyboss.github.io,http://localhost:5173"
+TURN_API_BASE = "https://rtc.live.cloudflare.com"
+
+[[durable_objects.bindings]]
+name = "SIGNAL_ROOM"
+class_name = "SignalRoom"
+
+# Legacy-style migration on purpose (binding decision): never switch this worker to the [exports] style.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRoom"]
