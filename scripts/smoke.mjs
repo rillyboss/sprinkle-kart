@@ -912,6 +912,54 @@ async function myCupTest(t) {
   checkErrors(t);
 }
 
+/** How to Play: open it from the title, start the practice race (coach bubble), then an autodriven lesson to the results. */
+async function tutorialTest(t) {
+  const shot = (n) => t.shot(`tutorial-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-title'), null, T(60000), 'title screen');
+  await waitMenusReady(t.page);
+  const idx = await t.page.evaluate(() => [...document.querySelectorAll('.sk-title-entry')].findIndex((b) => /How to Play/.test(b.textContent)));
+  t.check(idx >= 0, 'no How to Play button on the title');
+  await pressKey(t, 'KeyS');
+  for (let i = 0; i < idx; i++) await pressKey(t, 'KeyD');
+  await pressKey(t, 'Enter', onScreen('how-to-play', 'How to Play screen'));
+  await waitMenusReady(t.page);
+  const cards = await t.page.evaluate(() => [...document.querySelectorAll('.skh-step')].map((c) => c.textContent));
+  t.check(cards.length === 6 && cards[0].includes('W'), `How to Play cards ${JSON.stringify(cards)}`);
+  await t.page.waitForTimeout(900); // let the cards pop in
+  await shot('1-screen');
+  await pressKey(t, 'Enter', { ...inState('race', 'the practice race to start'), timeout: T(30000) });
+  const setup = await t.page.evaluate(() => window.__game.setup);
+  t.check(setup.mode === 'tutorial' && setup.players.length === 1 && setup.laps === 2 && setup.speedClass === 'cozy', `bad tutorial setup ${JSON.stringify(setup)}`);
+  await waitGame(t.page, () => window.__game?.race?.state === 'racing', null, T(60000), 'practice GO');
+  const karts = await t.page.evaluate(() => window.__game.race.karts.length);
+  t.check(karts === 1, `a practice race is solo, got ${karts} karts`);
+  await t.page.keyboard.down('KeyW');
+  await waitGame(t.page, () => (window.__game?.race?.modeInfo?.tutorial?.learned ?? 0) >= 1, null, T(30000), 'the GAS trick to be learned');
+  await t.page.keyboard.up('KeyW');
+  await waitFrames(t.page, 3);
+  const coach = await t.page.evaluate(() => document.querySelector('.skh-coach:not([hidden])')?.textContent ?? '');
+  t.check(coach.length > 0, 'coach bubble missing');
+  await shot('2-coach');
+  await waitGame(t.page, () => /Steer/.test(document.querySelector('.skh-coach')?.textContent ?? ''), null, T(30000), 'the steer trick prompt');
+  await waitFrames(t.page, 2);
+  await shot('2b-steer');
+  await t.page.goto(`${BASE}?mode=tutorial&autodrive=1&fastfinish=1&simspeed=8&unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race' && window.__game.race?.state === 'racing', null, T(60000), 'autodriven lesson');
+  await waitGame(t.page, () => (window.__game?.race?.modeInfo?.tutorial?.index ?? 0) >= 1 && window.__game.race.state === 'racing', null, T(120000), 'a trick mid-lesson');
+  await waitFrames(t.page, 2);
+  t.check(await t.page.evaluate(() => !!document.querySelector('.skh-coach:not([hidden])')), 'coach bubble missing mid-lesson');
+  await shot('3-lesson');
+  await waitGame(t.page, () => window.__game?.state === 'results', null, T(300000), 'lesson results');
+  await waitMenusReady(t.page);
+  await waitGame(t.page, () => document.querySelectorAll('.skh-check').length === 6 && !!document.querySelector('.sk-gp-opts.sk-show'), null, T(30000), 'practice results checklist');
+  await shot('4-results');
+  const res = await t.page.evaluate(() => window.__game.lastResults?.summary?.tutorial);
+  t.check(res && res.complete && res.total === 6 && res.learned.includes('finish'), `summary.tutorial ${JSON.stringify(res)}`);
+  t.detail = `learned=${res?.learned?.join(',')}`;
+  checkErrors(t);
+}
+
 /**
  * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
  * To add one, append your function above and one line here — nothing else to edit.
@@ -929,6 +977,7 @@ const FLOW_TESTS = {
   'modes-team': teamTest,
   'modes-daily': dailyTest,
   'modes-my-cup': myCupTest,
+  'modes-tutorial': tutorialTest,
 };
 
 /* ---------------- runner ---------------- */

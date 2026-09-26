@@ -2,9 +2,9 @@
  * "How to Play" race controller (main.js `opts.controller`). Every frame it
  * watches P1 (tutorialObserve), moves the lesson on (tutorialStep), keeps
  * `race.modeInfo.tutorial` fresh for the coach bubble (TUTORIAL_WIDGET),
- * cheers each learned trick (kart flash + a happy sound) and on race end adds
+ * cheers each learned trick in the bubble (+ a happy sound), on race end adds
  * `summary.tutorial` ({ learned, total, done } — the Fun Goals count a
- * finished lesson).
+ * finished lesson) and shows the practice results (screens/tutorialResults.js).
  * OWNER: showcase features & modes.
  */
 import { createTutorial, tutorialObserve, tutorialStep, tutorialCoach, tutorialResult } from './tutorial.js';
@@ -12,7 +12,7 @@ import { createTutorial, tutorialObserve, tutorialStep, tutorialCoach, tutorialR
 /**
  * @param {object} o
  * @param {object} o.race
- * @param {object} [o.session]  race session (stats, flash, sfx)
+ * @param {object} [o.session]  race session (stats, sfx)
  * @param {object|string|null} [o.device] P1's input device (for button names)
  */
 export function createTutorialSession({ race, session = null, device = null } = {}) {
@@ -32,7 +32,6 @@ export function createTutorialSession({ race, session = null, device = null } = 
     const res = tutorialStep(state, tutorialObserve(kart, stats), dt);
     state = res.state;
     if (res.events.includes('step')) {
-      try { session?.flash?.(kart, `${state.cheerText} ⭐`); } catch { /* ignore */ }
       try { session?.sfx?.('goal-sticker'); } catch { /* ignore */ }
     }
     publish();
@@ -44,8 +43,14 @@ export function createTutorialSession({ race, session = null, device = null } = 
     return summary;
   }
 
+  function showResults({ menus, summary, unlocks }) {
+    if (!menus?.open) return null;
+    return menus.open('tutorial-results', { summary, unlocks, characterId: p1()?.characterId ?? null });
+  }
+
   return {
     kind: 'tutorial',
+    showResults,
     update,
     decorateSummary,
     dispose() { if (race?.modeInfo) delete race.modeInfo.tutorial; },

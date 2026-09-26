@@ -245,7 +245,7 @@ describe('HUD widget models', () => {
     expect(sys).toBeTruthy();
     const added = [];
     const off = sys.install({}, { hud: { addWidget: (w) => { added.push(w.id); return () => added.splice(added.indexOf(w.id), 1); } } });
-    expect(added).toEqual(['battle-hud', 'team-hud', 'daily-hud']);
+    expect(added).toEqual(['battle-hud', 'team-hud', 'daily-hud', 'tutorial-hud']);
     off();
     expect(added).toEqual([]);
     expect(sys.install({}, {})).toBeUndefined();

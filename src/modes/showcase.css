@@ -388,10 +388,10 @@
 
 /* ---------- How to Play coach bubble (TUTORIAL_WIDGET) ---------- */
 .skh-coach {
-  position: relative; display: flex; align-items: center; gap: 0.6em; margin-top: 0.4em;
+  position: relative; display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.6em;
   padding: 0.5em 1.1em 0.9em 0.6em; border-radius: 1.4em; background: #fff; color: #6a2c8f;
   border: 0.18em solid #ffd1ec; box-shadow: 0 0.35em 0 rgba(217, 72, 156, 0.18), 0 0.6em 1.4em rgba(120, 60, 160, 0.18);
-  font-weight: 700; font-size: clamp(14px, 2.3vmin, 26px); pointer-events: none;
+  font-weight: 700; font-size: clamp(15px, 2.8vmin, 30px); pointer-events: none;
 }
 .skh-coach.skh-pop { animation: sk-pop-in 0.4s cubic-bezier(0.2, 1.7, 0.4, 1) both; }
 .skh-coach-e { font-size: 2em; line-height: 1; filter: drop-shadow(0 0.08em 0 rgba(0, 0, 0, 0.12)); }
@@ -410,11 +410,12 @@
 
 /* ---------- How to Play screen ---------- */
 .skh-screen { gap: 0.7em; }
-.skh-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8em; width: min(100%, 60em); }
+.skh-screen { justify-content: center; }
+.skh-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1em 0.9em; width: min(100%, 50em); font-size: 1.15em; margin: 0.4em 0; }
 .skh-step {
-  position: relative; display: flex; align-items: center; gap: 0.7em; padding: 0.7em 0.9em; border-radius: 1.2em;
+  position: relative; display: flex; align-items: center; gap: 0.7em; padding: 0.9em 1em; border-radius: 1.2em; min-height: 4.2em;
   background: #fff; box-shadow: 0 0.25em 0 rgba(160, 70, 150, 0.16); animation: sk-pop-in 0.4s cubic-bezier(0.2, 1.7, 0.4, 1) both;
-  animation-delay: calc(var(--i, 0) * 70ms);
+  animation-delay: calc(var(--i, 0) * 50ms);
 }
 .skh-step-n {
   position: absolute; top: -0.5em; left: -0.4em; display: grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 50%;
@@ -426,3 +427,18 @@
 .skh-lead { font-weight: 700; color: #8a4fb0; margin: 0; }
 .skh-go { margin-top: 0.3em; }
 @media (max-aspect-ratio: 4/3) { .skh-steps { grid-template-columns: repeat(2, 1fr); } }
+/* ---------- How to Play results ---------- */
+.skh-results-body { display: flex; align-items: center; justify-content: center; gap: 1.6em; width: min(100%, 60em); }
+.skh-results-me { display: flex; flex-direction: column; align-items: center; gap: 0.4em; }
+.skh-results-me .skh-portrait { width: 8em; height: 8em; border-radius: 50%; border: 0.3em solid #fff; box-shadow: 0 0.3em 0.8em rgba(160, 70, 150, 0.25); overflow: hidden; }
+.skh-results-me b { font-size: 1.6em; color: #d9489c; }
+.skh-checks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6em; flex: 1; max-width: 40em; }
+.skh-check {
+  display: flex; align-items: center; gap: 0.6em; padding: 0.55em 0.8em; border-radius: 1em; background: rgba(255, 255, 255, 0.6);
+  color: #9b86a8; font-weight: 700; animation: sk-pop-in 0.4s cubic-bezier(0.2, 1.7, 0.4, 1) both; animation-delay: calc(0.3s + var(--i, 0) * 120ms);
+}
+.skh-check-got { background: #fff; color: #6a2c8f; box-shadow: 0 0.2em 0 rgba(160, 70, 150, 0.16); }
+.skh-check-e { font-size: 1.6em; }
+.skh-check:not(.skh-check-got) .skh-check-e { filter: grayscale(1); opacity: 0.6; }
+.skh-check-t { flex: 1; }
+.skh-check-m { font-size: 1.3em; }

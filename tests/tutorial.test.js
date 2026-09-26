@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {
   TUTORIAL_STEPS, TUTORIAL_MODE, TUTORIAL_LAPS, TUTORIAL_SPEED, CHEER_TIME, GO_TIME, DRIFT_TIME,
   createTutorial, tutorialObserve, tutorialStep, tutorialCoach, tutorialResult, controlLabel,
-  tutorialTrackId, tutorialSetup, tutorialCards, pickTutorialRacer,
+  tutorialTrackId, tutorialSetup, tutorialCards, pickTutorialRacer, tutorialResultModel, TUTORIAL_OPTIONS,
 } from '../src/modes/tutorial.js';
 import { createTutorialSession } from '../src/modes/tutorialSession.js';
 import { tutorialHudModel, TUTORIAL_WIDGET } from '../src/ui/widgets/showcaseModes.js';
@@ -166,7 +166,7 @@ describe('How to Play: coach bubble + buttons', () => {
     expect(tutorialHudModel({ playerIndex: 1 }, race)).toBeNull();
     expect(tutorialHudModel({ playerIndex: 0 }, { modeInfo: {} })).toBeNull();
     expect(tutorialHudModel(null, race)).toBe(race.modeInfo.tutorial);
-    expect(TUTORIAL_WIDGET).toMatchObject({ id: 'tutorial-hud', anchor: 'top-center' });
+    expect(TUTORIAL_WIDGET).toMatchObject({ id: 'tutorial-hud', anchor: 'bottom-center' }); // clear of the centre flashes
     // headless (no DOM): a safe no-op widget
     const w = TUTORIAL_WIDGET.create(null);
     expect(() => { w.update({}, race); w.reset(); w.destroy(); }).not.toThrow();
@@ -308,9 +308,11 @@ describe('How to Play session (headless race)', () => {
     expect(r.summary.tutorial.complete).toBe(true);
     expect(r.summary.tutorial.total).toBe(6);
     expect(r.summary.tutorial.learned).toEqual(expect.arrayContaining(['go', 'steer', 'finish']));
-    expect(r.flashes.length).toBe(r.summary.tutorial.learned.length);
-    expect(r.flashes[0]).toMatch(/Vroom vroom!/);
+    // the coach bubble does the cheering (no big flash banner on top of it) + a happy sound per trick
+    expect(r.flashes).toEqual([]);
+    expect(r.sounds.length).toBe(r.summary.tutorial.learned.length);
     expect(r.sounds.every((n) => n === 'goal-sticker')).toBe(true);
+    expect(r.seen).toContain('Vroom vroom!');
     expect(r.seen).toContain('Hold GAS to zoom!');
     expect(r.ctrl.kind).toBe('tutorial');
     r.ctrl.dispose();
@@ -336,5 +338,40 @@ describe('How to Play session (headless race)', () => {
     const ctrl = createTutorialSession({ race });
     expect(() => ctrl.update(0.1)).not.toThrow();
     expect(race.modeInfo.tutorial.index).toBe(0);
+  });
+});
+
+describe('How to Play results', () => {
+  it('a full lesson: star title, every trick ticked', () => {
+    const m = tutorialResultModel({ learned: TUTORIAL_STEPS.map((s) => s.id) });
+    expect(m).toMatchObject({ star: true, learned: 6, total: 6, title: "You're a Sprinkle Star! 🎓" });
+    expect(m.rows.every((r) => r.learned)).toBe(true);
+  });
+
+  it('a partial lesson: encouraging, shows what is left', () => {
+    const m = tutorialResultModel({ learned: ['go', 'steer', 'finish', 'bogus'] });
+    expect(m).toMatchObject({ star: false, learned: 3, total: 6, title: 'Practice done! 🌟' });
+    expect(m.sub).toBe('You learned 3 of 6 tricks. Practice again to learn them all!');
+    expect(m.rows.map((r) => r.learned)).toEqual([true, true, false, false, false, true]);
+    expect(tutorialResultModel(null)).toMatchObject({ learned: 0, star: false });
+    for (const t of [m.title, m.sub, tutorialResultModel(null).sub]) expect(t).not.toMatch(BAD_WORDS);
+  });
+
+  it('options: practice again or go race', () => {
+    expect(TUTORIAL_OPTIONS.map((o) => o[0])).toEqual(['again', 'menu']);
+    expect(SCREENS.get('tutorial-results')?.mount).toBeTypeOf('function');
+    expect(SCREENS.get('tutorial-results').menuEntry).toBeUndefined();
+  });
+
+  it('the controller opens the practice results screen with P1\'s racer', () => {
+    const race = { karts: [{ isCPU: false, playerIndex: 0, characterId: 'peachy' }], state: 'finished', modeInfo: {} };
+    const ctrl = createTutorialSession({ race });
+    const calls = [];
+    const menus = { open: (id, p) => { calls.push([id, p]); return Promise.resolve('menu'); } };
+    const summary = ctrl.decorateSummary({ mode: 'tutorial' });
+    expect(ctrl.showResults({ menus, summary, unlocks: [] })).toBeInstanceOf(Promise);
+    expect(calls[0][0]).toBe('tutorial-results');
+    expect(calls[0][1]).toMatchObject({ characterId: 'peachy', unlocks: [], summary: { tutorial: { total: 6 } } });
+    expect(ctrl.showResults({})).toBeNull();
   });
 });

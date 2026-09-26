@@ -343,8 +343,7 @@ async function runTutorial(setup) {
   let outcome;
   do {
     outcome = await playRace(setup, {
-      controller: (ctx) => createTutorialSession({ ...ctx, device }),
-      resultOptions: [['again', 'Practice again', '🔁'], ['menu', 'Menu', '🏠']],
+      controller: (ctx) => createTutorialSession({ ...ctx, device }), // its own results screen
     });
   } while (outcome === 'again' || outcome === 'restart' || outcome === 'next-track');
   return setup;

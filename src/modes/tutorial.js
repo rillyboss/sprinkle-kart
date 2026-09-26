@@ -205,3 +205,27 @@ export function pickTutorialRacer(characters = [], isLocked = () => false, prefe
   const open = characters.filter((c) => { try { return !isLocked(c); } catch { return true; } });
   return (open.find((c) => c.id === preferredId) ?? open[0] ?? characters[0])?.id ?? null;
 }
+/** Choices on the practice results screen. */
+export const TUTORIAL_OPTIONS = Object.freeze([
+  ['again', 'Practice again', '🔁'],
+  ['menu', "Let's race!", '🏁'],
+]);
+
+/**
+ * The practice results screen (src/ui/screens/tutorialResults.js).
+ * @param {{ learned?: string[] }|null} result summary.tutorial
+ * @returns {{ title, sub, star: boolean, learned: number, total: number, rows: Array<{id, emoji, text, learned}> }}
+ */
+export function tutorialResultModel(result) {
+  const got = new Set(Array.isArray(result?.learned) ? result.learned : []);
+  const rows = TUTORIAL_STEPS.map((s) => ({ id: s.id, emoji: s.emoji, text: s.text, learned: got.has(s.id) }));
+  const learned = rows.filter((r) => r.learned).length;
+  const total = rows.length;
+  const star = learned === total;
+  return {
+    title: star ? "You're a Sprinkle Star! 🎓" : 'Practice done! 🌟',
+    sub: star ? 'You learned every trick. Time to race!'
+      : `You learned ${learned} of ${total} tricks. Practice again to learn them all!`,
+    star, learned, total, rows,
+  };
+}

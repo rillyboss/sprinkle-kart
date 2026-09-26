@@ -1,5 +1,5 @@
 /**
- * HUD widgets for the showcase modes (anchor 'top-center', installed by
+ * HUD widgets for the showcase modes (anchor 'top-center'; the How to Play coach 'bottom-center'; installed by
  * src/systems/showcaseHud.js). Both stay empty/hidden unless their mode's
  * controller publishes `race.modeInfo.battle` / `race.modeInfo.team`.
  *
@@ -176,9 +176,10 @@ export function tutorialHudModel(kart, race) {
   return v;
 }
 
+// The coach sits at the bottom (above the kart) so the big centre flashes never cover it.
 export const TUTORIAL_WIDGET = {
   id: 'tutorial-hud',
-  anchor: 'top-center',
+  anchor: 'bottom-center',
   order: 24,
   create(node) {
     if (!canDom() || !node?.appendChild) return noop;
