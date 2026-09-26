@@ -35,6 +35,12 @@ function lookupCharacter(id) {
 /** How long after the first human finishes before the race wraps up. */
 export const FINISH_GRACE = 30;
 const CPU_ONLY_GRACE = 60;
+/**
+ * Every CPU is home but a human is still driving (or stopped pressing the
+ * gas): after this many seconds of "Keep going!" the race wraps up with
+ * estimated places, so a race can never go on forever.
+ */
+export const CPUS_DONE_GRACE = 45;
 const COUNTDOWN = 3;
 /** Metres between grid slots (roomy, so chase cameras are not nose-to-tail at the countdown). */
 export const GRID_SPACING = 6.3;
@@ -82,6 +88,8 @@ export class Race {
     this.finishCount = 0;
     this.firstFinishTime = null;
     this.firstHumanFinishTime = null;
+    /** Race time when the last CPU crossed the line while a human was still out (null = not yet). */
+    this.allCpusDoneTime = null;
     this._countdownShown = 4;
     this._bumpTimes = new Map();
     this._emitFn = (e) => this._emit(e);
@@ -357,8 +365,17 @@ export class Race {
     const humans = this.karts.filter((k) => !k.isCPU);
     let done;
     if (humans.length) {
+      const cpus = this.karts.filter((k) => k.isCPU);
+      if (this.allCpusDoneTime === null && cpus.length && cpus.every((k) => k.finished)) {
+        const out = humans.filter((k) => !k.finished);
+        if (out.length) {
+          this.allCpusDoneTime = this.time;
+          this._emit({ type: 'keep-going', karts: out, seconds: CPUS_DONE_GRACE });
+        }
+      }
       done = humans.every((k) => k.finished)
-        || (this.firstHumanFinishTime !== null && this.time - this.firstHumanFinishTime >= FINISH_GRACE);
+        || (this.firstHumanFinishTime !== null && this.time - this.firstHumanFinishTime >= FINISH_GRACE)
+        || (this.allCpusDoneTime !== null && this.time - this.allCpusDoneTime >= CPUS_DONE_GRACE);
     } else {
       done = this.karts.every((k) => k.finished)
         || (this.firstFinishTime !== null && this.time - this.firstFinishTime >= CPU_ONLY_GRACE);

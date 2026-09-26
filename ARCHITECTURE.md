@@ -420,7 +420,7 @@ stops the others.
 `race:countdown {n}`, `race:go`, `race:boost {source:'start'|'pad'|'item'…}`, `race:drift-level {level}`,
 `race:drift-boost {level}`, `race:item-box {rolling}`, `race:item-get {item}`, `race:item-use {item}`,
 `race:bonked {cause, by}`, `race:shield-pop {cause?, by?, expired?}`, `race:bump {other, strength}`,
-`race:lap {lap}`, `race:final-lap`, `race:finish {place}`, `race:race-complete {standings}`.
+`race:lap {lap}`, `race:final-lap`, `race:finish {place}`, `race:keep-going {karts, seconds}` (every CPU is home but a human is still out; the race wraps up `seconds` later with estimated places), `race:race-complete {standings}`.
 Every `e` has `e.kart` (KartState, see §10) except countdown/go/race-complete.
 
 **RaceStartInfo** (`src/game/summary.js`): `{ mode: 'free'|'grand-prix'|'time-trial', trackId, cupId,

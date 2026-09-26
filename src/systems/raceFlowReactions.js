@@ -28,6 +28,10 @@ export default {
           try { app.audio?.setMusicTempo?.(1.12); } catch { /* ignore */ }
         }
       }),
+      // every CPU is home: cheer on whoever is still driving (the race wraps up after e.seconds)
+      bus.on('race:keep-going', (e, s) => {
+        for (const k of e.karts || []) if (s.isHuman(k)) s.flash(k, 'Keep going, you can do it! 💪');
+      }),
       bus.on('race:finish', (e, s) => {
         const k = e.kart;
         if (!s.isHuman(k)) return;
