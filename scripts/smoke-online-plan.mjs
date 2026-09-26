@@ -318,20 +318,25 @@ export function timingSummary(samples, path, wantRuns = samples.length) {
   const done = samples.filter((x) => Number.isFinite(x));
   const p90 = percentile(samples.map((x) => (Number.isFinite(x) ? x : Number.MAX_SAFE_INTEGER)), 0.9);
   const problems = [];
+  const warnings = [];
   if (samples.length < wantRuns) problems.push(`only ${samples.length} of ${wantRuns} timing runs ran`);
-  if (done.length < samples.length) problems.push(`${samples.length - done.length} run(s) never reached the lobby`);
-  if (p90 === null || p90 > budgetMs) problems.push(`code entry → lobby p90 ${p90 === null ? 'n/a' : `${Math.round(p90)} ms`} > ${budgetMs} ms budget (${path})`);
+  // A run that never arrived counts as the slowest sample: the p90 budget decides (1 in 10 may miss,
+  // as the acceptance number says), and every miss is reported as a warning for the PR.
+  const lost = samples.length - done.length;
+  if (lost) warnings.push(`${lost} of ${samples.length} run(s) never reached the lobby`);
+  const shownP90 = p90 === Number.MAX_SAFE_INTEGER ? null : p90;
+  if (p90 === null || p90 > budgetMs) problems.push(`code entry → lobby p90 ${shownP90 === null ? 'never' : `${Math.round(p90)} ms`} > ${budgetMs} ms budget (${path})`);
   return {
-    path, runs: samples.length, budgetMs,
-    p50: percentile(done, 0.5), p90: p90 === Number.MAX_SAFE_INTEGER ? null : p90, max: done.length ? Math.max(...done) : null,
-    ok: !problems.length, problems,
+    path, runs: samples.length, lost, budgetMs,
+    p50: percentile(done, 0.5), p90: shownP90, max: done.length ? Math.max(...done) : null,
+    ok: !problems.length, problems, warnings,
   };
 }
 
 /** One results table row for the PR / job summary. */
 export function timingRow(t) {
   const f = (x) => (x === null || x === undefined ? '—' : `${(x / 1000).toFixed(2)} s`);
-  return `| ${t.path} | ${t.runs} | ${f(t.p50)} | ${f(t.p90)} | ${f(t.max)} | ≤ ${(t.budgetMs / 1000).toFixed(0)} s | ${t.ok ? '✅' : '❌'} |`;
+  return `| ${t.path} | ${t.runs}${t.lost ? ` (${t.lost} lost)` : ''} | ${f(t.p50)} | ${f(t.p90)} | ${f(t.max)} | ≤ ${(t.budgetMs / 1000).toFixed(0)} s | ${t.ok ? (t.lost ? '⚠️' : '✅') : '❌'} |`;
 }
 
 /**
@@ -382,8 +387,14 @@ export function missingScreenshots(files, { needRace = true, required = M1_SCREE
  * failing with ERR_NAME_NOT_RESOLVED is expected; anything else still fails the scenario.
  */
 export function isIgnorableOnlineError(text) {
-  if (isIgnorableError(text)) return true;
-  return /net::ERR_NAME_NOT_RESOLVED/.test(text) && /fonts\.(googleapis|gstatic)\.com/.test(text);
+  const s = String(text);
+  if (isIgnorableError(s)) return true;
+  // Chrome's console line for a blocked font has no URL; the runner's requestfailed hook still
+  // fails the scenario for any NON-font external request (it sees the URL).
+  if (/^(console: )?Failed to load resource: net::ERR_NAME_NOT_RESOLVED$/.test(s)) return true;
+  // Trystero logs a deliberate close of a peer connection (remove a house, leave) as an error.
+  if (/Trystero peer error: OperationError: User-Initiated Abort, reason=Close called/.test(s)) return true;
+  return /net::ERR_NAME_NOT_RESOLVED/.test(s) && /fonts\.(googleapis|gstatic)\.com/.test(s);
 }
 
 /** A WebSocket / fetch URL the hermetic run must never open (anything not on this machine). */

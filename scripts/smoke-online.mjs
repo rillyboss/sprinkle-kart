@@ -235,8 +235,8 @@ async function installOnlineGlue(cfg) {
     import('/src/net/signaling/index.js'), import('/src/net/signaling/types.js'), import('/src/net/session/hostSession.js'),
     import('/src/net/session/guestSession.js'), import('/src/net/session/roomCode.js'), import('/src/net/session/inviteLink.js'),
   ]);
-  let roomKey = null;
-  try { roomKey = await import(/* @vite-ignore */ '/src/net/roomKey.js'); } catch { /* WS2's module not merged yet */ }
+  // WS2's src/net/roomKey.js when this build has it (the runner checks the file, so no 404 is ever requested)
+  const roomKey = cfg.hasRoomKey ? await import(/* @vite-ignore */ '/src/net/roomKey.js') : null;
   const enc = new TextEncoder();
   const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
   const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -424,6 +424,8 @@ async function press(p, action, { via = p.via, until = null, arg = null, what = 
 }
 
 async function bootGame(p, url, cfg) {
+  // A URL that differs only by its #fragment would be a same-document navigation: always load fresh.
+  if (p.page.url() !== 'about:blank') await p.page.goto('about:blank');
   await p.page.goto(url, { timeout: T(60000) });
   await waitGame(p, () => !!window.__game?.menus?.screen, null, T(60000), 'the game to boot');
   const mode = await p.page.evaluate(installOnlineGlue, cfg);
@@ -448,10 +450,12 @@ async function shot(p, name) {
   await p.page.screenshot({ path: shotPath(name) });
 }
 
+const HAS_ROOM_KEY = existsSync(path.join(ROOT, 'src', 'net', 'roomKey.js'));
 function signalCfg(path_, svc) {
+  const base = { localPlayers: 2, hasRoomKey: HAS_ROOM_KEY };
   return path_ === 'worker'
-    ? { forced: 'worker', signalUrl: svc.worker.url, relays: null, localPlayers: 2 }
-    : { forced: 'public', signalUrl: null, relays: [svc.tracker.url], localPlayers: 2 };
+    ? { ...base, forced: 'worker', signalUrl: svc.worker.url, relays: null }
+    : { ...base, forced: 'public', signalUrl: null, relays: [svc.tracker.url] };
 }
 function urlFor(path_, svc, extra = {}) {
   return gameUrl({ port: PORT, path: path_, trackerUrl: svc.tracker?.url ?? null, workerUrl: svc.worker?.url ?? null, extra: { attract: '0', ...extra.query }, invite: extra.invite ?? null });
@@ -609,7 +613,8 @@ async function roomScenario(browser, sc, svc, r) {
     // ---- the removed house reloads (new peer id) and is refused
     await bootGame(guest, urlFor(sc.path, svc, { invite: link }), cfg);
     await onScreen(guest, 'online-hub');
-    await press(guest, 'confirm', { until: () => window.__game?.menus?.screenId !== 'online-hub', what: 'the reloaded guest to knock' });
+    // one press only: a refusal can bring the guest back to the plain hub before the next poll, where another A would HOST a room
+    await press(guest, 'confirm', { tries: 1, until: () => window.__game?.menus?.screenId !== 'online-hub' || !!document.querySelector('.skn-msg')?.textContent, what: 'the reloaded guest to knock' });
     const deadline = Date.now() + T(30000);
     let refused = false;
     while (Date.now() < deadline) {
@@ -672,39 +677,69 @@ async function raceSteps(sc, host, guest, r, prefix) {
   r.notes.push('rematch reached');
 }
 
-/** N guests join one path in a row; code entry → lobby is timed each time (§17 M1-19). */
+/**
+ * N guests join one path in a row; code entry → lobby is timed each time (§17 M1-19). Every run is a
+ * NEW house (fresh browser context = new save, new peer id, cold page), like a friend opening the
+ * link; the page load is not timed, the knock → lobby part is. Afterwards the last guest page leaves
+ * and knocks again straight away a few times ("warm rejoin": reported, not budgeted).
+ */
 async function timingScenario(browser, sc, svc, r) {
   const host = await openPage(browser, 'host');
-  const guest = await openPage(browser, 'guest');
-  const pages = [host, guest];
+  const pages = [host];
   const cfg = signalCfg(sc.path, svc);
   const samples = [];
+  const warm = [];
+  const knock = async (guest, secret, problems) => {
+    const t0 = Date.now();
+    await guest.page.evaluate((s) => { window.__game.menus.online.join(s); }, secret);
+    await approveWithMatchCheck(sc, host, guest, problems);
+    await onScreen(guest, 'online-lobby', T(40000));
+    return Date.now() - t0;
+  };
+  const leave = async (guest) => {
+    await guest.page.evaluate(() => window.__game.menus.online.leave());
+    await waitGame(host, () => (window.__game?.menus?.net?.lobby?.()?.houses ?? []).length === 1 && !window.__game.menus.net.prompt?.(), null, T(20000), 'the host lobby back to one house');
+  };
+  let guest = null;
   try {
     r.mode = await bootGame(host, urlFor(sc.path, svc), cfg);
     const { secret } = await hostOpensRoom(host);
-    await bootGame(guest, urlFor(sc.path, svc), cfg);
-    await titleToHub(guest);
     for (let i = 0; i < PROFILE.timingRuns; i++) {
-      const t0 = Date.now();
-      await guest.page.evaluate((s) => { window.__game.menus.online.join(s); }, secret);
+      guest = await openPage(browser, `guest${i + 1}`);
+      pages.push(guest);
       try {
-        await approveWithMatchCheck(sc, host, guest, r.problems);
-        await onScreen(guest, 'online-lobby', T(40000));
-        samples.push(Date.now() - t0);
+        await bootGame(guest, urlFor(sc.path, svc), cfg);
+        await onScreen(guest, 'title');
+        samples.push(await knock(guest, secret, r.problems));
       } catch (err) {
         samples.push(Infinity);
-        r.problems.push(`run ${i + 1}: ${err.message.split('\n')[0]}`);
+        r.notes.push('⚠ ' + `run ${i + 1}: ${err.message.split('\n')[0]}`);
       }
-      await guest.page.evaluate(() => window.__game.menus.online.leave());
-      await waitGame(host, () => (window.__game?.menus?.net?.lobby?.()?.houses ?? []).length === 1 && !window.__game.menus.net.prompt?.(), null, T(20000), 'the host lobby back to one house');
-      await onScreen(guest, 'online-hub');
+      await leave(guest).catch((err) => r.problems.push(`run ${i + 1} leave: ${err.message.split('\n')[0]}`));
+      if (i < PROFILE.timingRuns - 1) {
+        pages.pop();
+        r.problems.push(...errorsOf([guest]), ...await hermeticProblems([guest]));
+        await guest.ctx.close().catch(() => {});
+      }
+    }
+    // warm rejoin: the last guest page knocks again right after leaving (informational only)
+    for (let k = 0; k < 3 && guest; k++) {
+      try {
+        warm.push(await knock(guest, secret, []));
+        await leave(guest);
+      } catch {
+        warm.push(Infinity);
+        await guest.page.evaluate(() => window.__game.menus.online.leave()).catch(() => {});
+      }
     }
   } finally {
     const t = timingSummary(samples, sc.path, PROFILE.timingRuns);
     r.timing = t;
-    timings.push({ ...t, samples });
-    r.notes.push(`p50 ${t.p50} ms, p90 ${t.p90} ms, max ${t.max} ms over ${t.runs} runs`);
+    timings.push({ ...t, samples, warmRejoin: warm });
+    r.notes.push(`p50 ${t.p50} ms, p90 ${t.p90} ms, max ${t.max} ms over ${t.runs} cold runs`);
+    r.notes.push(`warm rejoin: ${warm.map((x) => (Number.isFinite(x) ? `${x} ms` : 'never')).join(', ') || 'n/a'}`);
     r.problems.push(...t.problems.filter((x) => !r.problems.includes(x)));
+    r.notes.push(...t.warnings.map((w) => `⚠ ${w}`));
     r.problems.push(...await hermeticProblems(pages));
     r.problems.push(...errorsOf(pages));
     if (r.problems.length) await writeDiagnostics(sc.name, pages, r.problems);

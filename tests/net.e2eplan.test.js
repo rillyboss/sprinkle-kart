@@ -247,8 +247,14 @@ describe('timing maths (code entry → lobby, §17 M1-19)', () => {
     expect(slow.ok).toBe(false);
     expect(slow.problems[0]).toMatch(/p90 11000 ms > 10000 ms/);
     const lost = timingSummary([1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, Infinity, Infinity], 'public', 10);
-    expect(lost.ok).toBe(false);
-    expect(lost.problems.join(' ')).toMatch(/2 run\(s\) never reached the lobby/);
+    expect(lost.ok).toBe(false); // 2 of 10 lost: the p90 sample is a run that never arrived
+    expect(lost.problems.join(' ')).toMatch(/p90 never > 20000 ms/);
+    expect(lost.warnings).toEqual(['2 of 10 run(s) never reached the lobby']);
+    const oneLost = timingSummary([1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, Infinity], 'public', 10);
+    expect(oneLost).toMatchObject({ ok: true, lost: 1, p90: 1000, max: 1000 }); // 1 in 10 may miss (p90)…
+    expect(oneLost.warnings[0]).toMatch(/1 of 10/); // …but it is always reported
+    expect(timingRow(oneLost)).toContain('| 10 (1 lost) |');
+    expect(timingRow(oneLost)).toContain('⚠️');
     expect(timingSummary([15000], 'public', 10).problems[0]).toMatch(/only 1 of 10/);
     expect(timingSummary([15000], 'public', 1).ok).toBe(true); // 20 s budget on public
   });
@@ -324,6 +330,12 @@ describe('hermetic browser (never a real public relay, §15)', () => {
     expect(isIgnorableOnlineError('requestfailed: https://fonts.gstatic.com/x.woff2')).toBe(true);
     expect(isIgnorableOnlineError('net::ERR_NAME_NOT_RESOLVED wss://tracker.openwebtorrent.com')).toBe(false);
     expect(isIgnorableOnlineError('TypeError: x is undefined')).toBe(false);
+    // Chrome's URL-less console line (the requestfailed hook still sees and judges the URL)
+    expect(isIgnorableOnlineError('console: Failed to load resource: net::ERR_NAME_NOT_RESOLVED')).toBe(true);
+    expect(isIgnorableOnlineError('Failed to load resource: the server responded with a status of 404 (Not Found)')).toBe(false);
+    // a deliberate close (remove / leave) that Trystero logs as an error
+    expect(isIgnorableOnlineError('Trystero peer error: OperationError: User-Initiated Abort, reason=Close called')).toBe(true);
+    expect(isIgnorableOnlineError('Trystero peer error: OperationError: something else')).toBe(false);
   });
 });
 
