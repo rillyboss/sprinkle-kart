@@ -991,7 +991,7 @@ function netInfo(o) {
   info.debug = {
     role: o.role,
     transport: o.room.signaling?.kind === 'worker' ? 'worker' : 'public-torrent',
-    self: { build: 'dev', proto: 1, content: 0 },
+    self: { ...(o.room.session.state.mine ?? {}) },
     peers: (o.room.transport?.peers?.() ?? []).map((peerId) => {
       const s = o.room.transport.stats?.(peerId) ?? {};
       return {
@@ -1151,6 +1151,11 @@ async function runOnlineGuest(mod, secret) {
           // a race composed while this house was away (reconnect window): watch the next one
           menus.goto('net-waiting', { mode: 'waiting', text: mod.TEXT.hostWaiting });
           continue;
+        }
+        if (mod.unknownSetupIds(ev.setup).length) {
+          // the host's game has a track or racer this tab doesn't: never race a different track (§7.2)
+          console.warn('[online] setup from another version', mod.unknownSetupIds(ev.setup));
+          return { message: mod.TEXT.version };
         }
         guestPrev = { players: [...(menus.draft?.joinState?.players ?? [])], trackId: ev.setup.trackId, speedClass: ev.setup.speedClass, laps: ev.setup.laps, mode: 'free' };
         const deviceIds = localDeviceIds();

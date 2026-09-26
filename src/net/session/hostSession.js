@@ -84,7 +84,7 @@ const peerOfHouse = (st, houseId) => Object.keys(st.peers).find((p) => st.peers[
 /**
  * @param {{ makeToken?: () => string, compatible?: (mine, theirs) => { ok: boolean } }} [deps]
  */
-export function createHostReducer({ makeToken = randomToken, compatible = defaultCompatible } = {}) {
+export function createHostReducer({ makeToken = randomToken, compatible = defaultCompatible, isCharacter = null } = {}) {
   return function hostReduce(state, ev) {
     const effects = [];
     let st = { ...state, now: Number.isFinite(ev?.now) ? ev.now : state.now };
@@ -168,7 +168,10 @@ export function createHostReducer({ makeToken = randomToken, compatible = defaul
         case 'seat-join': applyLobby({ type: 'seat-join', houseId, seat, easyDrive: !!it.easyDrive }); break;
         case 'seat-leave': if (seat !== null) applyLobby({ type: 'seat-leave', houseId, seat }); break;
         case 'pick':
-          if (seat !== null) applyLobby({ type: 'pick', houseId, seat, characterId: it.characterId ?? null, paintId: it.paintId, easyDrive: it.easyDrive });
+          // a racer this build doesn't know (an old tab) is never accepted into the roster
+          if (seat !== null && (it.characterId == null || !isCharacter || isCharacter(it.characterId))) {
+            applyLobby({ type: 'pick', houseId, seat, characterId: it.characterId ?? null, paintId: it.paintId, easyDrive: it.easyDrive });
+          }
           break;
         case 'ready': if (seat !== null) applyLobby({ type: 'ready', houseId, seat, ready: true }); break;
         case 'unready': if (seat !== null) applyLobby({ type: 'ready', houseId, seat, ready: false }); break;
@@ -457,15 +460,16 @@ function currentPromptOf(st) {
  * @param {(msg) => Uint8Array} [o.encode] ctrl encoder (WS2 codec; default JSON stand-in)
  * @param {(bytes) => object|null} [o.decode]
  * @param {() => string} [o.makeToken]
+ * @param {(id: string) => boolean} [o.isCharacter]  racer ids this build knows (picks of others are ignored)
  */
 export function createHostSession({
   transport = null, signalings = [], progress = null, rng = null, now = () => Date.now(), secret,
-  hostPlayers = 1, mine = buildIdentity(), compatible, encode = jsonEncode, decode = jsonDecode, makeToken,
+  hostPlayers = 1, mine = buildIdentity(), compatible, encode = jsonEncode, decode = jsonDecode, makeToken, isCharacter = null,
 } = /** @type {any} */ ({})) {
   void rng;
   let approvalGate = false;
   try { approvalGate = !!progress?.getSettings?.()?.approvalGate; } catch { /* ignore */ }
-  const reduce = createHostReducer({ makeToken, compatible });
+  const reduce = createHostReducer({ makeToken, compatible, isCharacter });
   let state = createHostState({ secret, hostPlayers, approvalGate, mine });
   const listeners = new Set();
   const offs = [];

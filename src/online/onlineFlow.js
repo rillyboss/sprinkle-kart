@@ -16,6 +16,7 @@ import { makeRoomSecret } from '../net/session/roomCode.js';
 import { buildIdentity } from '../net/session/wire.js';
 import { allPlayers, getHouse, lobbyAllReady } from '../net/session/lobby.js';
 import { currentPlatform } from '../net/platform.js';
+import { contentHash, buildId, knownCharacterIds } from '../net/version.js';
 import { isSessionBytes, decodeRaceCtrl, createPendingBytes } from './netRace.js';
 import { netStack } from './stack.js';
 
@@ -265,9 +266,9 @@ export function createTransportProxy() {
   };
 }
 
-function identity() {
-  const build = typeof __SK_BUILD__ !== 'undefined' ? __SK_BUILD__ : 'dev'; // eslint-disable-line no-undef
-  return buildIdentity({ build });
+/** This bundle's HELLO / WELCOME identity: a real content hash, so an old tab gets "refresh the page" (§7.2). */
+export function identity() {
+  return buildIdentity({ build: buildId(), content: contentHash() });
 }
 
 /** Signaling config for this page (Worker iff VITE_SIGNAL_URL; dev overrides on localhost only). */
@@ -304,7 +305,11 @@ export async function openHostRoom({ progress, hostPlayers = 1, pickCpus, rules 
     signaling = r.signaling;
   }
   const now = deps.now ?? (() => Date.now());
-  const session = createHostSession({ transport, signalings: signaling ? [signaling] : [], progress, now, secret, hostPlayers, mine: identity() });
+  const racers = knownCharacterIds();
+  const session = createHostSession({
+    transport, signalings: signaling ? [signaling] : [], progress, now, secret, hostPlayers, mine: identity(),
+    isCharacter: (id) => racers.has(id), // a pick from another version never reaches the Race
+  });
   session.dispatch({ type: 'open' });
   session.dispatch({ type: 'opened' });
   for (const peerId of transport.peers?.() ?? []) session.dispatch({ type: 'peer-join', peerId });

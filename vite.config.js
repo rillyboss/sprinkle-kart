@@ -1,4 +1,15 @@
 import { defineConfig } from 'vite';
+import { execSync } from 'node:child_process';
+
+/** The deploy id every build announces online (NETWORKING.md §7.2): the commit, or 'dev'. */
+function skBuildId() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 12);
+  try {
+    return execSync('git rev-parse --short=12 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
 
 /**
  * Coverage quality gate (`npm run test:coverage`, run in CI). Thresholds apply to the
@@ -31,6 +42,7 @@ export default defineConfig({
   base: './',
   server: { port: 5173 },
   build: { chunkSizeWarningLimit: 1500 },
+  define: { __SK_BUILD__: JSON.stringify(skBuildId()) },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
