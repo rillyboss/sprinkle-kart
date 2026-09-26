@@ -281,7 +281,8 @@ export async function createSignaling({ signalUrl, health = null, forced = null,
   if (kinds.includes('public')) {
     const { createPublicSignaling } = await import('./public.js');
     transports.public = createPublicSignaling({
-      ...(relays ? { trackers: relays } : {}),
+      // A dev relay override means "local trackers only": no Nostr fallback to public relays.
+      ...(relays ? { trackers: relays, nostrRelays: [] } : {}),
       ...(deps.importer ? { importer: deps.importer } : {}),
       ...(deps.RTCPeerConnectionImpl ? { RTCPeerConnectionImpl: deps.RTCPeerConnectionImpl } : {}),
       ...(deps.timers ? { timers: deps.timers } : {}),

@@ -221,6 +221,7 @@ export function createPublicSignaling({
 
   async function startNostr() {
     fallbackTimer = null;
+    if (!nostrRelays.length) return; // dev override (local trackers only): never touch public relays
     if (left || subs.some((s) => s.name === 'nostr')) return;
     if (role === 'guest' && hostId) return;
     let mod;
@@ -264,9 +265,11 @@ export function createPublicSignaling({
       }
       // Hosts always add Nostr after the delay (guests that fall back must find them there);
       // guests only when no host answered on the trackers.
-      fallbackTimer = timers.setTimeout(() => {
-        startNostr();
-      }, fallbackAfterMs);
+      if (nostrRelays.length) {
+        fallbackTimer = timers.setTimeout(() => {
+          startNostr();
+        }, fallbackAfterMs);
+      }
       return { iceServers: rtcConfig.iceServers };
     },
     onPeerConnection: (fn) => connL.add(fn),

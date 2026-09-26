@@ -143,6 +143,7 @@ async function probeTrackers({ WebSocketImpl, trackers, timeoutMs, now, timers }
  * @param {typeof RTCPeerConnection} [o.RTCPeerConnectionImpl]
  * @param {typeof WebSocket} [o.WebSocketImpl]    for the tracker probe
  * @param {string[]} [o.trackers]
+ * @param {RTCIceServer[]} [o.iceServers]          STUN for the direct probe (default: public STUN)
  * @param {() => number} [o.now]
  * @param {object} [o.timers]
  * @param {number} [o.gatherTimeoutMs]
@@ -153,6 +154,7 @@ export async function runConnectionCheck({
   RTCPeerConnectionImpl = globalThis.RTCPeerConnection,
   WebSocketImpl = globalThis.WebSocket,
   trackers = [...PUBLIC_TRACKERS],
+  iceServers = publicIceServers(),
   now = () => Date.now(),
   timers = globalThis,
   gatherTimeoutMs = GATHER_TIMEOUT_MS,
@@ -177,7 +179,7 @@ export async function runConnectionCheck({
   };
 
   // 2. Direct connection (public STUN only)
-  const direct0 = await gatherCandidateTypes({ RTCPeerConnectionImpl, config: { iceServers: publicIceServers() }, timeoutMs: gatherTimeoutMs, now, timers });
+  const direct0 = await gatherCandidateTypes({ RTCPeerConnectionImpl, config: { iceServers }, timeoutMs: gatherTimeoutMs, now, timers });
   // No srflx = no direct path to another house (UDP off, or STUN unreachable): "Relay needed".
   // Host-only candidates still work inside one home network; that detail goes to grown-ups.
   const directStatus = direct0.error === 'no-webrtc' ? 'no-webrtc' : direct0.types.includes('srflx') ? 'yes' : 'no';

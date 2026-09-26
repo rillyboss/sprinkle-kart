@@ -5,7 +5,9 @@
  * (screens get shared). The probes are WS4's runConnectionCheck / describeCheck,
  * loaded lazily so no network code ships before someone opens this screen.
  *
- * Params: { returnTo?, result?: raw check (tests / screenshots), run?: () => Promise<raw>, signalUrl? }.
+ * Params: { returnTo?, result?: raw check (tests / screenshots), run?: () => Promise<raw>, signalUrl?, signal? }.
+ * Without params.signal the screen resolves the same signal config the rooms use (build env plus the
+ * localhost-only ?signal=… dev override), so dev and e2e builds never probe public trackers/STUN.
  * OWNER: WS6 (session, lobby & screens).
  */
 import './online.css';
@@ -26,10 +28,39 @@ export function signalUrlFromEnv() {
   try { return import.meta.env?.VITE_SIGNAL_URL || null; } catch { return null; }
 }
 
+/**
+ * The options runConnectionCheck gets for a resolved signal config ({ signalUrl, forced, relays }).
+ * A relay override (local trackers) also drops public STUN: that dev mode stays on this machine.
+ */
+export function checkOptionsFor({ signalUrl = null, signal = null } = {}) {
+  if (!signal) return { signalUrl };
+  const opts = { signalUrl: signal.forced === 'public' ? null : (signal.signalUrl ?? signalUrl ?? null) };
+  if (signal.relays?.length) {
+    opts.trackers = [...signal.relays];
+    opts.iceServers = [];
+  }
+  return opts;
+}
+
+/** The signal config for this page, resolved like the room flows do (lazy; null if unavailable). */
+export async function resolveScreenSignal({
+  importer = () => import('../../net/signaling/index.js'),
+  envSignalUrl = signalUrlFromEnv(),
+  dev = (() => { try { return !!import.meta.env?.DEV; } catch { return false; } })(),
+  location = globalThis.location,
+} = {}) {
+  try {
+    const { resolveSignalConfig } = await importer();
+    return resolveSignalConfig({ envSignalUrl, search: location?.search ?? '', hostname: location?.hostname ?? '', dev });
+  } catch {
+    return null;
+  }
+}
+
 /** Default probe: lazy-load the diagnostics (WS4) and run them. */
-export async function runCheck({ signalUrl = signalUrlFromEnv(), importer = () => import('../../net/diagnose.js') } = {}) {
+export async function runCheck({ signalUrl = signalUrlFromEnv(), signal = null, importer = () => import('../../net/diagnose.js') } = {}) {
   const { runConnectionCheck, describeCheck } = await importer();
-  const raw = await runConnectionCheck({ signalUrl });
+  const raw = await runConnectionCheck(checkOptionsFor({ signalUrl, signal }));
   return describeCheck(raw);
 }
 
@@ -66,7 +97,10 @@ export default {
       rowEls.forEach((node, i) => { node.innerHTML = checkRowHtml(PENDING_ROWS[i]); });
       hintEl.textContent = '';
       try {
-        const desc = params.result ? params.result : await (params.run ?? (() => runCheck({ signalUrl: params.signalUrl ?? signalUrlFromEnv() })))();
+        const desc = params.result ? params.result : await (params.run ?? (async () => runCheck({
+          signalUrl: params.signalUrl ?? signalUrlFromEnv(),
+          signal: params.signal ?? (params.signalUrl ? null : await resolveScreenSignal()),
+        })))();
         show(desc);
       } catch (err) {
         console.warn('[check-connection]', err);
