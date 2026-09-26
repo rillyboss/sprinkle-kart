@@ -280,7 +280,7 @@
 .sk-records .sk-lead { margin: 0.2em 0 0.5em; }
 .sk-rec-head, .sk-rec-row {
   display: grid;
-  grid-template-columns: 2.6em minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 2.8em minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 0.7em;
   width: min(100%, 50em);
@@ -296,7 +296,7 @@
   animation: sk-slide-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
   animation-delay: calc(var(--i) * 0.06s);
 }
-.sk-rec-art { display: grid; place-items: center; width: 2.4em; height: 2.4em; border-radius: 0.8em; font-size: 1.5em; background: linear-gradient(160deg, var(--c1), var(--c2)); }
+.sk-rec-art { display: grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: 0.55em; font-size: 1.5em; background: linear-gradient(160deg, var(--c1), var(--c2)); }
 .sk-rec-track { font-weight: 700; line-height: 1.1; display: flex; flex-direction: column; min-width: 0; }
 .sk-rec-track small { font-weight: 600; font-size: 0.7em; color: var(--sk-ink-soft); }
 .sk-rec-cell { display: flex; align-items: center; gap: 0.4em; min-width: 0; white-space: nowrap; }

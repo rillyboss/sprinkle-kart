@@ -55,7 +55,7 @@ export default {
       el('div.sk-rec-head', { html: '<span></span><span>Track</span><span>🏁 Best race</span><span>🔁 Best lap</span>' }),
       el('div.sk-rec-body', {}, pages),
       hintsBar([
-        `<span class="sk-hint"><span class="sk-g sk-g-dpad">✚</span>${kbd('Arrows')}<span class="sk-hint-t">Cups</span></span>`,
+        groups.length > 1 ? `<span class="sk-hint"><span class="sk-g sk-g-dpad">✚</span>${kbd('Arrows')}<span class="sk-hint-t">Cups</span></span>` : '',
         hint('B', 'Esc', 'Back'),
       ]),
     );
