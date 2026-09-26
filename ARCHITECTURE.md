@@ -16,7 +16,8 @@ This file is the **contract** for the v2 workstreams. Sections:
 [Ownership](#3-workstreams--ownership) · [Adding a racer](#4-how-to-add-a-racer) ·
 [Adding a track](#5-how-to-add-a-track) · [Event bus](#6-event-bus) · [Systems & per-frame hooks](#7-systems-per-frame-hooks-and-other-extension-points) ·
 [Screens](#8-menus-screen-router) · [Progress & unlocks](#9-progress-stats-and-unlock-rules) ·
-[Core contracts](#10-core-contracts-unchanged-from-v1) · [Testing](#11-testing--quality-bar)
+[Core contracts](#10-core-contracts-unchanged-from-v1) · [Testing](#11-testing--quality-bar) ·
+[Online play](#12-online-play-networkingmd)
 
 ---
 
@@ -663,3 +664,20 @@ recordsSet`. `setUnlockAll(on)` is the parent switch; `isEarned(id)` ignores it.
 - Shared test helpers live in `tests/helpers/` (race harness, headless session, fake bus / audio / input, three.js
   inspectors — see CONTRIBUTING.md). `tests/qa.registry.*` + `tests/qa.fuzz.test.js` cover every registered track,
   racer and system automatically; `npm run test:coverage` (CI) enforces coverage thresholds on the logic modules.
+
+---
+
+## 12. Online play (NETWORKING.md)
+
+Online play (friends-only rooms, 1–4 local players per machine, ≤ 8 humans) is designed in
+**[NETWORKING.md](NETWORKING.md)**, which is binding for the online workstreams: host-authoritative star over
+WebRTC, fixed 60 Hz sim, 30 Hz snapshots, interpolation + prediction, the message catalogue, the lobby/screen
+state machines, per-machine progress, failure handling, tests, and the wave plan with file ownership
+(NETWORKING.md §16). The one-time Cloudflare setup for grown-ups is in [docs/INFRA_SETUP.md](docs/INFRA_SETUP.md).
+Key seams for everyone else (section numbers are NETWORKING.md's): `race.tick(inputs)` / `race.present(alpha, dt)` (fixed tick, §8.1), race events
+carry ids (`e.kart.id`, `boxIndex`, entity ids; §6.3), `session.humans` / `isHuman` stay **local** humans
+(`allHumans` / `isLocal` for rules; §10.8), and `localizeSummary` / `localizeGp` run before any online
+`race-end` / `gp-end` (§12). The shared online sim-state contract is `src/race/simState.types.js` (§8.4), and
+the worker tooling runs through `npm run worker:*` (`scripts/worker.mjs`, Node 22+). Online ships in
+milestones M1 (Free Race) → M2 (Grand Prix, reconnect) → M3 (Team, Battle, extras) (§16.2). New code lives in
+`src/net/**` and `infra/signal-worker/**`.
