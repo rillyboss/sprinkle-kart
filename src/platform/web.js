@@ -57,15 +57,17 @@ export function applyViewportVars(win, caps = {}) {
 /** Re-apply on resize, rotation and visual viewport changes (the iOS toolbar sliding in / out). */
 export function installViewportWatch(win, caps, onChange) {
   if (!win?.addEventListener) return () => {};
-  let raf = 0;
+  let pending = false;
   const run = () => {
-    raf = 0;
+    pending = false;
     const r = applyViewportVars(win, caps);
     try { onChange?.(r); } catch { /* ignore */ }
   };
   const later = () => {
-    if (raf) return;
-    raf = typeof win.requestAnimationFrame === 'function' ? win.requestAnimationFrame(run) : (run(), 0);
+    if (pending) return;
+    pending = true;
+    if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(run);
+    else run();
   };
   // iOS reports the new size a little after 'orientationchange': check again shortly after
   const rotate = () => { later(); setTimeout(later, 250); };
