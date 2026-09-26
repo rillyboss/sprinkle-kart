@@ -15,7 +15,7 @@ Numbers marked **(measured)** come from those scripts; they are the regression b
 (§6.1/§9.2), tight state-channel backpressure and ctrl fragmentation (§4.1), fair grid slots (§8.6), wider timer
 fields (§5), unguessable rooms with invite links + "secret sweets" (§4.2), a match check on the approval prompt
 and lock-on-remove (§1, §10.9), TURN credentials only for rooms (§4.2), dual matchmaker with fallback (§3),
-an honest privacy sentence (§1), dev origins (§4.2), and a milestone **ship ladder** M1 → M3 (§16.4, §17).
+an honest privacy sentence (§1), dev origins (§4.2), and a milestone **ship ladder** M1 → M3 (§16.2, §17).
 
 Contents:
 [1 Goals](#1-goals-non-goals-and-kid-safety) · [2 Topology](#2-topology-and-rationale) ·
@@ -1107,7 +1107,7 @@ ends. Acceptance M1-17 tests exactly this.
 
 ## 11. Mode matrix
 
-The *Notes* column names the milestone (§16.4) that turns the mode on in `ONLINE_MODES`.
+The *Notes* column names the milestone (§16.2) that turns the mode on in `ONLINE_MODES`.
 
 | Mode | Online? | Host-only logic | Every machine | Notes |
 |---|---|---|---|---|
@@ -1255,148 +1255,264 @@ nightly in CI (never block on it, same as the smoke job).
 ## 16. Parallel workstreams (waves, ownership, interfaces)
 
 Rule from ARCHITECTURE.md §3 applies: create files freely in your area, edit only what you own; tiny additive
-touches elsewhere are called out in the PR and covered by a test. Branch names `net/<ws>` from `main` (or from
-the previous wave's merge). **All interfaces below are binding; change them only via a NETWORKING.md PR.**
+touches elsewhere are called out in the PR and covered by a test. Branch names `net/<ws>` from the **latest
+`origin/main`** (which by then contains this design and P0, plus the parallel v2.0.1 fixes: e.g. the racer
+Boo Berry is now **Peekaberry**; never hard-code racer names in net tests, read them from the registry).
+**All interfaces below are binding; change them only via a NETWORKING.md PR.**
 
-### Wave 1 — sim refactor + pure new foundations (4 parallel streams, no dependencies between them)
+### 16.0 P0 — shared contracts, landed with this design (before any wave forks)
+
+Already in this PR, so no wave-1 stream has to wait for or guess another's shapes:
+- `src/race/simState.types.js`: `SimState` / `KartSim` / `BattleSim` / `GumdropSim` / `RocketSim` JSDoc
+  typedefs, `SIM_STATE_SHAPE` (field lists), `makeSimStateFixture(opts)` (canonical deterministic fixture:
+  8 karts, boxes, optional gumdrops/rockets/battle) and `checkSimStateShape(state) → string[]`
+  (`tests/race.simstate.types.test.js`).
+- `scripts/worker.mjs` + root `package.json` scripts `worker:dev`, `worker:test`, `worker:deploy`,
+  `worker:login`, `worker:secret` (Node 22+ check, first-use `npm ci` in `infra/signal-worker`, pinned
+  wrangler, friendly "not built yet" until WS3 lands; `tests/scripts.worker.test.js`). So WS3 never edits the
+  root `package.json`.
+- `.gitignore`: `.dev.vars`.
+
+### 16.1 Hotspot rules (merge conflicts are designed out)
+
+| Hotspot | Rule |
+|---|---|
+| `package.json` / `package-lock.json` | **one owner per wave**: wave 1 WS4 (Trystero deps only; `node-datachannel` is never a dependency), wave 2 WS6 (QR encoder), wave 3 nobody. Scripts already landed in P0. |
+| `src/main.js` | **one owner per wave**: wave 1 WS1 (tick loop + `buildKartModel(charDef, participant)` call + explicit seed; nothing else), wave 3 WS7 (online branches, `#join=` handling). Waves 2 streams never touch it. |
+| `src/race/Race.js` and `src/modes/{battleSession,battle,teamSession,team}.js` | WS1 only (wave 1). |
+| Settings schema (`onlineEnabled`, `approvalGate`, `relayOnly`) | WS6 owns `src/progress/schema.js` + the settings screen. WS4 receives `relayOnly` as a **parameter** of `join()` and never reads settings. |
+| `SimState` shape | `src/race/simState.types.js` (P0). WS1 implements it, WS2 encodes it; changes go through this doc. |
+| `src/net/constants.js` | WS2 creates it with every §19 net constant; later streams import, never redefine. Additive new constants are allowed with a test. |
+| `src/game/events.js` `EVENTS` | WS1 adds `race-tick` and the new race event names in wave 1; nobody else edits it until wave 3 (WS7 may add online bus events). |
+| `docs/INFRA_SETUP.md` | WS3 (wave 1). WS7 may only flip status rows in wave 3. |
+
+### Wave 1 — sim refactor + pure new foundations (4 parallel streams)
 
 **WS1 — Sim core** (`net/sim-core`). Owns: `src/race/{Race,Kart,AI,Items,ItemBoxes,KartFx}.js`,
-new `src/race/{fixedStep,simState,predict,itemSim,itemView,boxSim,boxView}.js`, `src/input/InputLatch.js`,
-the tick-loop part of `src/main.js` (stepper + `race.present`; nothing else), `src/game/events.js` (+ `race-tick`
-event only), `tests/race.fixedstep*.test.js`, `tests/race.simstate*.test.js`, `tests/race.predict*.test.js`,
-`tests/race.entities*.test.js`. Delivers §8 completely: `race.tick / present / tickCount`, `makeRng` state,
-`captureSimState / applySimState / captureKart / applyKart`, `predictTick`, `ItemView` / `BoxView`, entity ids
-+ id-carrying events (`boxIndex`, gumdrop/rocket spawn/despawn, `box-respawn`), Kid-Assist state on the kart,
-`assisted` / `robo` input flags, `buildKartModel(charDef, participant)` paint hook, `Math.random` removal.
-Must keep: every existing test green, goldens unchanged, fairness test unchanged.
+new `src/race/{fixedStep,simState,predict,collide,itemSim,itemView,boxSim,boxView}.js`,
+`src/input/InputLatch.js`, `src/modes/{battleSession,battle,teamSession,team}.js` and new
+`src/modes/{battleSim,battleView}.js`, `src/game/setup.js` (rng params only), the tick-loop part of
+`src/main.js`, `src/game/events.js` (new event names only), `tests/race.fixedstep*.test.js`,
+`tests/race.simstate*.test.js`, `tests/race.predict*.test.js`, `tests/race.entities*.test.js`,
+`tests/race.gridslot*.test.js`, `tests/modes.battlesplit*.test.js`. Delivers §8 completely, in this order,
+one PR each: **(a, M1)** `race.tick / present / tickCount`, local fixed stepper + latency test, InputLatch
+(item + hop/drift press counters), `makeRng` state + `Math.random` removal, `captureSimState / applySimState /
+captureKart / applyKart` passing `checkSimStateShape`, `predictTick(localKarts, …)` + extracted
+`collideKarts`, `ItemView` / `BoxView` split with entity ids + id-carrying events (`boxIndex`,
+gumdrop/rocket spawn/despawn, `box-respawn`), Kid-Assist state on the kart, `assisted` / `robo` input flags,
+`gridSlot` placement, `buildKartModel(charDef, participant)` paint hook, `MAX_GUMDROPS` / `MAX_ROCKETS`;
+**(b, needed for M3 but merged in wave 1–2)** `battleSim` / `battleView` split (`battleSession.js` becomes a
+thin wrapper; `captureSimState` fills `battle`) and the team host/all split. Must keep: every existing test
+green, goldens unchanged, fairness test unchanged.
 
 **WS2 — Wire foundations** (`net/wire`). Owns (all new): `src/net/{codec,messages,enums,schema,version,clock,
-heartbeat,emotes}.js`, `src/net/transport/{types,memory}.js`, `src/net/conditioner.js`, `tests/net.codec*.test.js`,
-`tests/net.messages*.test.js`, `tests/net.schema*.test.js`, `tests/net.clock*.test.js`, `tests/net.memory*.test.js`,
-plus the Vite `define` for `__SK_BUILD__` (one additive line in `vite.config.js`). Codes the snapshot codec
-against the `SimState` shape in §8.4 (uses a hand-built fixture, not WS1 code). Exports:
-`encodeSnapshot(simState, { houseTail }) / decodeSnapshot(bytes)`, `encodeInput / decodeInput`,
-`encodeEvents(events) / decodeEvents`, `encodeCtrl(type, obj) / decodeCtrl(bytes)`, `MSG`, `EV`, `validate`,
-`createMemoryHub`, `createClockSync`, `createHeartbeat({ wobblyMs: 3000, asleepMs: 8000 })`, `contentHash`,
-`compatible`, `PROTOCOL_VERSION`.
+heartbeat,emotes,constants,frag,roomKey}.js`, `src/net/transport/{types,memory}.js`, `src/net/conditioner.js`,
+`tests/net.codec*.test.js`, `tests/net.messages*.test.js`, `tests/net.schema*.test.js`, `tests/net.clock*.test.js`,
+`tests/net.memory*.test.js`, `tests/net.frag*.test.js`, `tests/net.roomkey*.test.js`, plus the Vite `define`
+for `__SK_BUILD__` (one additive line in `vite.config.js`). Codes the snapshot codec against
+`makeSimStateFixture` (P0). Exports: `encodeSnapshot(simState, { houseTail, epoch }) / decodeSnapshot(bytes)`,
+`encodeInput / decodeInput`, `encodeEvents(events) / decodeEvents`, `encodeCtrl(type, obj) / decodeCtrl(bytes)`
+(incl. TIMEBASE, PAUSE with ticks, FRAG), `createFragmenter / createReassembler`, `MSG`, `EV`, `TIMER_FIELDS`,
+`validate`, `createMemoryHub` (burst loss, realistic ctrl retransmit, wire bytes + SACKs), `createClockSync`,
+`createHeartbeat({ wobblyMs: 3000, asleepMs: 8000 })`, `deriveRoomIds`, `SECRET_SWEETS`, `contentHash`,
+`compatible`, `PROTOCOL_VERSION`, all constants.
 
 **WS3 — Signal Worker** (`net/signal-worker`). Owns: `infra/signal-worker/**` (`wrangler.toml` name
 `sprinkle-kart-signal`, `[[migrations]] tag="v1" new_sqlite_classes=["SignalRoom"]`, `[vars] ALLOWED_ORIGINS`,
-`src/index.js`, `src/SignalRoom.js`, `src/room.js` (pure), `src/turn.js`, `test/**`, own `package.json` +
-lockfile + `vitest.config.js` + `.nvmrc` 24), `.github/workflows/worker.yml`, root `package.json` scripts
-`worker:dev` / `worker:test` / `worker:deploy` (additive), `tests/net.room*.test.js` (pure room logic in main
-suite), `docs/INFRA_SETUP.md` (Node 22+ fix, Realtime → TURN Server naming, Chromebook note, flip steps 5–6 to
-ready). Implements §4.2 protocol exactly. Never deploys.
+`src/index.js`, `src/SignalRoom.js`, `src/room.js` (pure), `src/guard.js` (pure), `src/turn.js`,
+`src/origin.js`, `.dev.vars.example`, `test/**`, own `package.json` + lockfile + `vitest.config.js` + `.nvmrc`
+24), `scripts/worker.mjs` (after P0), `.github/workflows/worker.yml`, `tests/net.room*.test.js`,
+`tests/net.guard*.test.js`, `docs/INFRA_SETUP.md`. Implements §4.2 exactly. Never deploys.
 
 **WS4 — WebRTC + signaling adapters** (`net/webrtc`). Owns (new): `src/net/transport/webrtc.js`,
 `src/net/signaling/{types,index,public,worker,relays,ice}.js`, `src/net/diagnose.js`,
 `scripts/dev/localTracker.mjs`, `tests/net.webrtc*.test.js` (fake RTCPeerConnection + optional
-node-datachannel), `tests/net.signaling*.test.js`, `tests/net.diagnose*.test.js`; adds deps
-`@trystero-p2p/torrent`, `@trystero-p2p/nostr` (0.25.4, lazy) and optional devDep `node-datachannel`. Talks to
-the Worker protocol in §4.2 (tests use a fake WebSocket server implementing it, not WS3 code). Exports
-`createWebRtcTransport`, `createPublicSignaling`, `createWorkerSignaling`, `chooseSignaling(env)`,
-`fetchIceServers`, `runConnectionCheck`, `describeCheck`.
+node-datachannel), `tests/net.signaling*.test.js`, `tests/net.diagnose*.test.js`; root `package.json` +
+`package-lock.json` for `@trystero-p2p/torrent`, `@trystero-p2p/nostr` (0.25.4, lazy). Talks to the Worker
+protocol in §4.2 through a fake WebSocket server implementing it (not WS3 code), and to `deriveRoomIds`
+through its §4.2 signature (a local stub until WS2 merges). Exports `createWebRtcTransport`,
+`createPublicSignaling`, `createWorkerSignaling`, `chooseSignaling`, `fetchIceServers`, `runConnectionCheck`,
+`describeCheck`.
 
 ### Wave 2 — netcode + session (2 parallel streams; need wave 1 merged)
 
-**WS5 — Netcode engine** (`net/netcode`). Owns (new): `src/net/host/{hostDriver,inputBuffer,snapshotter,
-eventLog}.js`, `src/net/guest/{replicaRace,replicaItems,interpolation,reconcile,inputSender,leadController,
-eventPlayer,inputHistory}.js`, `src/net/tickPump.js`, `tests/helpers/netHarness.js`, `tests/net.host*.test.js`,
-`tests/net.guest*.test.js`, `tests/net.sim*.test.js`, `tests/net.baseline.test.js`. Interfaces:
+**WS5 — Netcode engine** (`net/netcode`). Owns (new): `src/net/host/{hostDriver,hostClock,inputBuffer,
+snapshotter,eventLog}.js`, `src/net/guest/{replicaRace,replicaItems,interpolation,reconcile,inputSender,
+leadController,eventPlayer,inputHistory,hostTimeline}.js`, `src/net/tickPump.js`,
+`tests/helpers/netHarness.js`, `tests/net.host*.test.js`, `tests/net.guest*.test.js`, `tests/net.sim*.test.js`,
+`tests/net.timeline*.test.js`, `tests/net.hostclock*.test.js`, `tests/net.inputbuffer*.test.js`,
+`tests/net.reconcile*.test.js`, `tests/net.baseline.test.js`. Interfaces:
 ```js
+createHostClock({ now, tickHz: 60, maxPerCall: 6, maxBacklog: 30, onTimebase }) → { advance(nowMs) → { ticks, alpha },
+                   pause(), resume(), usePump(on), state() }            // one accumulator, rAF or pump drives it (§9.9)
 createHostDriver({ race, transport, houses /* houseId → { peerId, karts: kartId[] } */, localInputs: (tick) => DriveInput[],
-                   onEvent /* host-side presentation */, snapshotEvery: 2 }) → { tick(), onMessage(peerId, ch, bytes),
-                   setHouseRobo(houseId, on), stats(), dispose() }   // wraps race.onEvent to feed EventLog
+                   clock /* hostClock */, onEvent /* host-side presentation */, snapshotEvery: 2 }) → { frame(nowMs) → { alpha },
+                   onMessage(peerId, ch, bytes), pauseAll(on), setHouseRobo(houseId, on), stats(), dispose() }
 class ReplicaRace { constructor({ scene, trackDef, path, builtTrack, setup /* NetRaceSetup */, localKartIds,
-                   buildKartModel, onEvent }); // Race read API: karts, getPlayerKart, getStandings, state, countdown,
-                   // time, clock, lapsTotal, path, racingLine, rules, modeInfo, gameplay, lastDt, items.bursts, rng: null
+                   buildKartModel, onEvent }); // Race read API: karts, getPlayerKart, getStandings (host places), state,
+                   // countdown (P timeline), time, clock, lapsTotal, path, racingLine, rules, modeInfo, gameplay, lastDt,
+                   // items.bursts, rng: null
                    onSnapshot(snap), onEvents(batch), onResync(r), frame(frameDt, localInputs), present(alpha, frameDt), dispose() }
-createGuestDriver({ replica, transport, clock, localSeats }) → { frame(dt), onMessage(peerId, ch, bytes), stats(), dispose() }
-runNetRace(opts) → { host, guests[], results, events, metrics }   // tests/helpers/netHarness.js
+createHostTimeline({ clock }) → { onTimebase(tb), onPause(tick), onResume(tick), onSnapshot(tick, epoch, recvMs), tickAt(ms), paused, epoch }
+createGuestDriver({ replica, transport, clock, timeline, localSeats }) → { frame(dt), onMessage(peerId, ch, bytes), stats(), dispose() }
+runNetRace(opts) → { host, guests[], results, events, metrics /* incl. wire kbps per flow */ }   // tests/helpers/netHarness.js
 ```
 
 **WS6 — Session, lobby & screens** (`net/session`). Owns: new `src/net/session/{hostSession,guestSession,lobby,
-roomCode,localize,composeSetup,playerLabel,approval}.js`, new screens `src/ui/screens/{online,codeEntry,
-onlineLobby,checkConnection,netWaiting}.js` + their CSS files, `src/net/debugOverlay.js`; additive edits to
-`src/ui/Menus.js` (net role, `resolveCurrent`, `_finish` hook), `src/ui/screenFlow.js` (`menuEntry.when`),
-`src/ui/menuState.js` (`joinReduce` capacity), `src/config.js` (`MAX_LOCAL_PLAYERS`, `MAX_HUMANS`, 8
-`PLAYER_COLORS`), `src/progress/schema.js` + `src/ui/screens/settings.js` (`onlineEnabled`, `relayOnly`),
-`src/modes/menus.js` (online mode filter), label call sites → `playerLabel`; tests `tests/net.session*.test.js`,
-`tests/net.lobby*.test.js`, `tests/net.localize*.test.js`, `tests/net.screens*.test.js`. Interfaces:
+roomCode,inviteLink,localize,composeSetup,playerLabel,approval,modes}.js`, `src/net/platform.js`, new screens
+`src/ui/screens/{online,codeEntry,onlineLobby,checkConnection,netWaiting,inviteGate}.js` + their CSS files,
+`src/net/debugOverlay.js`; additive edits to `src/ui/Menus.js` (net role, `resolveCurrent`, `_finish` hook),
+`src/ui/screenFlow.js` (`menuEntry.when`), `src/ui/menuState.js` (`joinReduce` capacity), `src/config.js`
+(`MAX_LOCAL_PLAYERS`, `MAX_HUMANS`, 8 `PLAYER_COLORS`), `src/progress/schema.js` + `src/ui/screens/settings.js`
+(`onlineEnabled`, `approvalGate`, `relayOnly`, privacy sentence), `src/modes/menus.js` (online mode filter),
+label call sites → `playerLabel`; root `package.json` + lockfile for the QR encoder; tests
+`tests/net.session*.test.js`, `tests/net.lobby*.test.js`, `tests/net.localize*.test.js`,
+`tests/net.screens*.test.js`, `tests/net.invite*.test.js`, `tests/net.platform*.test.js`,
+`tests/net.gridslot*.test.js` (composeSetup side), `tests/net.tone.test.js`. Interfaces:
 ```js
-createHostSession({ transport, signaling, progress, rng, now }) → { state, dispatch(ev), onEffect(fn), lobby() }
-createGuestSession({ transport, signaling, code, localPlayers, now }) → same shape
-lobbyReduce(lobby, action) → lobby     // actions: house-join/leave/approve/remove, seat-join/leave, pick, ready, lock, choice, phase
+createHostSession({ transport, signalings, progress, rng, now, secret }) → { state, dispatch(ev), onEffect(fn), lobby() }
+createGuestSession({ transport, signalings, secret, localPlayers, now }) → same shape
+lobbyReduce(lobby, action) → lobby     // actions: house-join/leave/approve/remove(→ lock), seat-join/leave, pick, ready, lock, unlock, choice, phase
+approvalReduce(queue, ev) → { queue, prompt|null }   // queues while racing; match-check pair per request
 localizeSummary(hostSummary, localPis) → RaceSummary ;  localizeGp(gp, localPis) → GrandPrixResult
-composeOnlineSetup(lobby, hostChoice, { seed, raceId, cpuIds, rules }) → NetRaceSetup
-makeRoomCode(rng) → 'SPRINKLE-4821' ; parseRoomCode(text) → code|null ; codeEntryReduce(state, ev)
+composeOnlineSetup(lobby, hostChoice, { seed, raceId, cpuIds, rules, gp? }) → NetRaceSetup   // incl. gridSlot (§8.6)
+makeRoomSecret(rng) → RoomSecret ; parseRoomCode(text) → label|null ; codeEntryReduce(state, ev)
+makeInviteLink(secret, baseUrl) → string ; parseInviteFragment(hash) → RoomSecret|null
+canHost({ userAgent, platform, maxTouchPoints }) → boolean
 playerLabel(pi, { localPis, lobby, characters }) → string
 ```
 
 ### Wave 3 — integration + quality (2 parallel streams)
 
 **WS7 — Online game integration** (`net/integration`). Owns: `src/main.js` online branches (`runOnlineHost`,
-`runOnlineGuest`, `startRace({ net })`, results/GP/ceremony broadcast, online pause, ignore `?simspeed` /
-`?autodrive` / quick-start online), `src/game/session.js` (`allHumans`, `isAnyHuman`, `isLocal`),
-`src/modes/{battleSim,battleView}.js` (split of `battleSession.js`, which becomes a thin wrapper),
-`src/modes/teamSession.js` host/all split, `src/systems/netEmotes.js`, `src/systems/netHud.js` (wobbly/robo
-flashes), README "Online play" section (replaces "Coming soon") + CHANGELOG, `tests/net.integration*.test.js`,
+`runOnlineGuest`, `startRace({ net })`, host clock wiring, results/GP/ceremony broadcast, online pause,
+`#join=` read-and-clear at start-up, ignore `?simspeed` / `?autodrive` / quick-start online),
+`src/game/session.js` (`allHumans`, `isAnyHuman`, `isLocal`), progress wiring so goal counters use host stats
+(§9.6), `src/systems/netEmotes.js`, `src/systems/netHud.js` (wobbly/robo flashes, "Finish! ✨" hold),
+README "Online play" section (replaces "Coming soon") + CHANGELOG, `tests/net.integration*.test.js`,
 `tests/helpers/headlessSession.js` (additive: `runHeadlessNetSession`). Glue only: all logic comes from WS5/WS6.
 
 **WS8 — E2E, soak & CI** (`net/qa`). Owns: `scripts/smoke-online.mjs`, `scripts/smoke-online-plan.mjs`,
 `tests/net.soak.test.js`, `tests/net.e2eplan.test.js`, `.github/workflows/ci.yml` (additive: optional worker
-test job + nightly online e2e), `CONTRIBUTING.md` online testing section. Starts in wave 3 against the
-WS5/WS6 harnesses and WS4's localTracker, finishes after WS7.
+test job + nightly online e2e), `CONTRIBUTING.md` online testing section, `docs/ONLINE_CHECKLIST.md`. Starts in
+wave 3 against the WS5/WS6 harnesses and WS4's localTracker, finishes after WS7.
 
 Dependency summary:
 
 | Wave | Streams | Needs |
 |---|---|---|
-| 1 | WS1 sim core · WS2 wire · WS3 worker · WS4 webrtc | nothing (interfaces in this doc) |
-| 2 | WS5 netcode · WS6 session/screens | WS1 + WS2 (WS5); WS2 + WS4 (WS6) |
+| (P0) | shared contracts in this design PR | – |
+| 1 | WS1 sim core · WS2 wire · WS3 worker · WS4 webrtc | P0 only (interfaces in this doc) |
+| 2 | WS5 netcode · WS6 session/screens | WS1(a) + WS2 (WS5); WS2 + WS4 (WS6); WS1(b) only for WS5's M3 matrix rows |
 | 3 | WS7 integration · WS8 e2e/soak | everything |
+
+### 16.2 Ship ladder (the family can play before everything is done)
+
+Every stream delivers its **M1 scope first** as its main PR; M2 and M3 items are follow-up PRs from the same
+stream (`net/<ws>-m2`, `net/<ws>-m3`) after M1 is merged. The Online menu shows only `ONLINE_MODES`, so an
+unfinished mode is simply not offered.
+
+| Milestone | What the family gets | Scope | Acceptance |
+|---|---|---|---|
+| **M1 — "Play with friends"** | Free Race online, each house 1–4 players, invite link / code + sweets, approval with match check, lock and remove, Check connection, Worker and public paths with fallback, Pause everyone, Robo Driver on drop-out | WS1(a), WS2, WS3, WS4, WS5 (Free Race), WS6 (no FOCUS), WS7 (Free Race), WS8 (M1 e2e) | §17 M1-1 … M1-20 |
+| **M2 — "Cups together"** | Grand Prix + My Cup online with standings and podium ceremony; reconnect within 60 s (token + RESYNC) | WS5 RESYNC, WS6 GP screens + tokens, WS7 GP/ceremony broadcast, WS8 GP e2e | §17 M2-1 … M2-5 |
+| **M3 — "Everything"** | Team Race, Bubble Battle, Fair host toggle, FOCUS preview, in-race emotes | WS1(b), WS5 battle/team rows + Fair host, WS6 FOCUS + in-race emotes UI, WS7 wiring, WS8 soak | §17 M3-1 … M3-5 |
 
 ---
 
 ## 17. Acceptance criteria (measurable)
 
-Online v1 is done when **all** hold (each has a test or a scripted measurement):
+Each milestone (§16.2) is done when **all** of its items hold (each has a test or a scripted measurement).
+All bandwidth numbers are wire bytes (§4.1).
 
-1. Full `npx vitest run`, `npm run test:coverage`, `npx vite build`, `node scripts/smoke.mjs` green; offline
-   gameplay unchanged (goldens + fairness + QA registry tests untouched).
-2. Fixed tick: identical race results for the same seed at 30/60/75/144 Hz render rates and ±4 ms jitter.
-3. `captureSimState → applySimState` continuation bit-identical over 600 ticks on 5 tracks.
-4. Snapshot ≤ 1150 B at the cap-case; typical 8-kart snapshot ≤ 450 B; INPUT ≤ 160 B worst case.
-5. Bandwidth (node harness, 7 guests, 8 karts): host upload ≤ 1.2 Mbps, guest download ≤ 160 kbps p99, guest
-   upload ≤ 80 kbps with 4 local players.
-6. Convergence matrix (§15): 0/50/150/250 ms × 0/1/5 % loss × jitter × reorder — every guest's RESULT, finish
-   order and lap times (ms) identical to the host; event seq applied exactly once; no errors.
-7. Prediction: own-kart reconcile error p99 ≤ 0.5 m outside contact windows and ≤ 2 m inside, at ≤ 150 ms RTT
-   / 1 % loss; zero added input delay (input sampled and applied in the same frame as offline).
-8. Interpolation: remote karts show no frame-to-frame jump > 1.5 m at 5 % loss + 20 ms jitter; interp delay
-   settles within 70–150 ms and at 100 ± 15 ms for 50 ms RTT / 5 ms jitter.
-9. Clock: tick estimate within ±1 tick of the host after 2 s at 150 ms RTT / 20 ms jitter; countdown "GO"
-   within 25 ms across machines (harness).
-10. Missing input: 1.5 s outage → Robo Driver within 1.6 s, control back within 1 tick of resume; a press
-    sent during 5 % loss is never lost or doubled (10 000-press test).
-11. Session: 8-human cap; 4 houses × 2 players joins; approval, lock, remove (house and seat); reconnect with
-    token mid-race within 60 s restores seats and control; host leave → all guests on the hub within 9 s.
-12. Progress: guests never record the host's wins (localize tests over every mode); `multiplayerRaces`
-    counts online races; each machine's unlock gates respected.
-13. Version: proto or content mismatch → REJECT `version` with the friendly text; different build same content
-    connects.
-14. Worker: `worker:test` green on Node 24 (Origin rejection, CORS scope, `/health` shape `{ ok, turn,
-    version }`, `/ice` with mocked TURN incl. `:53` filtering, caps 1+7, kick, lock, rate limit); main suite
-    covers `roomReduce`.
-15. E2E: `smoke-online.mjs` passes both paths (local tracker, local `worker:dev`): two contexts race one lap
-    and show identical standings; screenshots of hub, code entry, lobby, check connection, race (both
-    viewports), results reviewed.
-16. Soak: 40 simulated minutes at 150 ms / 3 % loss with zero divergence, bounded buffers; 10-minute browser
-    soak heap growth < 30 MB.
-17. Kid safety: online hidden until the parent gate toggle; no free-text field in any schema (test enumerates
-    schemas); tone test over all new strings; emote rate limit; removed peers cannot rejoin.
-18. Docs: NETWORKING.md + INFRA_SETUP.md + README "Online play" + CHANGELOG match the code
-    (`tests/docs.networking.test.js`, `tests/docs.readme.test.js`).
+### M1 — Play with friends (Free Race)
+
+1. **M1-1** Full `npx vitest run`, `npm run test:coverage`, `npx vite build`, `node scripts/smoke.mjs` green;
+   offline gameplay at 60 Hz unchanged (goldens + fairness + QA registry tests untouched).
+2. **M1-2** Fixed tick: identical race results for the same seed at 30/60/75/144 Hz render rates and ±4 ms
+   jitter; at 144 Hz input reaches a tick within ≤ 1 tick (`tests/race.fixedstep.latency.test.js`).
+3. **M1-3** `captureSimState → applySimState` continuation bit-identical over 600 ticks on 5 tracks, and the
+   output passes `checkSimStateShape`.
+4. **M1-4** Snapshot ≤ 1150 B at the cap-case (≈ 730 B); typical 8-kart snapshot ≤ 460 B; INPUT ≤ 160 B worst
+   case (141 B); every `TUNING` timer fits its wire field (`tests/net.codec.timers.test.js`).
+5. **M1-5** Bandwidth (netHarness, 7 guests, 8 karts, wire bytes incl. SACKs): guest upload ≤ 45 kbps with 1
+   local player and ≤ 90 kbps with 4; guest download ≤ 140 kbps typical and ≤ 220 kbps at the cap-case; host
+   upload ≤ 1.0 Mbps typical and ≤ 1.6 Mbps at the cap-case; ctrl < 3 kbps average in race; LOBBY ≤ 4 sends/s
+   per guest.
+6. **M1-6** Convergence matrix (§15) for Free Race: 0/50/150/250 ms × 0/1/5 % random loss and 5 % in 3-packet
+   bursts × jitter × reorder — every guest's RESULT, finish order and lap times (ms) identical to the host;
+   event seq applied exactly once; no errors.
+7. **M1-7** Prediction: own-kart reconcile error p99 ≤ 0.5 m outside contact windows (≤ 0.75 m under bursts)
+   and ≤ 2 m inside, at ≤ 150 ms RTT; two local karts on one guest machine colliding: error ≤ 0.5 m; zero added
+   input delay (input sampled and applied in the same frame as offline).
+8. **M1-8** Interpolation: remote karts show no frame-to-frame jump > 1.5 m at 5 % loss + 20 ms jitter; interp
+   delay settles within 70–150 ms and at 100 ± 15 ms for 50 ms RTT / 5 ms jitter.
+9. **M1-9** Clock and start: host-tick estimate within ±1 tick after 2 s at 150 ms RTT / 20 ms jitter; GO on
+   each machine's prediction timeline lands on host tick `goTick` ± 1; a press exactly on a guest's visible GO
+   earns the rocket start on the host (`tests/net.timeline.go.test.js`, RTT 0–250 ms); the finish place and
+   celebration appear only after the host's `finish` event.
+10. **M1-10** Timebase: after a 30 s "Pause everyone", a 400 ms host stall and a 3 s host starvation, every
+    guest's estimate is within ±1 tick of the host within 1 s; input lead ≤ target + 2 ticks; the host runs
+    every tick exactly once with `alpha ∈ [0, 1)` under interleaved rAF + pump (`tests/net.hostclock.test.js`).
+11. **M1-11** Missing input: 1.5 s outage → Robo Driver within 1.6 s, control back within 1 tick of resume;
+    10 000 presses (item + hop/drift) under 5 % bursty loss are each applied exactly once, ≤ 6 ticks late; a
+    double tap gives 2 presses on consecutive ticks; no phantom press after Robo Driver or reconnect.
+12. **M1-12** Privacy: the §1 rule-6 sentence (friends, public matchmaking services or our server can see your
+    internet address; no names, chat or accounts) is shown before online can be switched on; NETWORKING.md §3
+    names the public services; the tone test covers the sentence; the debug overlay and "For grown-ups" rows
+    never show an IP address (test with a fake stats report containing IPs).
+13. **M1-13** Session: 8-human cap; 4 houses × 2 players join; approval shows the matching 2-emoji check on
+    both screens; approvals that arrive during a race are queued until results; lock/unlock; remove seat and
+    remove house.
+14. **M1-14** Progress: guests never record the host's wins (localize tests); `multiplayerRaces` counts online
+    races; each machine's unlock gates respected; a predicted event the host contradicted never increments a
+    goal counter.
+15. **M1-15** Version: proto or content mismatch → REJECT `version` with the friendly text; different build same
+    content connects.
+16. **M1-16** Worker: `worker:test` green on Node 24 — Origin rejection (+ dev wildcard only for localhost /
+    127.0.0.1), CORS scope, `/health` shape `{ ok, turn, version }`, TURN only inside a hosted room's `joined`,
+    `/ice` rate-limited (5/min per IP) with ttl ≤ 900 s, room credentials never reused across rooms, ttl ≤ 1800 s,
+    daily mint cap, `:53` filtering, caps 1+7, drop, lock, per-room join cap reached even with a forged Origin;
+    the main suite covers `roomReduce` and `guardReduce`.
+17. **M1-17** Kid safety: online hidden until the parent-gate toggle; an invite link on a machine with online
+    off shows the "ask a grown-up" screen and never bypasses the gate; the fragment is cleared from the URL
+    after use; no free-text field in any schema (test enumerates schemas); tone test over all new strings;
+    emote rate limit; the room ids cannot be computed from the label alone (`tests/net.roomkey.test.js`); a
+    stranger who watches the public relays sees no room label and cannot read offers, and cannot join without
+    host approval; after a remove the room is locked, and a reload of the removed house cannot rejoin until the
+    host re-opens **and** approves.
+18. **M1-18** Matchmaker fallback: host on a Worker build + guest on a public-only build meet; Worker `/health`
+    down → both sides use public signaling; "couldn't find that room" offers "ask everyone to refresh".
+19. **M1-19** E2E: `smoke-online.mjs` passes both paths (local tracker, local `worker:dev`): join by invite link
+    and once with controller events only (code + sweets entry, approval, lobby emotes); two contexts race one
+    lap and show identical standings; **code entry → lobby ≤ 10 s p90 on the Worker path and ≤ 20 s p90 on the
+    public path** (10 runs each, local harness); Check connection with UDP blocked (fake ICE) reports "Relay
+    needed"; screenshots of hub, code entry, lobby, approval, check connection, race (both viewports), results
+    reviewed.
+20. **M1-20** Docs: NETWORKING.md + INFRA_SETUP.md + README "Online play" + CHANGELOG match the code
+    (`tests/docs.networking.test.js`, `tests/docs.readme.test.js`); the manual real-relay checklist
+    (`docs/ONLINE_CHECKLIST.md`) is filled in once before the M1 release; node soak (10 Free Races, 150 ms / 3 %
+    loss, two 30 s snack breaks) with zero divergence and bounded buffers.
+
+### M2 — Cups together
+
+21. **M2-1** Convergence matrix rows for Grand Prix (4 races + ceremony): standings, points and podium identical
+    on every machine.
+22. **M2-2** `localizeGp`: a guest is never credited `cupsWon` for another house's win; its own win is credited.
+23. **M2-3** Reconnect with token mid-race within 60 s restores seats and control (RESYNC as paced FRAG pieces,
+    input baseline reset, no phantom presses) — also while the room is locked.
+24. **M2-4** Host leave → all guests on the hub within 9 s with the friendly text.
+25. **M2-5** Soak: 40 simulated minutes (full GP + 10 Free Races) at 150 ms / 3 % loss with zero divergence,
+    bounded buffers.
+
+### M3 — Everything
+
+26. **M3-1** Convergence matrix rows for Team Race and Bubble Battle pass (battle block, pops, ranking, end).
+27. **M3-2** Offline parity of the battle/team splits: same seed → same results as v2.
+28. **M3-3** Fair host: the host's local inputs are delayed by `min(50 ms, median guest RTT/2)` ± 1 tick when on;
+    off by default.
+29. **M3-4** FOCUS preview ≤ 2 Hz, ids only; in-race emotes rate-limited and off by default under Kid-Assist.
+30. **M3-5** Browser soak: 10-minute two-context run, heap growth < 30 MB, no errors.
 
 ---
 
@@ -1404,19 +1520,25 @@ Online v1 is done when **all** hold (each has a test or a scripted measurement):
 
 | Risk | Mitigation |
 |---|---|
-| Public signaling is flaky this month (Trystero #196; appId-seeded Nostr relays all broken in one report; 2 of 5 default trackers down) | torrent first with 3 pinned live trackers, Nostr fallback after 6 s, lists in config, Check connection says which failed; the Worker is the reliable path (recommend the grown-up does INFRA_SETUP) |
-| Symmetric NAT / school Chromebooks (UDP blocked by policy) / hotspots | TURN over TCP/TLS 443 via the Worker; friendly NAT-failure screen |
-| Hidden host tab stalls the room | Worker tick pump + banner + PAUSE reason 1 |
-| iOS suspends WebRTC in background | iPads join only, never host; tap-to-reconnect + 60 s window |
+| Public signaling is flaky this month (Trystero #196; appId-seeded Nostr relays all broken in one report; 2 of 5 default trackers down) | torrent first with 3 pinned live trackers, Nostr fallback after 6 s, lists in config, Check connection says which failed; with a Worker build the host is on both matchmakers; the Worker is the reliable path (recommend the grown-up does INFRA_SETUP) |
+| Symmetric NAT / school Chromebooks (UDP blocked by policy) / hotspots | TURN over TCP/TLS 443 via the Worker; Check connection reports "Relay needed"; friendly NAT-failure screen |
+| Hidden or stalled host tab | one host clock, rAF when visible + Worker pump when hidden; catch-up, then skip + TIMEBASE; PAUSE reason 1 + banner |
+| iOS suspends WebRTC in background | iPads/iPhones join only, never host (`canHost` with the iPadOS desktop-UA rule); tap-to-reconnect + 60 s window (M2) |
 | Trystero mesh opens guest↔guest links | closed immediately after `sk-role`; Worker path is a pure star |
 | Unreliable message > ~1191 B is fragmented and fragile | caps + codec test ≤ 1150 B |
-| Prediction error in contact windows (≤ 1.4 m measured) | smoothing τ 100 ms, snap > 4 m; contact is 0–1.4 % of ticks |
+| One big ctrl message stalls snapshots (no RFC 8260 interleaving) | FRAG ≤ 1 KB pieces paced one per tick during races; big results only between races |
+| Bursty Wi-Fi loss eats all useful input copies | press counters (never lost, only late), slack target 4 under loss, burst rows in the matrix |
+| Prediction error in contact windows (≤ 1.4 m measured) | smoothing τ 100 ms, snap > 4 m; contact is 0–1.4 % of ticks; local siblings collide in prediction |
 | Presentation systems assume "human = on this screen" | keep `humans/isHuman` local; `allHumans` for rules |
-| GP/summary code credits any human | `localizeSummary` / `localizeGp` mandatory before any online `race-end` / `gp-end` |
-| wrangler needs Node 22+, local default Node 20 | worker has its own package + `.nvmrc`; scripts check Node version |
-| 320 k codes still guessable over public signaling | Trystero password encryption, host approval prompt, Worker rate limits, lock button |
-| Open: emotes during races for small kids | default off under Kid-Assist; revisit after family playtest |
-| Open: "Fair host" default | off in v1; revisit with measured `hostAdvantageMs` |
+| GP/summary code credits any human | `localizeSummary` / `localizeGp` mandatory before any online `race-end` / `gp-end`; counters only from host stats |
+| wrangler needs Node 22+, local default Node 20 | worker has its own package + `.nvmrc`; `scripts/worker.mjs` checks the Node version and uses the pinned wrangler |
+| Someone with the invite link who is not a friend | approval is mandatory, shows the match check, can require a grown-up; removal locks the room. We state plainly that approval — not the code — is the final barrier. |
+| TURN quota abuse via a leaked Worker URL | TURN only for hosted rooms (unguessable ids), `/ice` rate-limited with short ttl, daily mint cap, Cloudflare usage notification (INFRA_SETUP) |
+| Worker down / over free quota / cached old builds | dual matchmaker + fallback (§3), "ask everyone to refresh" |
+| Scope too large for one release | ship ladder M1 → M3 (§16.2); `ONLINE_MODES` hides unfinished modes |
+| Open: emotes during races for small kids | M3, default off under Kid-Assist; revisit after family playtest |
+| Open: "Fair host" default | M3, off; revisit with measured `hostAdvantageMs` |
+| Open: 6 secret sweets typed on a controller | invite link is the main path; if families find 6 picks too slow, raise `ROOM_KDF_ITERATIONS` and drop to 5 sweets (still ≈ 2⁴⁸) — a constants change, measured with the e2e time-to-lobby |
 
 ---
 
@@ -1425,26 +1547,34 @@ Online v1 is done when **all** hold (each has a test or a scripted measurement):
 | Name | Value | Home |
 |---|---|---|
 | `TICK_HZ` / `TICK_DT` / `MAX_TICKS_PER_FRAME` | 60 / 1/60 / 6 | `src/race/fixedStep.js` |
+| host `maxPerCall` / `MAX_BACKLOG_TICKS` / pump takeover | 6 / 30 ticks (500 ms) / rAF gap > 50 ms | `src/net/host/hostClock.js` |
 | physics sub-step | 1/120 (2 per tick, unchanged) | `src/race/tuning.js` |
-| `SNAPSHOT_EVERY` | 2 ticks (30 Hz) | `src/net/host/snapshotter.js` |
-| `INPUT_REDUNDANCY` | min 3, +2 extra, max 12 ticks | `src/net/guest/inputSender.js` |
+| `SNAPSHOT_EVERY` | 2 ticks (30 Hz), 15 Hz under sustained backpressure | `src/net/host/snapshotter.js` |
+| `INPUT_EVERY` / ticks per INPUT | 2 ticks (30 Hz) / `clamp(slackTarget + 4, 4, 8)` | `src/net/guest/inputSender.js` |
 | `INTERP_DELAY` | start 100 ms, clamp 70–150 ms, slew 1 ms / 100 ms | `src/net/guest/interpolation.js` |
 | `MAX_EXTRAPOLATION` | 250 ms | same |
 | `RECONCILE_TAU` / heading τ / snap | 100 ms / 80 ms / 4 m or 0.6 rad | `src/net/guest/reconcile.js` |
-| `LEAD_TARGET_SLACK` / dilation | 2 ticks / ±3 % | `src/net/guest/leadController.js` |
-| input hold / coast / Robo Driver | 250 ms / → 1.5 s / after 1.5 s | `src/net/host/inputBuffer.js` |
+| `LEAD_TARGET_SLACK` / under loss / dilation | 2 ticks / 4 ticks (loss > 2 % or bursts) / ±3 % | `src/net/guest/leadController.js` |
+| input hold / coast / Robo Driver / stale press drop | 250 ms / → 1.5 s / after 1.5 s / 250 ms | `src/net/host/inputBuffer.js` |
+| timebase | TIMEBASE at start, pause, resume, skip and 1 Hz; resync if > 1 tick off or median residual > 3 ticks × 5 | `src/net/guest/hostTimeline.js` |
 | heartbeat | ping 4 Hz lobby, 2 Hz race; wobbly 3 s; asleep 8 s | `src/net/heartbeat.js` |
-| reconnect window | 60 s | `src/net/session/*` |
+| reconnect window | 60 s (M2) | `src/net/session/*` |
+| approval timeout | 120 s | `src/net/session/approval.js` |
 | ICE connect timeout | 15 s (1 ICE restart) | `src/net/transport/webrtc.js` |
-| public fallback | torrent → + nostr after 6 s | `src/net/signaling/public.js` |
-| `MAX_STATE_BYTES` / `MAX_CTRL_BYTES` | 1150 / 16384 | `src/net/codec.js` |
+| public fallback / guest dual start | torrent → + nostr after 6 s / public 4 s after Worker | `src/net/signaling/` |
+| `MAX_STATE_BYTES` / `MAX_CTRL_BYTES` / `CTRL_FRAGMENT_BYTES` | 1150 / 16384 / 1024 | `src/net/constants.js` |
+| `STATE_BUFFER_LIMIT` | max(1024, 2 × last state message) | `src/net/transport/webrtc.js` |
+| `WIRE_OVERHEAD_BYTES` / TURN UDP / TURN TLS / `SACK_BYTES` | 93 / 97 / 150 / 93 (16 bundled) | `src/net/constants.js` |
+| memory ctrl retransmit | max(RTT + 3 snapshot intervals, `RTO_MIN_MS` 300), ×2 per repeat, cap 3 s | `src/net/transport/memory.js` |
 | channel ids | state 8 (unordered, 0 retransmits), ctrl 9 (reliable) | `src/net/transport/webrtc.js` |
 | `MAX_LOCAL_PLAYERS` / `MAX_HUMANS` / karts | 4 / 8 / 8 | `src/config.js` |
 | `MAX_GUMDROPS` / `MAX_ROCKETS` | 24 / 8 | `src/race/itemSim.js` |
-| room code | 32 words × 4 digits (`SPRINKLE-4821`) | `src/net/session/roomCode.js` |
+| room label | 32 words × 4 digits (`SPRINKLE-4821`) | `src/net/session/roomCode.js` |
+| secret sweets / `ROOM_KDF_ITERATIONS` | 6 of 64 (36 bits; 54 with the label) / 150 000 (PBKDF2-SHA256) | `src/net/roomKey.js` |
+| match check | 2 of 32 animals, fresh per request | `src/net/session/approval.js` |
 | emote rate | 1 / 1.5 s / player | `src/net/emotes.js` |
-| TURN ttl / cache | 14 400 s / ≤ 5 min | `infra/signal-worker/src/turn.js` |
-| Worker caps | 1 host + 7 guests per room, 16 KiB msgs, 50 msg/s/socket, 20 joins/min/IP, room GC 2 h | `infra/signal-worker/src/room.js` |
+| TURN ttl (room / `/ice`) / cache / daily cap | 1800 s / 900 s / ≤ 5 min per room / `TURN_DAILY_MINTS` 500 | `infra/signal-worker/src/turn.js` |
+| Worker caps | 1 host + 7 guests per room, 16 KiB msgs, 50 msg/s/socket, 12 joins/min/room, 30 joins/min/IP, `/ice` 5/min/IP, room GC 2 h | `infra/signal-worker/src/{room,guard}.js` |
 | `PROTOCOL_VERSION` | 1 | `src/net/version.js` |
 
 ---
@@ -1462,3 +1592,8 @@ Multiplayer Networking" (mirror); Gaffer on Games "Snapshot Interpolation" and "
 macwright.com "Math keeps changing" (2020); scrapfly "Browser math OS fingerprint"; "Game networking 2: time,
 tick, clock synchronisation"; Chrome "Timer throttling in Chrome 88"; Apple Developer Forums 774239 / 799259;
 webrtcHacks Safari guide; murat-dogan/node-datachannel. Local measurements: branch `net-audit/sim-measure`.
+
+Design review (revision 2) additionally relies on standard references: RFC 4960 / RFC 9260 (SCTP: SACK,
+fast retransmit after 3 gap reports, RTO), RFC 3758 (PR-SCTP, `maxRetransmits: 0`), RFC 8260 (message
+interleaving, not assumed), RFC 8831 (WebRTC data channels), RFC 8018 (PBKDF2), the Gilbert–Elliott burst-loss
+model, and the WebKit iPadOS "desktop-class browsing" user agent (`MacIntel` + `maxTouchPoints > 1`).
