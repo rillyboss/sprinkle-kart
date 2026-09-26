@@ -6,8 +6,8 @@
  */
 import { cupOfTrack } from '../data/cups.js';
 
-/** Game modes. 'free' = the original single race; 'team' = Team Race; 'battle' = Bubble Pop Battle. */
-export const MODES = Object.freeze(['free', 'grand-prix', 'time-trial', 'team', 'battle']);
+/** Game modes. 'free' = the original single race; 'team' = Team Race; 'battle' = Bubble Pop Battle; 'daily' = Daily Sprinkle. */
+export const MODES = Object.freeze(['free', 'grand-prix', 'time-trial', 'team', 'battle', 'daily']);
 
 const modeOf = (setup) => (MODES.includes(setup?.mode) ? setup.mode : 'free');
 const cupIdOf = (setup, trackDef) => setup?.cupId ?? trackDef?.cup ?? cupOfTrack(trackDef?.id)?.id ?? null;

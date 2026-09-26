@@ -6,8 +6,9 @@
  *   BATTLE_WIDGET   the battle clock, YOUR bubbles (big) and a strip of every
  *                   racer's bubbles (little dots; out = a sleepy 💤)
  *   TEAM_WIDGET     live team score "🍭 36 — 22 ⭐" with your team highlighted
+ *   DAILY_WIDGET    today's Daily Sprinkle goal and how far along the family is
  *
- * The "what to show" logic is pure (battleHudModel / teamHudModel, unit tested).
+ * The "what to show" logic is pure (battleHudModel / teamHudModel / dailyHudModel, unit tested).
  * OWNER: showcase features & modes.
  */
 import '../../modes/showcase.css';
@@ -37,6 +38,15 @@ export function teamHudModel(kart, race) {
   const away = v.totals?.[AWAY_TEAM] ?? 0;
   const mine = kart?.team ?? HOME_TEAM;
   return { mine, home, away, leader: v.leader ?? null, sig: `${mine}|${home}|${away}|${v.leader}` };
+}
+
+/** @returns {null | { text: string, done: boolean, sig: string }} */
+export function dailyHudModel(race) {
+  const v = race?.modeInfo?.daily;
+  if (!v) return null;
+  const text = v.done ? `${v.emoji} Daily done! ☀️` : `☀️ ${v.emoji} ${v.goal}`;
+  const count = !v.done && v.target > 1 ? `${v.current}/${v.target}` : '';
+  return { text, count, done: !!v.done, sig: `${text}|${count}` };
 }
 
 const canDom = () => typeof document !== 'undefined';
@@ -124,6 +134,34 @@ export const TEAM_WIDGET = {
         away.classList.toggle('skt-mine', m.mine === AWAY_TEAM);
         home.classList.toggle('skt-lead', m.leader === HOME_TEAM);
         away.classList.toggle('skt-lead', m.leader === AWAY_TEAM);
+      },
+      reset() { sig = null; root.hidden = true; },
+      destroy() { root.remove(); },
+    };
+  },
+};
+
+export const DAILY_WIDGET = {
+  id: 'daily-hud',
+  anchor: 'top-center',
+  order: 22,
+  create(node) {
+    if (!canDom() || !node?.appendChild) return noop;
+    const root = mk('div', 'skd-hud', node);
+    root.hidden = true;
+    const label = mk('span', null, root);
+    const count = mk('b', null, root);
+    let sig = null;
+    return {
+      update(kart, race) {
+        const m = dailyHudModel(race);
+        root.hidden = !m;
+        if (!m || m.sig === sig) return;
+        sig = m.sig;
+        label.textContent = m.text;
+        count.textContent = m.count;
+        count.hidden = !m.count;
+        root.classList.toggle('skd-hud-done', m.done);
       },
       reset() { sig = null; root.hidden = true; },
       destroy() { root.remove(); },

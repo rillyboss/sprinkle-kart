@@ -250,3 +250,64 @@
   box-shadow: 0 0.15em 0 rgba(90, 50, 160, 0.3);
   flex: 0 0 auto;
 }
+
+/* ---------- Daily Sprinkle screen ---------- */
+.skd-daily { gap: 0.8em; }
+.skd-card {
+  display: flex;
+  align-items: stretch;
+  gap: 1.4em;
+  width: min(100%, 50em);
+  padding: 1em 1.2em;
+  border-radius: 2em;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 0.25em #fff, 0 0 0 0.5em #ffd23f, var(--sk-shadow);
+  animation: sk-pop-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.skd-track { flex: 0 0 15em; display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
+.skd-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 5 / 3;
+  border-radius: 1.2em;
+  overflow: hidden;
+  background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.9) 0 10%, transparent 32%), linear-gradient(160deg, var(--c1), var(--c2));
+}
+.skd-art svg { position: absolute; inset: 8% 10%; width: 80%; height: 84%; }
+.skd-art polygon { fill: rgba(255, 255, 255, 0.3); stroke: #fff; stroke-width: 3; stroke-linejoin: round; }
+.skd-art span { position: absolute; filter: drop-shadow(0 0.1em 0 rgba(0, 0, 0, 0.12)); }
+.skd-art .a1 { font-size: 3em; left: 50%; top: 50%; transform: translate(-50%, -50%); animation: sk-hop 1.2s ease-in-out infinite; }
+.skd-art .a2 { font-size: 1.5em; left: 8%; bottom: 6%; }
+.skd-art .a3 { font-size: 1.4em; right: 8%; top: 8%; }
+.skd-track-name { font-weight: 700; font-size: 1.15em; text-align: center; }
+.skd-speed { font-weight: 600; font-size: 0.85em; padding: 0.1em 0.8em; border-radius: 1em; background: #fff3c4; }
+.skd-info { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 0.3em; min-width: 0; }
+.skd-label { font-size: 0.78em; font-weight: 700; color: var(--sk-ink-soft); text-transform: uppercase; letter-spacing: 0.08em; }
+.skd-goal { font-size: 1.6em; font-weight: 700; color: var(--sk-ink); display: flex; align-items: center; gap: 0.35em; line-height: 1.1; }
+.skd-goal-e { font-size: 1.2em; animation: sk-bob 1.4s ease-in-out infinite; }
+.skd-twist { font-size: 1.05em; font-weight: 600; color: #6b4aa8; background: rgba(240, 232, 255, 0.9); padding: 0.2em 0.8em; border-radius: 1.2em; align-self: flex-start; }
+.skd-status { display: flex; flex-wrap: wrap; gap: 0.4em; margin-top: 0.4em; font-size: 0.9em; font-weight: 700; }
+.skd-status span { padding: 0.15em 0.8em; border-radius: 1.2em; }
+.skd-done { background: #dcf8e6; color: #2f9d63; }
+.skd-new { background: #fff3c4; color: #b07a00; }
+.skd-streak { background: #ffe3d1; color: #e0602a; }
+
+/* ---------- Daily Sprinkle HUD widget ---------- */
+.skd-hud[hidden] { display: none !important; }
+.skd-hud {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.06em 0.7em 0.06em 0.4em;
+  border-radius: 2em;
+  background: rgba(255, 250, 230, 0.94);
+  box-shadow: 0 0.12em 0 rgba(200, 140, 0, 0.3);
+  font-size: 0.72em;
+  font-weight: 700;
+  color: var(--sk-ink);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.skd-hud b { color: #e08a00; font-variant-numeric: tabular-nums; }
+.skd-hud.skd-hud-done { background: #dcf8e6; color: #2f9d63; }
+.skd-hud.skd-hud-done b { color: #2f9d63; }

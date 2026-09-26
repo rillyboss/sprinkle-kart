@@ -158,7 +158,7 @@ export function earnGoals(p, today = todayString()) {
  * Count the mode results a RaceSummary carries into goal counters (mutates p.goals).
  *   summary.battle  -> battlesPlayed, battlesWon, bubblesPopped
  *   summary.team    -> teamRaces, teamWins
- *   summary.daily   -> dailyDone (when summary.daily.done)
+ *   summary.daily   -> dailyDone (when summary.daily.counted: the first completion of a day)
  *   a win where the winning human never got bonked -> cleanWins
  */
 export function applyGoalCounters(p, summary) {
@@ -175,7 +175,7 @@ export function applyGoalCounters(p, summary) {
     c.teamRaces += 1;
     if (summary.team.winner === (summary.team.homeTeam ?? 'sprinkle')) c.teamWins += 1;
   }
-  if (summary.daily?.done) c.dailyDone += 1;
+  if (summary.daily?.counted) c.dailyDone += 1;
   if (summary.mode !== 'battle' && summary.mode !== 'time-trial') {
     const clean = humans.some((h) => h.finished && !h.estimated && h.place === 1 && h.stats && num(h.stats.bonked) === 0);
     if (clean) c.cleanWins += 1;

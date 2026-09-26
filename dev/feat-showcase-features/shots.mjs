@@ -55,6 +55,35 @@ const scenarios = {
       await shot(`battle-results-${players}p`);
     }
   },
+  async daily() {
+    await page.goto(`${BASE}?unlockreset=1`);
+    await wait(() => window.__game?.state === 'menu' && window.__game.menus?.screenId === 'title');
+    await page.waitForTimeout(800);
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'join');
+    await page.waitForTimeout(600);
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'mode-select');
+    await page.waitForTimeout(900);
+    await key('KeyS');
+    await key('KeyD');
+    await page.waitForTimeout(500);
+    await shot('daily-0-modes');
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'daily');
+    await page.waitForTimeout(1500);
+    await shot('daily-1-card');
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'character-select');
+    await page.waitForTimeout(700);
+    await key('Enter');
+    await wait(() => window.__game.menus.screenId === 'daily');
+    await page.waitForTimeout(700);
+    await key('Enter');
+    await wait(() => window.__game?.state === 'race' && window.__game.race?.state === 'racing');
+    await wait((t1) => (window.__game.race?.time ?? 0) > t1, 6);
+    await shot('daily-2-race');
+  },
   async team() {
     const players = process.env.P || '2';
     await page.goto(`${BASE}?quick=${process.env.TRACK || 'gumdrop-meadow'}&mode=team&players=${players}&autodrive=1&fastfinish=1&simspeed=${process.env.SIM || 1}`);

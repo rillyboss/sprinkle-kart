@@ -30,8 +30,8 @@ export function applyModeChoice(draft, mode) {
   restoreParty(draft);
   draft.mode = m;
   if (!draft.skip) draft.skip = new Set();
-  // Grand Prix picks a cup and Bubble Battle an arena instead of a track.
-  if (m === 'grand-prix' || m === 'battle') draft.skip.add('track-select');
+  // Grand Prix picks a cup, Bubble Battle an arena and the Daily Sprinkle has its own track.
+  if (m === 'grand-prix' || m === 'battle' || m === 'daily') draft.skip.add('track-select');
   else draft.skip.delete('track-select');
   if (m === 'time-trial') {
     const players = draft.joinState?.players ?? [];

@@ -12,7 +12,7 @@
  * OWNER: modes + timing workstream.
  */
 /** Same list as MODES in src/game/summary.js (kept import-free so Race.js stays light). */
-const MODE_IDS = ['free', 'grand-prix', 'time-trial', 'team', 'battle'];
+const MODE_IDS = ['free', 'grand-prix', 'time-trial', 'team', 'battle', 'daily'];
 
 /** Sprinkle boosts a Time Trial starts with. */
 export const TIME_TRIAL_BOOSTS = 3;

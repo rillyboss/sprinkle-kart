@@ -1,9 +1,9 @@
 /**
- * Adds the Bubble Battle and Team Race HUD widgets (src/ui/widgets/showcaseModes.js)
+ * Adds the Bubble Battle, Team Race and Daily Sprinkle HUD widgets (src/ui/widgets/showcaseModes.js)
  * to every player's HUD. They stay hidden unless their mode is running.
  * OWNER: showcase features & modes.
  */
-import { BATTLE_WIDGET, TEAM_WIDGET } from '../ui/widgets/showcaseModes.js';
+import { BATTLE_WIDGET, TEAM_WIDGET, DAILY_WIDGET } from '../ui/widgets/showcaseModes.js';
 
 /** @type {import('./index.js').SystemDef} */
 export default {
@@ -11,7 +11,7 @@ export default {
   order: 16,
   install(bus, app) {
     if (typeof app?.hud?.addWidget !== 'function') return undefined;
-    const removers = [app.hud.addWidget(BATTLE_WIDGET), app.hud.addWidget(TEAM_WIDGET)];
+    const removers = [app.hud.addWidget(BATTLE_WIDGET), app.hud.addWidget(TEAM_WIDGET), app.hud.addWidget(DAILY_WIDGET)];
     return () => removers.forEach((r) => r?.());
   },
 };

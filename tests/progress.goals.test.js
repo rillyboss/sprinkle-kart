@@ -147,7 +147,8 @@ describe('applyGoalCounters (mode results)', () => {
 
   it('daily sprinkles and junk summaries', () => {
     const p = P();
-    applyGoalCounters(p, { mode: 'free', humans: [], daily: { done: true } });
+    applyGoalCounters(p, { mode: 'free', humans: [], daily: { done: true, counted: true } });
+    applyGoalCounters(p, { mode: 'free', humans: [], daily: { done: true, counted: false } }); // same day again
     applyGoalCounters(p, { mode: 'free', humans: [], daily: { done: false } });
     applyGoalCounters(p, null);
     expect(p.goals.counters.dailyDone).toBe(1);

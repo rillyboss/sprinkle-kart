@@ -812,6 +812,46 @@ async function teamTest(t) {
 }
 
 /**
+ * Daily Sprinkle (showcase features): the mode-select button opens today's challenge card,
+ * A → character select → the card again → the race (with the daily HUD pill), then a quick
+ * autodriven daily race (?mode=daily) reaches the results with summary.daily filled in.
+ */
+async function dailyTest(t) {
+  const shot = (n) => t.shot(`daily-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
+  await pressKey(t, 'Enter', onScreen('join', 'join screen'));
+  await pressKey(t, 'Enter', onScreen('mode-select', 'mode select'));
+  await waitMenusReady(t.page);
+  await pressKey(t, 'KeyS');                                            // down → the button row
+  const idx = await t.page.evaluate(() => [...document.querySelectorAll('.sk-mode-entry')].findIndex((b) => /Daily/.test(b.textContent)));
+  t.check(idx >= 0, 'no Daily Sprinkle button on the mode select');
+  for (let i = 0; i < idx; i++) await pressKey(t, 'KeyD');
+  await pressKey(t, 'Enter', onScreen('daily', 'Daily Sprinkle card'));
+  await waitMenusReady(t.page);
+  await shot('1-card');
+  const card = await t.page.evaluate(() => ({ goal: document.querySelector('.skd-goal')?.textContent, twist: document.querySelector('.skd-twist')?.textContent }));
+  t.check(!!card.goal && !!card.twist, `daily card incomplete ${JSON.stringify(card)}`);
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select (daily)'));
+  await pressKey(t, 'Enter', onScreen('daily', 'Daily Sprinkle card before the race'));
+  await waitMenusReady(t.page);
+  await pressKey(t, 'Enter', { ...inState('race', 'the daily race to start'), timeout: T(30000) });
+  const setup = await t.page.evaluate(() => window.__game.setup);
+  t.check(setup.mode === 'daily' && setup.daily?.goal?.text && setup.trackId === setup.daily.trackId, `bad daily setup ${JSON.stringify(setup)}`);
+  await waitGame(t.page, () => window.__game?.race?.state === 'racing', null, T(60000), 'daily GO');
+  await waitFrames(t.page, 3);
+  const pill = await t.page.evaluate(() => document.querySelector('.skd-hud:not([hidden])')?.textContent ?? '');
+  t.check(pill.includes('☀️'), `daily HUD pill missing (${pill})`);
+  await shot('2-race');
+  await t.page.goto(`${BASE}?mode=daily&autodrive=1&fastfinish=1&simspeed=8&unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'results', null, T(300000), 'daily results');
+  const daily = await t.page.evaluate(() => window.__game.lastResults?.summary?.daily);
+  t.check(daily && typeof daily.done === 'boolean' && daily.goal?.text, `summary.daily missing (${JSON.stringify(daily)})`);
+  t.detail = `goal="${daily?.goal?.text}" done=${daily?.done}`;
+  checkErrors(t);
+}
+
+/**
  * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
  * To add one, append your function above and one line here — nothing else to edit.
  */
@@ -826,6 +866,7 @@ const FLOW_TESTS = {
   'modes-time-trial': timeTrialTest,
   'modes-battle': battleTest,
   'modes-team': teamTest,
+  'modes-daily': dailyTest,
 };
 
 /* ---------------- runner ---------------- */

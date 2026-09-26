@@ -56,6 +56,9 @@ import { raceRecordEligible } from './modes/timing.js';
 import { getArena, nextArenaId, arenaIdOr } from './modes/arenas/index.js';
 import { createBattleSession } from './modes/battleSession.js';
 import { createTeamSession, createTeamSeries } from './modes/teamSession.js';
+import { dailyChallenge, dailyRules } from './modes/daily.js';
+import { createDailySession } from './modes/dailySession.js';
+import { todayString } from './progress/goals.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -250,6 +253,7 @@ async function flow() {
     else if (mode === 'time-trial') previous = await runTimeTrial(setup);
     else if (mode === 'battle') previous = await runBattle(setup);
     else if (mode === 'team') previous = await runTeamRaces(setup);
+    else if (mode === 'daily') previous = await runDaily(setup);
     else previous = await runFreeRaces(setup);
     // 'menu' / 'quit' → back to the join screen with everyone still there.
     previous = menuPrevious(previous);
@@ -300,6 +304,25 @@ async function runTeamRaces(setup) {
     });
     if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, availableTracks()) };
   } while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart');
+  return setup;
+}
+
+/**
+ * Daily Sprinkle: today's challenge (track, speed, goal, twist — src/modes/daily.js).
+ * The menus hand over the challenge in setup.daily; a quick start (?mode=daily) rolls today's.
+ */
+async function runDaily(setup) {
+  const challenge = setup.daily ?? dailyChallenge(todayString(), availableTracks().map((t) => t.id));
+  const track = findTrack(challenge.trackId) ?? availableTracks()[0] ?? TRACKS[0];
+  setup = { ...setup, mode: 'daily', daily: challenge, trackId: track.id, speedClass: setup.speedClass ?? challenge.speedClass, laps: params.laps ?? track.laps };
+  let outcome;
+  do {
+    outcome = await playRace(setup, {
+      rules: dailyRules(challenge),
+      controller: (ctx) => createDailySession({ ...ctx, challenge }),
+      resultOptions: [['again', 'Try again', '🔁'], ['menu', 'Menu', '🏠']],
+    });
+  } while (outcome === 'again' || outcome === 'restart' || outcome === 'next-track');
   return setup;
 }
 
@@ -397,7 +420,7 @@ function playRace(setup, opts = {}) {
 /**
  * @param {object} setup RaceSetup (+ mode, cupId, cpuIds for a Grand Prix)
  * @param {(outcome:string)=>void} done
- * @param {{ resultOptions?: Array, onRaceEnd?: (summary, session)=>void, trackDef?: object, trackModule?: object,
+ * @param {{ resultOptions?: Array, onRaceEnd?: (summary, session)=>void, trackDef?: object, trackModule?: object, rules?: object,
  *   controller?: (ctx) => { onEvent?, update?, decorateSummary?, showResults?, dispose? } }} [opts]
  *   trackDef / trackModule race somewhere that is not a registered track (a battle arena);
  *   controller(ctx) builds a mode controller once the Race exists (ctx: race, scene, session, setup,
@@ -406,7 +429,7 @@ function playRace(setup, opts = {}) {
 function startRace(setup, done, opts = {}) {
   const trackDef = opts.trackDef ?? getTrack(setup.trackId);
   const mode = modeId(setup.mode);
-  const rules = rulesForMode(mode);
+  const rules = opts.rules ?? rulesForMode(mode);
   const theme = trackDef.theme || {};
   const humans = [...setup.players].sort((a, b) => a.playerIndex - b.playerIndex).slice(0, MAX_PLAYERS);
 

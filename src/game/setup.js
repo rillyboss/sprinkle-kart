@@ -53,6 +53,7 @@ const MODE_ALIASES = {
   tt: 'time-trial', 'time-trial': 'time-trial', timetrial: 'time-trial', trial: 'time-trial',
   battle: 'battle', bubble: 'battle', 'bubble-battle': 'battle',
   team: 'team', 'team-race': 'team', teams: 'team',
+  daily: 'daily', 'daily-sprinkle': 'daily',
 };
 
 /** ?mode=gp|tt|free|battle|team (and long names) -> 'grand-prix' | 'time-trial' | 'free' | 'battle' | 'team' | null. */
@@ -61,9 +62,9 @@ export function modeParam(v) {
   return MODE_ALIASES[String(v).trim().toLowerCase()] ?? null;
 }
 
-/** True when the URL asks to skip the menus (?quick=..., ?mode=gp&cup=... or ?mode=battle). */
+/** True when the URL asks to skip the menus (?quick=..., ?mode=gp&cup=..., ?mode=battle or ?mode=daily). */
 export function wantsQuickStart(params) {
-  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup) || params.mode === 'battle';
+  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup) || params.mode === 'battle' || params.mode === 'daily';
 }
 
 /** Fisher–Yates shuffle (returns a new array). */

@@ -25,7 +25,8 @@ export function timerModel(kart, race) {
   const gap = race?.modeInfo?.ghostGap;
   const rules = race?.rules;
   let boosts = null;
-  if (rules?.startItem) boosts = kart?.item === rules.startItem ? Math.max(0, kart.itemCharges || 0) : 0;
+  // the sprinkle-boost counter (Time Trial); other starting items (Daily Sprinkle twists) are not boosts
+  if (rules?.startItem === 'triple-sprinkle' || rules?.startItem === 'sprinkle-boost') boosts = kart?.item === rules.startItem ? Math.max(0, kart.itemCharges || 0) : 0;
   return {
     main: formatTime(raceClock(kart, race)),
     lapLabel: finished ? 'FINISH' : `LAP ${Math.max(1, kart?.lap ?? 1)}`,
