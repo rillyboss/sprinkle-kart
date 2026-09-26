@@ -173,11 +173,11 @@ export class BurstField {
           this._m.makeScale(sc, sc, sc).setPosition(p.x, p.y, p.z);
           mesh.setMatrixAt(p.idx, this._m);
         } else {
-          d.position.set(p.x, p.y, p.z);
-          d.rotation.set(p.t * p.spin, p.t * p.spin * 0.7, 0);
-          d.scale.setScalar(sc);
-          d.updateMatrix();
-          mesh.setMatrixAt(p.idx, d.matrix);
+          // stars spin around Y only: one cheap rotation instead of a full Euler compose
+          const a = p.t * p.spin;
+          const c = Math.cos(a) * sc, s2 = Math.sin(a) * sc;
+          this._m.set(c, 0, s2, p.x, 0, sc, 0, p.y, -s2, 0, c, p.z, 0, 0, 0, 1);
+          mesh.setMatrixAt(p.idx, this._m);
         }
       }
       mesh.instanceMatrix.needsUpdate = true;
