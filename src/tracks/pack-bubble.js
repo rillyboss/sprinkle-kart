@@ -7,6 +7,7 @@
 import bubblegumBay from './bubblegum-bay.js';
 import mermaidLagoon from './mermaid-lagoon.js';
 import teddyToyland from './teddy-toyland.js';
+import honeycombHive from './honeycomb-hive.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [bubblegumBay, mermaidLagoon, teddyToyland];
+export default [bubblegumBay, mermaidLagoon, teddyToyland, honeycombHive];
