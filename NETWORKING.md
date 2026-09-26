@@ -10,6 +10,13 @@ scripts on branch `origin/net-audit/sim-measure`: `dev/net-design/measure-sim.mj
 `measure-quant-reconcile.mjs`), **B** session/menus/progress, **C** technology research (sources in §20).
 Numbers marked **(measured)** come from those scripts; they are the regression baseline.
 
+**Revision 2** (design review): adds the per-display timeline table (§9.1), a re-anchorable host timebase
+(TIMEBASE, §7.3/§9.9), wire-byte bandwidth maths (§9.4), burst-loss input redundancy and a drift press counter
+(§6.1/§9.2), tight state-channel backpressure and ctrl fragmentation (§4.1), fair grid slots (§8.6), wider timer
+fields (§5), unguessable rooms with invite links + "secret sweets" (§4.2), a match check on the approval prompt
+and lock-on-remove (§1, §10.9), TURN credentials only for rooms (§4.2), dual matchmaker with fallback (§3),
+an honest privacy sentence (§1), dev origins (§4.2), and a milestone **ship ladder** M1 → M3 (§16.4, §17).
+
 Contents:
 [1 Goals](#1-goals-non-goals-and-kid-safety) · [2 Topology](#2-topology-and-rationale) ·
 [3 Stack](#3-stack-binding-infrastructure) · [4 Transport](#4-transport-nettransport-signaling-channels) ·
@@ -38,7 +45,7 @@ friends… sync everything." Concretely:
 | G5 | **Everything syncs**: karts, items, boxes, battle bubbles, countdown, laps, finish order, results, GP points, ceremony, sounds/FX/voice lines. | convergence + identical-results tests |
 | G6 | Every machine keeps its **own** progress (unlocks, stickers, records) and is never credited for someone else's win. | localize tests |
 | G7 | Works with zero setup (public signaling) and gets more reliable when the grown-up deploys our Cloudflare Worker + TURN. | check-connection tests |
-| G8 | Online never breaks local play: with online off the game is byte-for-byte the v2 experience and every existing test passes unchanged. | full suite |
+| G8 | Online never breaks local play: with online off, gameplay at 60 Hz is identical to v2 (goldens and every existing test unchanged); on 30/75/120/144 Hz displays races now match 60 Hz behaviour (a deliberate fix, §8.1). Rendering interpolates between ticks, which adds ≤ 16.7 ms display delay on high-refresh monitors. | full suite + `tests/race.fixedstep.latency.test.js` |
 
 **Non-goals (v1 of online):** public matchmaking / lobbies list · strangers · accounts, names, avatars,
 chat · dedicated servers or an SFU · host migration (host leaves → the race ends gracefully) · lockstep or
@@ -52,23 +59,38 @@ never host, §13).
 1. **Off by default, behind the parent gate.** `settings.onlineEnabled` (default `false`) lives in
    *Settings → Grown-ups* behind the existing parent gate. Until it is on, the title screen shows no Online
    entry and no network code is even downloaded (lazy `import()`).
-2. **Friends-only room codes.** Codes look like `SPRINKLE-4821`: a word from a fixed list of 32 cute words
-   (`SPRINKLE`, `CUPCAKE`, `GUMDROP`, …) + 4 digits = 320 000 codes. Rooms are never listed anywhere. Codes are
-   entered with the controller (word wheel + digit wheels) or keyboard.
-3. **The host approves every new house** ("🏡 A new house wants to join! Let them in?") — default on;
-   the host can also **lock** the room ("No more houses, please").
+2. **Friends-only, unguessable rooms.** A room has a friendly **label** like `SPRINKLE-4821` (a word from a
+   fixed list of 32 cute words + 4 digits) **and** a secret of 6 **"secret sweets"** (6 picks from a fixed
+   64-treat palette, e.g. 🍩🦄🍓🍭🧁🌈 = 36 bits). Label + sweets together (54 bits) are stretched with a slow
+   key-derivation function into the room key (§4.2); the matchmaker only ever sees ids derived from that key.
+   Rooms are never listed anywhere. Friends join with the **invite link** (`#join=` fragment, "Copy invite
+   link 📋" / QR code on the host's lobby, §10.1) or by entering label + sweets with the controller (word
+   wheel, digit wheels, sweets grid) or keyboard. The label alone is **not** enough to find a room.
+3. **The host approves every new house — always** (not a setting). The prompt shows a **match check**: the
+   joining machine draws 2 random animal emoji (e.g. 🦊🐸), shows them on its own "Waiting for the host…"
+   screen, and the host's prompt says "Ask your friend: do you see 🦊🐸? Let them in?" so the grown-ups can
+   confirm over the phone. Prompts never pop up mid-race: they queue and appear at results or in the lobby.
+   The optional Grown-ups setting **"Only a grown-up can let houses in"** puts the Yes button behind the
+   parent gate. The host can also **lock** the room ("No more houses, please").
 4. **No free text anywhere.** No typed names, no chat. Remote players are labelled with their house
    emoji + racer name ("🏡 Luna Lollicorn"). Communication = 8 **preset emotes** (§10.7). Every string in
    every network message is validated against a registry or an enum; anything else is dropped (§6.4).
-5. **The host can remove a house or a single player** at any time; removed peers are blocked for the rest of
-   the session (and by the Worker for that room).
-6. **No personal data leaves the machine.** Peer ids are random per session; no analytics; no names.
-   WebRTC does reveal a machine's internet address to the other players (like any video call) — the
-   Grown-ups screen says so in one friendly sentence, and when our TURN relay is available it offers
-   **"Hide our address (use the relay)"** (`iceTransportPolicy: 'relay'`).
+5. **The host can remove a house or a single player** at any time. Removing a house **locks the room**
+   ("Room locked 🔒 — tap to open again"), so a removed house that reloads (and so gets a new random peer id)
+   is refused by the room state, not by its old id. Re-opening the room brings back the approval prompt with
+   a fresh match check. We never promise that a removal survives the host re-opening the room.
+6. **Honest privacy.** No names, chat, accounts or analytics are sent; peer ids are random per session.
+   Like any video call, WebRTC shows your **internet address** to: your friends' computers, the free
+   public matchmaking services (WebTorrent trackers and Nostr relays run by other people, §3) and public STUN
+   servers (Google, Cloudflare) — or our own Cloudflare server instead, once a grown-up sets it up. The
+   Grown-ups screen shows this sentence **before** online can be switched on (acceptance M1-12). When our
+   TURN relay exists it offers **"Use the relay for game traffic"** (`iceTransportPolicy: 'relay'`), which
+   hides your address from your friends' computers only (the matchmaker still sees it). Debug overlay and
+   "For grown-ups" rows show candidate **types** (host/srflx/relay), never raw IP addresses.
 7. **Friendly words only**, also in errors ("The host's house went to sleep 😴" rather than
    technical or scary wording). A friendly-words test (`tests/net.tone.test.js`, same word list as the existing screen/track tone checks) runs over every new string.
-8. **Rate limits** on emotes (1 per 1.5 s per player), joins (Worker: per IP and per room) and message sizes.
+8. **Rate limits** on emotes (1 per 1.5 s per player), joins (Worker: per room in the room's Durable Object,
+   and per IP in a global guard object, §4.2), `/ice`, and message sizes.
 
 ---
 
@@ -79,7 +101,7 @@ machine connects only to the host (never to other guests).
 
 ```
             guest house B (2 players)            guest house C (1 player)
-                     \   inputs 60 Hz ↑  ↓ snapshots 30 Hz + events   /
+                     \   inputs 30 Hz ↑  ↓ snapshots 30 Hz + events   /
                       \                                              /
                        +-------------- HOST house A ---------------+
                        |  authoritative Race @ fixed 60 Hz          |
@@ -92,7 +114,7 @@ machine connects only to the host (never to other guests).
 
 | Option | Verdict | Why |
 |---|---|---|
-| **Host-authoritative star, snapshots + interpolation + prediction** | **Chosen** | Tolerates cross-browser float differences (only the host simulates the truth), hides latency for your own kart, costs nothing to run, ≤ 8 humans fits one home uplink (≈ 0.6–0.8 Mbps, §9.4). |
+| **Host-authoritative star, snapshots + interpolation + prediction** | **Chosen** | Tolerates cross-browser float differences (only the host simulates the truth), hides latency for your own kart, costs nothing to run, ≤ 8 humans fits one home uplink (≈ 0.85 Mbps typical, ≤ 1.6 Mbps worst case incl. packet overhead, §9.4). |
 | Deterministic lockstep | Rejected | Sim is chaotic and not bit-reproducible across engines: ECMAScript Math.sin/cos/atan2/pow/exp are "implementation-approximated" (V8 ≠ SpiderMonkey ≠ JSC), Kart/Items/AI/TrackPath call them ~49 times; **(measured)** ±2 ms of dt jitter already changes the winner. Also adds input delay = worst RTT for everyone. |
 | Rollback (GGPO-style) | Rejected | Same determinism problem, plus hidden state in CPU brains/WeakMaps and 8 karts × re-sim cost. |
 | Full mesh P2P | Rejected | 28 links for 8 machines, no single truth for items/CPUs, NAT failure probability multiplies. |
@@ -100,8 +122,8 @@ machine connects only to the host (never to other guests).
 
 Why star is fair enough for kids: with the **input lead** (§9.2) a guest's inputs reach the host *before*
 the tick they belong to, so the host simulates a guest's own driving exactly on time — racing lines, drifts,
-boost pads and finish times are not handicapped by latency. The only asymmetry is how early you *see*
-others (§9.8).
+boost pads and finish times are not handicapped by latency. The remaining asymmetries are how early you *see*
+others (§9.8) and grid position, which is drawn fairly per race (§8.6).
 
 ---
 
@@ -112,14 +134,14 @@ Everything here matches docs/INFRA_SETUP.md; names are exact and tested (`tests/
 | Layer | Choice | Notes |
 |---|---|---|
 | Game hosting | **GitHub Pages** `https://rillyboss.github.io/sprinkle-kart/` via `.github/workflows/pages.yml` | pages.yml passes repo variable `VITE_SIGNAL_URL` into the build. Vite `base: './'`. |
-| Signaling (default, zero setup) | **Public signaling** via Trystero **0.25.4**: `@trystero-p2p/torrent` first, then `@trystero-p2p/nostr` after 6 s without a peer | Behind `SignalingTransport` (§4.2). Lazy-loaded chunk (~20–24 KB gzip each), only after the player opens Online. Tracker/relay lists live in `src/net/signaling/relays.js` (config, not code). Import from `@trystero-p2p/*` — `trystero/<strategy>` subpaths now throw. |
-| Signaling (ours) | **Cloudflare Worker** `infra/signal-worker/`, `wrangler.toml` `name = "sprinkle-kart-signal"`, SQLite-backed Durable Object class **`SignalRoom`** via `[[migrations]] tag = "v1"`, `new_sqlite_classes = ["SignalRoom"]` (never mix with the `[exports]` style) | Free-plan compatible (Hibernation WebSocket API). Endpoints `GET /health` → `{ ok, turn, version }`, `GET /ice` → ICE servers incl. short-lived Cloudflare TURN creds, `GET /room/:code` → WebSocket signaling. `vars.ALLOWED_ORIGINS = "https://rillyboss.github.io,http://localhost:5173"`. |
-| Selection | The game uses the Worker **iff** build-time `import.meta.env.VITE_SIGNAL_URL` is non-empty; otherwise public signaling. | `src/net/signaling/index.js chooseSignaling()`; dev override `?signal=worker&signalUrl=…` / `?signal=public&relays=…` only on localhost / dev builds (for e2e). |
-| TURN | **Cloudflare Realtime TURN**; the Worker mints creds with secrets `TURN_KEY_ID` + `TURN_KEY_API_TOKEN`: `POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate-ice-servers`, `Authorization: Bearer {TURN_KEY_API_TOKEN}`, body `{"ttl": 14400}` | Filter out `:53` URLs; cache per isolate ≤ 5 min; `/health.turn` is true only when both secrets exist. **Secrets never in the repo.** Without the Worker: public STUN only (`stun:stun.cloudflare.com:3478`, `stun:stun.l.google.com:19302`). |
+| Signaling (default, zero setup) | **Public signaling** via Trystero **0.25.4**: `@trystero-p2p/torrent` first, then `@trystero-p2p/nostr` after 6 s without a peer | Behind `SignalingTransport` (§4.2). Lazy-loaded chunk (~20–24 KB gzip each), only after the player opens Online. **Third-party services used (named in the privacy sentence, §1 rule 6):** WebTorrent trackers `wss://tracker.openwebtorrent.com`, `wss://tracker.webtorrent.dev`, `wss://open.ftorrent.com`; Nostr relays `wss://nos.lol`, `wss://relay.damus.io`, `wss://purplerelay.com`, `wss://yabu.me/v2`, `wss://nostr.data.haus` (Nostr relays may store the short-lived, encrypted signaling events); STUN `stun.cloudflare.com`, `stun.l.google.com`. Lists live in `src/net/signaling/relays.js` (config, not code). Import from `@trystero-p2p/*` — `trystero/<strategy>` subpaths now throw. |
+| Signaling (ours) | **Cloudflare Worker** `infra/signal-worker/`, `wrangler.toml` `name = "sprinkle-kart-signal"`, SQLite-backed Durable Object class **`SignalRoom`** via `[[migrations]] tag = "v1"`, `new_sqlite_classes = ["SignalRoom"]` (never mix with the `[exports]` style) | Free-plan compatible (Hibernation WebSocket API). Endpoints `GET /health` → `{ ok, turn, version }`, `GET /ice` → ICE servers incl. short-lived Cloudflare TURN creds (**only for Check connection**: rate-limited 5/min per IP, ttl 900 s), `GET /room/:code` → WebSocket signaling, where `:code` is the key-derived room id (§4.2), never the spoken label; rooms receive their TURN creds inside the WebSocket. `vars.ALLOWED_ORIGINS = "https://rillyboss.github.io,http://localhost:5173"` (production; `wrangler dev` overrides it via the gitignored `infra/signal-worker/.dev.vars`, §4.2). The same `SignalRoom` class also runs one reserved instance named `guard` (global per-IP limits + daily TURN cap), so the binding migration never changes. |
+| Selection | **Dual matchmaker.** A build with `import.meta.env.VITE_SIGNAL_URL` set makes the **host join both** the Worker and public signaling for the same room; guests try the Worker first and add public signaling after 4 s (or at once when `/health` fails). A build without it uses public signaling only. So host-on-new-build + guest-on-cached-old-build still meet (on public), and a Worker that is down or over its free quota degrades to public instead of breaking online. | `src/net/signaling/index.js chooseSignaling({ signalUrl, health })` → ordered list of transports; dev override `?signal=worker&signalUrl=…` / `?signal=public&relays=…` only on localhost / dev builds (for e2e). The "couldn't find that room" message adds "Ask everyone to refresh 🔄". |
+| TURN | **Cloudflare Realtime TURN**; the Worker mints creds with secrets `TURN_KEY_ID` + `TURN_KEY_API_TOKEN`: `POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate-ice-servers`, `Authorization: Bearer {TURN_KEY_API_TOKEN}`, body `{"ttl": 1800}` (room sockets; refreshed on ICE restart via `{ t: 'ice' }`) or `{"ttl": 900}` (`/ice`) | Filter out `:53` URLs; cached **per room** in its Durable Object for ≤ 5 min (never shared across rooms); a **daily mint cap** (`TURN_DAILY_MINTS = 500`) in the guard instance, after which `/health.turn` reports false and rooms get STUN only; `/health.turn` is true only when both secrets exist and the cap is not reached. **Secrets never in the repo.** Without the Worker: public STUN only (`stun:stun.cloudflare.com:3478`, `stun:stun.l.google.com:19302`). |
 | Worker CI | Optional `.github/workflows/worker.yml` (cloudflare/wrangler-action@v4) runs only when secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` exist (job-level `if:` on an env mirror of the secret). | The Cloudflare account does **not** exist yet — nothing is deployed by any workstream. |
-| npm scripts (root) | `worker:dev` (local `wrangler dev`, no account), `worker:test` (`@cloudflare/vitest-plugin` 1.2.8), `worker:deploy` | Worker has its own `infra/signal-worker/package.json` + lockfile (wrangler 4.141.x) so root `npm ci` stays light. **wrangler ≥ 4.88 needs Node 22+** (CI uses 24; locally `nvm use 25.4.0`); scripts print a friendly error on older Node. INFRA_SETUP "Node 20" is corrected by WS3. |
-| Runtime deps | `three` (existing) + the two lazy Trystero packages | A documented exception to "no new runtime deps" (house style): they load only inside the online chunk. The netcode itself (codec, interpolation, prediction) is hand-written. |
-| Test deps | vitest (existing), Playwright (existing), optional `node-datachannel@0.33.4` (skipped if its binary won't load) | Worker tests run under Node 22+ only (`worker:test`); the pure room logic is also tested by the main suite on any Node. |
+| npm scripts (root) | `worker:dev` (local `wrangler dev`, no account), `worker:test` (`@cloudflare/vitest-plugin` 1.2.8), `worker:deploy`, plus `worker:login` and `worker:secret` (for INFRA_SETUP) | All are thin wrappers over `node scripts/worker.mjs <cmd>` (landed with this design, P0): it checks **Node 22+** with a friendly message, runs `npm ci --prefix infra/signal-worker` on first use, then runs the **pinned** `infra/signal-worker/node_modules/.bin/wrangler` (never an unpinned `npx wrangler`). The Worker has its own `infra/signal-worker/package.json` + lockfile (wrangler 4.141.x) so root `npm ci` stays light. **wrangler ≥ 4.88 needs Node 22+** (CI uses 24; locally `nvm use 25.4.0`). |
+| Runtime deps | `three` (existing) + the two lazy Trystero packages + a tiny zero-dependency QR encoder (chosen and pinned by WS6) | A documented exception to "no new runtime deps" (house style): they load only inside the online chunk. The netcode itself (codec, interpolation, prediction) is hand-written. |
+| Test deps | vitest (existing), Playwright (existing), optional `node-datachannel@0.33.4` (loaded with a dynamic `import()` inside the test and skipped if missing or its binary won't load; never in `package.json`, so `npm ci` can't break) | Worker tests run under Node 22+ only (`worker:test`); the pure room logic is also tested by the main suite on any Node. |
 
 ---
 
@@ -155,16 +177,42 @@ Three layers, each swappable and tested alone:
 ```
 
 Rules: `send` never throws; messages ≤ `MAX_STATE_BYTES = 1150` on `state` (encoder-enforced; the
-transport drops and counts larger ones), ≤ `MAX_CTRL_BYTES = 16384` on `ctrl`. On `ctrl`, when
-`bufferedAmount > 256 KiB` the transport queues and waits for `bufferedamountlow` (threshold 64 KiB); on
-`state`, when `bufferedAmount > 64 KiB` it **drops** (a stale snapshot is worthless).
+transport drops and counts larger ones), ≤ `MAX_CTRL_BYTES = 16384` on `ctrl` (logical message; see fragments).
+
+**Backpressure on `state` (latency first).** A `maxRetransmits: 0` message only queues when the SCTP congestion
+window is full, so anything queued beyond ~2 messages is pure added latency. `send(peer, 'state', bytes)`
+returns `false` (skipped, counted as `stateSkips`) when `bufferedAmount > STATE_BUFFER_LIMIT = max(1024,
+2 × lastStateMessageBytes)`. The host's snapshotter halves that guest's snapshot rate to 15 Hz when skips
+happened in more than 10 of the last 30 snapshot intervals, and restores 30 Hz after 60 clean intervals; the
+guest's input sender does the same (it never needs to: inputs are small). Interpolation delay adapts to the
+lower rate automatically (§9.5).
+
+**Ctrl pacing and fragments (no head-of-line stalls).** There is no RFC 8260 message interleaving, so one big
+ctrl message delays every snapshot behind it on the association. Therefore: (1) while a race is running, any ctrl
+message larger than `CTRL_FRAGMENT_BYTES = 1024` is split into **FRAG** (0x3F) pieces and the host sends at
+most one fragment per tick to a peer, and only when that peer's `state` `bufferedAmount` is 0 (RESYNC ≈ 4 KB
+→ 4 ticks); (2) the big end-of-race messages (RESULT, GP) and SETUP are sent only when no race is running; (3)
+on `ctrl`, when `bufferedAmount > 64 KiB` the transport queues and waits for `bufferedamountlow` (threshold
+16 KiB). Reassembly limits: ≤ 16 fragments, ≤ 16 KiB, 10 s timeout, one message in flight per peer.
+
+**Wire bytes.** Every `stats()` counter comes in two forms: payload bytes and **wire bytes** = payload +
+`WIRE_OVERHEAD_BYTES = 93` per packet (IPv4 20 + UDP 8 + DTLS record header 13 + AES-GCM nonce/tag 24 + SCTP
+common header 12 + DATA chunk header 16), or `WIRE_OVERHEAD_TURN_BYTES = 97` over TURN/UDP (ChannelData +4) and
+`WIRE_OVERHEAD_TURN_TLS_BYTES = 150` over TURN/TLS. All budgets in §9.4 and §17 are wire bytes, and include
+SCTP SACK packets (`SACK_BYTES = 93`; a SACK bundled into an outgoing DATA packet costs 16 B).
 
 **MemoryTransport** (`src/net/transport/memory.js`): `createMemoryHub({ seed, now, schedule })` →
 `hub.endpoint(peerId, role)` returns a `NetTransport`; `hub.link(a, b)`; `hub.setConditions(from, to,
-{ latencyMs, jitterMs, loss, duplicate, reorder, bandwidthKbps })`. It uses an injected clock/scheduler so
-vitest fake timers or a manual `hub.advance(ms)` drive it deterministically (seeded mulberry32). `state` is
-lossy/reorderable/duplicable; `ctrl` is reliable-ordered: a "lost" ctrl packet is delivered after an extra
-`2 × latency` (retransmit) and everything behind it waits (head-of-line blocking, like SCTP).
+{ latencyMs, jitterMs, loss, burstLen, duplicate, reorder, bandwidthKbps, overhead })`. It uses an injected
+clock/scheduler so vitest fake timers or a manual `hub.advance(ms)` drive it deterministically (seeded
+mulberry32). Loss is **bursty** when `burstLen > 1`: a two-state Gilbert–Elliott model whose mean burst is
+`burstLen` packets and whose long-run loss rate is `loss`. `state` is lossy/reorderable/duplicable. `ctrl` is
+reliable-ordered with a **realistic retransmit model**: a lost ctrl packet is re-delivered after
+`max(RTT + 3 × snapshot interval, RTO_MIN_MS = 300)` (fast retransmit needs 3 later packets to report the gap;
+otherwise the timer fires), doubling the wait on each repeated loss of the same packet (exponential backoff,
+cap 3 s), and **everything behind it on ctrl waits** (head-of-line blocking, like SCTP). The hub counts wire
+bytes with `overhead` (default `WIRE_OVERHEAD_BYTES`) and models SACKs (one per 2 received DATA packets,
+bundled when the receiver sends within 200 ms).
 
 **WebRtcTransport** (`src/net/transport/webrtc.js`): `createWebRtcTransport({ signaling, role, selfId,
 iceServers, RTCPeerConnectionImpl? })`. For every `RTCPeerConnection` the signaling yields, it creates two
@@ -173,7 +221,7 @@ iceServers, RTCPeerConnectionImpl? })`. For every `RTCPeerConnection` the signal
 | Channel | Options | Id | Carries |
 |---|---|---|---|
 | `sk-state` | `{ negotiated: true, id: 8, ordered: false, maxRetransmits: 0 }` | 8 | INPUT, SNAPSHOT, PING, PONG |
-| `sk-ctrl` | `{ negotiated: true, id: 9, ordered: true }` | 9 | everything else |
+| `sk-ctrl` | `{ negotiated: true, id: 9, ordered: true }` | 9 | everything else (incl. FRAG pieces) |
 
 Ids 8/9 avoid Trystero's auto-assigned id 0/1 for its own `"data"` channel (which we ignore). `binaryType =
 'arraybuffer'`. A peer counts as joined when **both** channels are `open`. `stats().relayed` comes from
@@ -184,51 +232,113 @@ connection.
 
 ```js
 /**
+ * @typedef {object} RoomSecret      // from src/net/session/roomKey.js
+ * @property {string} label          'SPRINKLE-4821' (display + spoken; NOT secret)
+ * @property {number[]} sweets       6 indices 0..63 into SECRET_SWEETS (the secret)
+ * @typedef {object} RoomIds         // deriveRoomIds(secret) — async, crypto.subtle, ~150 ms
+ * @property {string} topic          public path: Trystero room id 'sk-' + 20 hex
+ * @property {string} password       public path: Trystero password (base64url, 32 B)
+ * @property {string} workerRoom     Worker path: the `:code` of GET /room/:code ('r' + 24 hex)
+ *
  * @typedef {object} SignalingTransport
  * @property {'public'|'worker'} kind
- * @property {(o: { code: string, role: 'host'|'guest', selfId: string, iceServers: RTCIceServer[],
- *            relayOnly?: boolean }) => Promise<void>} join     rejects with SignalingError { code: 'unreachable'|'no-host'|'host-exists'|'full'|'kicked'|'bad-origin'|'timeout' }
+ * @property {(o: { ids: RoomIds, role: 'host'|'guest', selfId: string, iceServers: RTCIceServer[],
+ *            relayOnly: boolean }) => Promise<{ iceServers: RTCIceServer[] }>} join
+ *            // relayOnly is a PARAMETER (the session reads settings; signaling never does).
+ *            // rejects with SignalingError { code: 'unreachable'|'no-host'|'host-exists'|'full'|'locked'|'rate'|'bad-origin'|'timeout' }
  * @property {(fn: (p: { peerId: string, pc: RTCPeerConnection }) => void) => () => void} onPeerConnection
  * @property {(fn: (peerId: string) => void) => () => void} onPeerLeave
- * @property {(peerId: string) => void} block      host only: never connect this peer again this session
+ * @property {(peerId: string) => void} drop       host only: close this peer's signaling + pc (used by remove)
+ * @property {(locked: boolean) => void} setLocked host only: refuse (true) / accept (false) new guests
+ * @property {() => Promise<RTCIceServer[]>} refreshIce   worker: fresh TURN creds for an ICE restart; public: STUN
  * @property {() => Promise<void>} leave
  */
-export async function fetchIceServers(): Promise<{ iceServers: RTCIceServer[], turn: boolean }>  // worker: GET /ice; public: STUN defaults
+export async function fetchIceServers({ signalUrl }): Promise<{ iceServers: RTCIceServer[], turn: boolean }>  // Check connection only
 ```
 
+**Room key (why a stranger can't find a room).** The first draft (room id = SHA-256 of the 320 000-value code,
+password = code) was reversible: anyone watching public relays could precompute every id in under a second and
+then also knew the password. Now `deriveRoomIds({ label, sweets })` computes
+`K = PBKDF2-SHA256(password = label + '|' + sweets.join('.'), salt = 'sprinkle-kart-room-v1',
+iterations = ROOM_KDF_ITERATIONS = 150 000, 32 bytes)` and then `topic = 'sk-' + hex(HMAC(K, 'topic'))[0..20]`,
+`password = b64url(HMAC(K, 'pw'))`, `workerRoom = 'r' + hex(HMAC(K, 'room'))[0..24]`. The secret space is
+32 × 10⁴ × 64⁶ ≈ 2⁵⁴; with 150 000 PBKDF2 rounds per guess, precomputing or brute-forcing ids is out of reach,
+and the label alone (shown on screen, maybe said out loud) gives nothing. The key is **never** sent to any
+server; the invite link carries the secret in the URL **fragment** (`#join=SPRINKLE-4821~<6 base64url chars>`),
+which browsers never send to GitHub Pages, trackers or the Worker. What this does and does not protect:
+
+| Threat | Barrier |
+|---|---|
+| Stranger watching public trackers/relays | Sees only random-looking topics; cannot map them back to a label or read the encrypted offers (Trystero password). |
+| Stranger enumerating Worker rooms | Needs the 2⁵⁴ secret; the guard object limits room joins to 30/min per IP globally. |
+| Someone who **has** the link (forwarded screenshot, a friend of a friend) | **Host approval with match check** (§1 rule 3) is the real, final barrier; then lock and remove. |
+| A removed house reloading | The room is locked by the remove (§1 rule 5). |
+
 **WorkerSignaling** (`src/net/signaling/worker.js`, `createWorkerSignaling({ baseUrl, WebSocketImpl,
-fetchImpl, RTCPeerConnectionImpl })`): opens `wss://…/room/<code>?role=host|guest&peer=<selfId>&proto=1`.
+fetchImpl, RTCPeerConnectionImpl })`): opens `wss://…/room/<workerRoom>?role=host|guest&peer=<selfId>&proto=1`.
 **The guest is always the offerer** to the host (so no glare / perfect-negotiation needed); trickle ICE; one
-ICE restart on `failed` before giving up. Worker ⇄ client JSON protocol (≤ 16 KiB per message, ≤ 50 msgs/s per
-socket):
+ICE restart on `failed` (with `refreshIce()` first) before giving up. Worker ⇄ client JSON protocol (≤ 16 KiB
+per message, ≤ 50 msgs/s per socket):
 
 | Direction | Message | Meaning |
 |---|---|---|
 | C→W | `{ t: 'signal', to, data }` | SDP / ICE for one peer. Guests may only address the host. |
-| C→W | `{ t: 'kick', peer }` | host only: close that socket, block its peer id for the room |
-| C→W | `{ t: 'lock', locked }` | host only: refuse new guests |
+| C→W | `{ t: 'drop', peer }` | host only: close that guest socket and remember its salted IP hash until unlock (used by remove; the host locks the room in the same step) |
+| C→W | `{ t: 'lock', locked }` | host only: refuse (true) / accept again (false) new guests; unlock clears the room's IP blocks |
+| C→W | `{ t: 'ice' }` | ask for fresh TURN creds (ICE restart); ≤ 1 per 30 s per socket |
 | C→W | `"ping"` | auto-response `"pong"` (DO stays hibernated) |
-| W→C | `{ t: 'joined', you, host, peers: [] }` | after upgrade; `host` = host peer id |
+| W→C | `{ t: 'joined', you, host, peers: [], iceServers, turn }` | after upgrade; `host` = host peer id; `iceServers` = STUN + this room's TURN creds (ttl 1800 s) when TURN is set up and under the daily cap |
+| W→C | `{ t: 'ice', iceServers }` | answer to `ice` |
 | W→C | `{ t: 'peer-join', peer }` / `{ t: 'peer-leave', peer }` | to the host (guests only learn about the host) |
 | W→C | `{ t: 'signal', from, data }` | relayed SDP / ICE |
-| W→C | `{ t: 'error', code }` then close | `full` (8 sockets) · `no-host` · `host-exists` · `kicked` · `locked` · `rate` · `bad-origin` · `proto` |
+| W→C | `{ t: 'error', code }` then close | `full` (8 sockets) · `no-host` · `host-exists` · `locked` · `rate` · `bad-origin` · `proto` |
+
+TURN credentials therefore reach only sockets that know an existing room's key-derived id, and only guests of
+a room that has a host. `GET /ice` exists only for the Check connection screen: 5 requests/min per IP (guard
+object), ttl 900 s, no caching across callers.
 
 **PublicSignaling** (`src/net/signaling/public.js`, `createPublicSignaling({ trackers, nostrRelays,
 fallbackAfterMs = 6000, importer = (m) => import(m) })`): `joinRoom({ appId: 'sprinkle-kart', password:
-<normalised code>, relayConfig: { urls: trackers }, rtcConfig: { iceServers } }, roomId)` with
-`roomId = 'sk-' + hex(SHA-256('sprinkle-kart-room:' + code)).slice(0, 20)`; the password makes Trystero encrypt
-SDP (strangers who guess the room id still cannot read offers). Trystero is a mesh, so each side sends a tiny
-`sk-role` action on join; connections where neither side is the host are closed immediately and never
-surfaced. If no host peer appears within `fallbackAfterMs`, the same room is additionally joined over Nostr
-(redundancy 6). `block(peerId)` closes and ignores that Trystero peer id.
+ids.password, relayConfig: { urls: trackers }, rtcConfig: { iceServers } }, ids.topic)`. Trystero is a mesh, so
+each side sends a tiny `sk-role` action on join; connections where neither side is the host are closed
+immediately and never surfaced. If no host peer appears within `fallbackAfterMs`, the same room is additionally
+joined over Nostr (redundancy 6). `setLocked(true)` makes the host ignore new Trystero peers; `drop(peerId)`
+closes one.
 
-**Room lifecycle on the Worker** (`SignalRoom`, one DO per code): the host socket creates the room; a second host
-gets `host-exists`; guests before a host get `no-host`; ≤ 1 host + 7 guest sockets; blocked peer ids kept in
-DO SQLite for 6 h; an alarm deletes the room 2 h after the last socket leaves. Origin is checked **by the
-Worker** on `/room/:code` (browsers do not apply CORS to WebSocket upgrades); CORS headers only on `/health`
-and `/ice`. Per-IP join rate limit: 20 per minute (in-memory per isolate + DO counter). Pure room logic lives
-in `infra/signal-worker/src/room.js` (`roomReduce(state, event) → { state, sends: [...], close?: [...] }`) and
-is tested by the **main** vitest suite too.
+**Dual matchmaker plumbing** (`src/net/signaling/index.js`): `chooseSignaling({ signalUrl, health })` returns
+`['worker', 'public']` for a Worker build (the host joins both at once; a guest starts public 4 s after the
+Worker, or immediately if `/health` failed) and `['public']` otherwise. A guest uses one `selfId` on both; the
+first path whose `RTCPeerConnection` opens both channels wins and the guest leaves the other matchmaker. The
+host accepts one connection per `selfId` (a second one for the same id is closed).
+
+**Room lifecycle on the Worker** (`SignalRoom`, one DO per `workerRoom`): the host socket creates the room; a
+second host gets `host-exists`; guests before a host get `no-host`; ≤ 1 host + 7 guest sockets; an alarm
+deletes the room 2 h after the last socket leaves. **Abuse limits live in Durable Objects, not isolate memory**
+(multiple isolates and colos bypass in-memory limits): per room, ≤ 12 guest joins per minute and, after a
+`drop`, the dropped socket's **salted IP hash** (`SHA-256(roomSalt + ip)`, salt random per room, raw IPs never
+stored) is refused until the host unlocks; globally, the reserved `guard` instance of `SignalRoom` counts room
+joins (30/min) and `/ice` calls (5/min) per salted IP hash, plus the daily TURN mint cap. (Cloudflare's free
+Rate Limiting binding may be added later as a first line; it does not replace the DO counters.) Pure logic
+lives in `infra/signal-worker/src/room.js` (`roomReduce(state, event) → { state, sends: [...], close?: [...] }`)
+and `infra/signal-worker/src/guard.js` (`guardReduce`), both tested by the **main** vitest suite too.
+
+**What the Origin check is (and isn't).** The Worker checks `Origin` itself on `/room/:code` (browsers do not
+apply CORS to WebSocket upgrades) and sends CORS headers only on `/health` and `/ice`. This only stops **other
+websites** from using our Worker through a visitor's browser. It is **not** abuse protection: `Origin` is per
+host (so `https://rillyboss.github.io` covers every rillyboss Pages project) and any non-browser client can
+forge it. Abuse protection = unguessable room ids + the DO counters above (a test proves a forged Origin still
+hits the join cap).
+
+**Dev and test origins.** The production `ALLOWED_ORIGINS` stays exactly
+`https://rillyboss.github.io,http://localhost:5173`. `npm run worker:dev` reads the gitignored
+`infra/signal-worker/.dev.vars` (template `infra/signal-worker/.dev.vars.example`, committed):
+`ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*`. The origin matcher accepts a `:*` port wildcard
+**only** for the hosts `localhost` and `127.0.0.1`; any other wildcard is ignored, so the production value is
+unaffected. `.dev.vars` is in the root `.gitignore` (added with this design, P0). Smoke/e2e pass their port
+through (`SMOKE_PORT`, visual checks on `SMOKE_PORT + 1`, `vite preview` on 4173 all match). **LAN / iPad
+testing:** `crypto.subtle` (room key) and WebRTC need a secure context, so `http://192.168.x.x:5173` fails;
+use the GitHub Pages build, or an https tunnel (e.g. `cloudflared tunnel --url http://localhost:5173`) with
+`?signal=public`.
 
 ---
 
