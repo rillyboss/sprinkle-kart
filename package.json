@@ -19,6 +19,8 @@
   "license": "ISC",
   "description": "Sprinkle Kart — a cute, family-friendly 3D split-screen kart racer made for Sophia",
   "dependencies": {
+    "@trystero-p2p/nostr": "0.25.4",
+    "@trystero-p2p/torrent": "0.25.4",
     "three": "^0.186.1"
   },
   "devDependencies": {
