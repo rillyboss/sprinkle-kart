@@ -98,6 +98,14 @@ Let go for a **Mini-Turbo**, a **Super Turbo** or a **Rainbow Turbo**!
 
 Racers further back get the better items, so everyone stays in the race.
 
+**What you'll see and hear:** the item slot spins with little ticks, slows down and lands with a
+"ta-da!"; under it your item's **name** and **your button** ("Press LB" / "Press E") show up.
+Every item has its own sound. A 🧁 coming for you shows a **"Rocket coming!"** warning, a pink
+arrow at the edge of your screen and beeps that get faster as it gets close; a bubble or a star
+keeps you safe. Shield and star show a shrinking ring so you know how long they last, and bonks say
+who did it ("Bonked by Captain Crumbs' Gumdrop!" / "You bonked Lenny! 🎯"). Pick **🎁 Item Guide**
+on the title screen (press Down) for a picture of every item.
+
 ---
 
 ## Unlock **Cotton Candy Girl** ☁️💖
