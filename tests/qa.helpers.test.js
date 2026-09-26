@@ -8,6 +8,8 @@ import { createInputRig, createFakeInput, FakeTarget, PAD } from './helpers/fake
 import { runCpuRace, trackFixture, kartProblems, wallLimit, stubKartModel, defaultRacerIds } from './helpers/raceHarness.js';
 import { runHeadlessSession, createFakeApp, fakeSession, createFakeProgress } from './helpers/headlessSession.js';
 import { collectResources, watchDisposal, nonFiniteTransforms, nonFiniteVertices } from './helpers/threeInspect.js';
+import { createFakeDocument, htmlOf } from './helpers/fakeDom.js';
+import { kidRace, tracksOutsideCups } from './helpers/kidRace.js';
 import { AudioManager, SFX_NAMES, SONG_IDS } from '../src/audio/AudioManager.js';
 import { installSystems } from '../src/systems/index.js';
 import raceFlowReactions from '../src/systems/raceFlowReactions.js';
@@ -281,5 +283,52 @@ describe('threeInspect', () => {
     expect(left.geometries).toEqual([]);
     expect(left.materials).toHaveLength(2);
     expect(left.textures).toEqual([tex]);
+  });
+});
+
+describe('fakeDom', () => {
+  it('builds a node tree with classes, text, queries and removal', () => {
+    const doc = createFakeDocument();
+    const root = doc.createElement('div');
+    const a = doc.createElement('span');
+    a.className = 'x y';
+    a.textContent = 'hi';
+    const b = doc.createElement('b');
+    b.classList.add('y', 'z');
+    root.append(a, b);
+    expect(root.querySelectorAll('.y')).toEqual([a, b]);
+    expect(root.querySelector('.y.z')).toBe(b);
+    expect(root.querySelector('span')).toBe(a);
+    expect(root.querySelector('.nope')).toBeNull();
+    expect(root.textContent).toBe('hi');
+    expect(b.classList.toggle('z')).toBe(false);
+    expect(b.className).toBe('y');
+    b.classList.toggle('on', true);
+    expect(b.classList.contains('on')).toBe(true);
+    a.remove();
+    expect(root.children).toEqual([b]);
+    expect(a.parentNode).toBeNull();
+    root.innerHTML = '<i class="q">x</i>';
+    expect(root.children).toEqual([]);
+    expect(htmlOf(root)).toContain('class="q"');
+    b.style.setProperty('--k', 3);
+    expect(b.style['--k']).toBe('3');
+    expect(doc.writes).toBeGreaterThan(0);
+    expect(() => root.querySelector('div > p')).toThrow(/unsupported selector/);
+  });
+});
+
+describe('kidRace (fairness driver)', () => {
+  it('races one seed to a real finish and reports the place', () => {
+    const { def, path } = trackFixture('starlight-galaxy');
+    const r = kidRace(def, path, null, 1, 'zippy');
+    expect(r.finished).toBe(true);
+    expect(r.place).toBeGreaterThanOrEqual(1);
+    expect(r.place).toBeLessThanOrEqual(8);
+    expect(r.won).toBe(r.place === 1 && !r.estimated);
+  });
+
+  it('knows which tracks sit outside every cup', () => {
+    expect(tracksOutsideCups().map((t) => t.id)).toEqual([]);
   });
 });
