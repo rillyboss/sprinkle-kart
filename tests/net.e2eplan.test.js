@@ -339,6 +339,79 @@ describe('hermetic browser (never a real public relay, §15)', () => {
   });
 });
 
+describe('CI: the nightly online e2e never gates anything (§15)', () => {
+  const yml = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const jobOf = (name) => {
+    const start = yml.indexOf(`\n  ${name}:`);
+    if (start < 0) return null;
+    const rest = yml.slice(start + 1);
+    const next = rest.slice(1).search(/\n {2}[a-z-]+:\n/);
+    return next < 0 ? rest : rest.slice(0, next + 1);
+  };
+  const job = jobOf('online-smoke');
+
+  it('exists, runs smoke-online on Node 24 with system Chrome and uploads smoke-out/online', () => {
+    expect(job).not.toBe(null);
+    expect(job).toContain('node scripts/smoke-online.mjs');
+    expect(job).toMatch(/node-version: 24/);
+    expect(job).toContain('google-chrome --version');
+    expect(job).toMatch(/path: smoke-out\/online\//);
+    expect(job).toMatch(/if: always\(\)/);
+  });
+
+  it('runs only nightly / on manual dispatch, never on PRs or pushes, and cannot fail the workflow', () => {
+    expect(job).toMatch(/if: github\.event_name == 'schedule' \|\| github\.event_name == 'workflow_dispatch'/);
+    expect(job).not.toMatch(/pull_request/);
+    expect(job).toMatch(/continue-on-error: true/);
+    expect(job).not.toMatch(/needs:/);
+    // nothing waits for it
+    expect(yml).not.toMatch(/needs:\s*\[?[^\n]*online-smoke/);
+  });
+
+  it('leaves the gate and the other jobs alone: test-and-build first, worker-test only on worker changes, smoke after the gate', () => {
+    const names = [...yml.matchAll(/\n {2}([a-z-]+):\n/g)].map((m) => m[1]).filter((n) => ['test-and-build', 'worker-test', 'smoke', 'online-smoke'].includes(n));
+    expect(names).toEqual(['test-and-build', 'worker-test', 'smoke', 'online-smoke']);
+    const gate = jobOf('test-and-build');
+    expect(gate).toContain('npm run test:coverage');
+    expect(gate).not.toContain('smoke-online');
+    const worker = jobOf('worker-test');
+    expect(worker).toContain('infra/signal-worker');
+    expect(worker).toContain('npm run worker:test');
+    expect(jobOf('smoke')).toMatch(/needs: test-and-build/);
+  });
+});
+
+describe('docs: the manual checklist and the contributing section', () => {
+  const checklist = readFileSync(new URL('../docs/ONLINE_CHECKLIST.md', import.meta.url), 'utf8');
+  const contributing = readFileSync(new URL('../CONTRIBUTING.md', import.meta.url), 'utf8');
+
+  it('the checklist covers every §15 manual item and ends with a results table for the release PR', () => {
+    for (const needle of [
+      'two real homes', 'phone hotspot', 'text message', 'Check connection', 'UDP', 'Relay needed', '45 minutes',
+      'iPad', 'Hosting needs a computer', 'Version mismatch', 'everyone refresh', 'Room locked', '## Results',
+    ]) expect(checklist.toLowerCase(), needle).toContain(needle.toLowerCase());
+    expect(checklist).toMatch(/never run in CI/i);
+    expect(checklist).toMatch(/\| # \| Check/);
+    expect(checklist).toMatch(/- \[ \]/); // tick boxes
+  });
+
+  it('CONTRIBUTING explains the online smoke, worker:dev, soak, LAN/iPad testing and links the checklist', () => {
+    const i = contributing.indexOf('### Online testing');
+    expect(i).toBeGreaterThan(0);
+    const section = contributing.slice(i, contributing.indexOf('\n## ', i));
+    for (const needle of [
+      'node scripts/smoke-online.mjs', 'SMOKE_PORT', 'SMOKE_WORKER_PORT', 'npm run worker:dev', 'Node 22+',
+      'SOAK=1', 'scripts/dev/localTracker.mjs', 'docs/ONLINE_CHECKLIST.md', 'cloudflared tunnel', 'GitHub Pages',
+      'secure context', 'smoke-out/online/', 'online-smoke', 'hermetic',
+    ]) expect(section, needle).toContain(needle);
+  });
+
+  it('the documented budgets match the plan', () => {
+    expect(contributing).toContain(`≤ ${CODE_TO_LOBBY_P90_MS.worker / 1000} s p90 on the Worker`);
+    expect(contributing).toContain(`≤ ${CODE_TO_LOBBY_P90_MS.public / 1000} s p90 on public relays`);
+  });
+});
+
 describe('the runner stays in sync with its plan', () => {
   const src = readFileSync(new URL('../scripts/smoke-online.mjs', import.meta.url), 'utf8');
 
