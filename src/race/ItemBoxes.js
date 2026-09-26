@@ -193,10 +193,7 @@ export class ItemBoxes {
     spinner.rotation.z = 0.35;
     const sparkles = b.mesh.children[1];
     sparkles.rotation.y = -t * 2.1;
-    sparkles.children.forEach((s, i) => {
-      s.rotation.y = t * 4;
-      s.scale.setScalar(0.8 + Math.sin(t * 6 + i * 1.3) * 0.35);
-    });
+    sparkles.scale.setScalar(0.9 + Math.sin(t * 6) * 0.2); // twinkle as a group (cheap)
     const halo = b.mesh.children[2];
     if (halo) {
       halo.rotation.x = Math.sin(t * 1.3) * 0.35;

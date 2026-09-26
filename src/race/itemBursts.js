@@ -86,6 +86,7 @@ export class BurstField {
     }
     this._seq = 0;
     this._dummy = new THREE.Object3D();
+    this._m = new THREE.Matrix4();
     this._color = new THREE.Color();
     this.emitted = {}; // kind -> count (tests / debugging)
   }
@@ -166,11 +167,18 @@ export class BurstField {
         p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
         const k = p.t / p.life;
         const s = p.size * (k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85 * 0.9);
-        d.position.set(p.x, p.y, p.z);
-        d.rotation.set(p.t * p.spin, p.t * p.spin * 0.7, 0);
-        d.scale.setScalar(Math.max(0.0001, s));
-        d.updateMatrix();
-        mesh.setMatrixAt(p.idx, d.matrix);
+        const sc = Math.max(0.0001, s);
+        if (shape === 'blob') {
+          // round blobs need no rotation: a plain scale + translate is much cheaper
+          this._m.makeScale(sc, sc, sc).setPosition(p.x, p.y, p.z);
+          mesh.setMatrixAt(p.idx, this._m);
+        } else {
+          d.position.set(p.x, p.y, p.z);
+          d.rotation.set(p.t * p.spin, p.t * p.spin * 0.7, 0);
+          d.scale.setScalar(sc);
+          d.updateMatrix();
+          mesh.setMatrixAt(p.idx, d.matrix);
+        }
       }
       mesh.instanceMatrix.needsUpdate = true;
     }
