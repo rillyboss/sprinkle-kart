@@ -53,6 +53,7 @@ export function createFakeDocument() {
     const attrs = new Map();
     const node = {
       tagName: String(tag).toUpperCase(),
+      id: '',
       nodeType: 1,
       children: [],
       parentNode: null,
@@ -127,8 +128,18 @@ export function createFakeDocument() {
 
   doc.createElement = createElement;
   doc.createTextNode = (t) => Object.assign(createElement('#text'), { textContent: t });
-  doc.body = createElement('body');
   doc.documentElement = createElement('html');
+  doc.head = doc.documentElement.appendChild(createElement('head'));
+  doc.body = doc.documentElement.appendChild(createElement('body'));
+  doc.getElementById = (id) => {
+    let found = null;
+    walk(doc.documentElement, (c) => { if (!found && c.id === id) found = c; });
+    return found;
+  };
+  doc.querySelectorAll = (sel) => doc.documentElement.querySelectorAll(sel);
+  doc.querySelector = (sel) => doc.documentElement.querySelector(sel);
+  doc.addEventListener = () => {};
+  doc.removeEventListener = () => {};
   return doc;
 }
 
