@@ -102,8 +102,10 @@ export function createArrivalStats({ tickMs = 1000 / 60, window = 64 } = {}) {
   let jitterMs = 0;
   let lastBurst = 0;
   const seen = [];
+  let lossCache = null; // recomputed lazily once per arrival
   return {
     onSnapshot(tick, recvMs) {
+      lossCache = null;
       const dev = recvMs - tick * tickMs;
       arrivals.push({ tick, dev });
       if (arrivals.length > window) arrivals.shift();
@@ -129,13 +131,14 @@ export function createArrivalStats({ tickMs = 1000 / 60, window = 64 } = {}) {
     get lastBurst() { return lastBurst; },
     /** Loss % over the recent window. */
     get lossPct() {
-      if (seen.length < 10 || !gaps.length) return 0;
+      if (lossCache !== null) return lossCache;
+      if (seen.length < 10 || !gaps.length) return (lossCache = 0);
       const interval = Math.min(...gaps);
       const lo = Math.min(...seen);
       const hi = Math.max(...seen);
       const expected = Math.round((hi - lo) / interval) + 1;
       const got = new Set(seen).size;
-      return Math.max(0, (100 * (expected - got)) / expected);
+      return (lossCache = Math.max(0, (100 * (expected - got)) / expected));
     },
   };
 }
