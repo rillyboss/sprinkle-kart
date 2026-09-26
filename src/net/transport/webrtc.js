@@ -146,6 +146,8 @@ export function createWebRtcTransport({
   const joined = new Map();
   /** @type {Set<Conn>} every live connection (pending + joined) */
   const conns = new Set();
+  /** @type {Map<string, Conn>} guest: the connection the channels were created on */
+  const committed = new Map();
   let closed = false;
   let lastMintAt = now();
   let currentIce = iceServers;
@@ -156,8 +158,8 @@ export function createWebRtcTransport({
    * @property {string} peerId
    * @property {RTCPeerConnection} pc
    * @property {string|undefined} kind
-   * @property {RTCDataChannel} state
-   * @property {RTCDataChannel} ctrl
+   * @property {RTCDataChannel|null} state   null until channels are attached
+   * @property {RTCDataChannel|null} ctrl
    * @property {boolean} isJoined
    * @property {boolean} dead
    * @property {Uint8Array[]} ctrlQueue
@@ -219,7 +221,7 @@ export function createWebRtcTransport({
   }
 
   function flushCtrl(c) {
-    while (c.ctrlQueue.length && !c.dead && c.ctrl.readyState === 'open' && c.ctrl.bufferedAmount <= CTRL_QUEUE_HIGH) {
+    while (c.ctrl && c.ctrlQueue.length && !c.dead && c.ctrl.readyState === 'open' && c.ctrl.bufferedAmount <= CTRL_QUEUE_HIGH) {
       const bytes = c.ctrlQueue.shift();
       c.ctrlQueueBytes -= bytes.length;
       try {
@@ -234,7 +236,7 @@ export function createWebRtcTransport({
   }
 
   function tryJoin(c) {
-    if (c.dead || c.isJoined || closed) return;
+    if (c.dead || c.isJoined || closed || !c.state || !c.ctrl) return;
     if (c.state.readyState !== 'open' || c.ctrl.readyState !== 'open') return;
     const existing = joined.get(c.peerId);
     if (existing && existing !== c) {
@@ -268,7 +270,7 @@ export function createWebRtcTransport({
     c.ctrlQueue.length = 0;
     for (const ch of [c.state, c.ctrl]) {
       try {
-        ch.close();
+        ch?.close();
       } catch {
         /* already closed */
       }
@@ -280,6 +282,7 @@ export function createWebRtcTransport({
     }
     const wasJoined = c.isJoined;
     if (joined.get(c.peerId) === c) joined.delete(c.peerId);
+    if (committed.get(c.peerId) === c) committed.delete(c.peerId);
     if (wasJoined && emit) peerListeners.emit({ type: 'leave', peerId: c.peerId, reason });
     else if (!wasJoined && emit && reason !== 'duplicate' && reason !== 'closed') {
       // Never joined: tell the session why (ICE timeout / failed), unless another pending
@@ -287,7 +290,10 @@ export function createWebRtcTransport({
       const stillTrying = [...conns].some((o) => o.peerId === c.peerId);
       if (!stillTrying && !joined.has(c.peerId)) failListeners.emit({ peerId: c.peerId, reason });
     }
+    if (!wasJoined && !closed) maybeCommit(c.peerId);
   }
+
+  const isConnected = (pc) => pc.connectionState === 'connected' || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed';
 
   function onConnState(c) {
     if (c.dead) return;
@@ -302,10 +308,60 @@ export function createWebRtcTransport({
       if (!c.failTimer) c.failTimer = timers.setTimeout(() => destroy(c, 'failed'), FAILED_GRACE_MS);
       return;
     }
-    if (st === 'connected' || ice === 'connected' || ice === 'completed') {
+    if (isConnected(c.pc)) {
       timers.clearTimeout(c.failTimer);
       c.failTimer = null;
+      if (!c.state) maybeCommit(c.peerId);
     }
+  }
+
+  /** Create the two negotiated channels on this connection and wire them up. */
+  function attachChannels(c) {
+    if (c.state || c.dead) return true;
+    let state;
+    let ctrl;
+    try {
+      state = c.pc.createDataChannel(STATE_CHANNEL.label, { ...STATE_CHANNEL.init });
+      ctrl = c.pc.createDataChannel(CTRL_CHANNEL.label, { ...CTRL_CHANNEL.init });
+    } catch {
+      destroy(c, 'channel-error', false);
+      failListeners.emit({ peerId: c.peerId, reason: 'channel-error' });
+      return false;
+    }
+    state.binaryType = 'arraybuffer';
+    ctrl.binaryType = 'arraybuffer';
+    ctrl.bufferedAmountLowThreshold = CTRL_LOW_THRESHOLD;
+    c.state = state;
+    c.ctrl = ctrl;
+    const join = () => tryJoin(c);
+    state.addEventListener('open', join);
+    ctrl.addEventListener('open', join);
+    const lost = () => {
+      if (!c.dead) destroy(c, c.isJoined ? 'channel-closed' : 'failed');
+    };
+    state.addEventListener('close', lost);
+    ctrl.addEventListener('close', lost);
+    state.addEventListener('message', (ev) => onIncoming(c, 'state', ev));
+    ctrl.addEventListener('message', (ev) => onIncoming(c, 'ctrl', ev));
+    ctrl.addEventListener('bufferedamountlow', () => flushCtrl(c));
+    tryJoin(c); // channels may already be open (connection surfaced late)
+    return true;
+  }
+
+  /**
+   * Guest only: the GUEST decides which connection to the host is used, by creating the
+   * negotiated channels on exactly one of them (negotiated channels open only when both sides
+   * create the same id). The first pc whose ICE/DTLS connects is committed; if it dies before
+   * joining, the next connected one is. So the host can never pick a different winner.
+   */
+  function maybeCommit(peerId) {
+    if (role !== 'guest' || closed || joined.has(peerId)) return;
+    const cur = committed.get(peerId);
+    if (cur && !cur.dead) return;
+    const next = [...conns].find((o) => o.peerId === peerId && !o.dead && isConnected(o.pc));
+    if (!next) return;
+    committed.set(peerId, next);
+    attachChannels(next);
   }
 
   function addConnection({ peerId, pc, kind }) {
@@ -328,30 +384,13 @@ export function createWebRtcTransport({
       return;
     }
     for (const other of conns) if (other.pc === pc) return; // same pc surfaced twice
-    let state;
-    let ctrl;
-    try {
-      state = pc.createDataChannel(STATE_CHANNEL.label, { ...STATE_CHANNEL.init });
-      ctrl = pc.createDataChannel(CTRL_CHANNEL.label, { ...CTRL_CHANNEL.init });
-    } catch (err) {
-      try {
-        pc.close();
-      } catch {
-        /* ignore */
-      }
-      failListeners.emit({ peerId, reason: 'channel-error' });
-      return;
-    }
-    state.binaryType = 'arraybuffer';
-    ctrl.binaryType = 'arraybuffer';
-    ctrl.bufferedAmountLowThreshold = CTRL_LOW_THRESHOLD;
     /** @type {Conn} */
     const c = {
       peerId,
       pc,
       kind,
-      state,
-      ctrl,
+      state: null,
+      ctrl: null,
       isJoined: false,
       dead: false,
       ctrlQueue: [],
@@ -363,24 +402,15 @@ export function createWebRtcTransport({
       s: emptyStats(),
     };
     conns.add(c);
-    const join = () => tryJoin(c);
-    state.addEventListener('open', join);
-    ctrl.addEventListener('open', join);
-    const lost = () => {
-      if (!c.dead) destroy(c, c.isJoined ? 'channel-closed' : 'failed');
-    };
-    state.addEventListener('close', lost);
-    ctrl.addEventListener('close', lost);
-    state.addEventListener('message', (ev) => onIncoming(c, 'state', ev));
-    ctrl.addEventListener('message', (ev) => onIncoming(c, 'ctrl', ev));
-    ctrl.addEventListener('bufferedamountlow', () => flushCtrl(c));
     const cs = () => onConnState(c);
     pc.addEventListener?.('connectionstatechange', cs);
     pc.addEventListener?.('iceconnectionstatechange', cs);
     c.iceTimer = timers.setTimeout(() => {
       if (!c.isJoined) destroy(c, 'ice-timeout');
     }, iceTimeoutMs);
-    tryJoin(c); // channels may already be open (connection surfaced late)
+    // Host: channels at once on every pc (ready for whichever one the guest commits to).
+    if (role === 'host') attachChannels(c);
+    else maybeCommit(peerId);
   }
 
   function onSignalLeave(peerId, info) {
@@ -465,8 +495,8 @@ export function createWebRtcTransport({
     stats(peerId) {
       const c = joined.get(peerId) ?? [...conns].find((x) => x.peerId === peerId);
       if (!c) return emptyStats();
-      c.s.bufferedCtrl = (c.ctrl.bufferedAmount || 0) + c.ctrlQueueBytes;
-      c.s.bufferedState = c.state.bufferedAmount || 0;
+      c.s.bufferedCtrl = (c.ctrl?.bufferedAmount || 0) + c.ctrlQueueBytes;
+      c.s.bufferedState = c.state?.bufferedAmount || 0;
       return { ...c.s };
     },
     /** Poll getStats now for every joined peer (tests / Check connection). */

@@ -101,7 +101,11 @@ export function createFakeTrystero({ net }) {
             mine.createDataChannel('data'); // Trystero's own channel (id 0), ignored by us
             queueMicrotask(async () => {
               await connectPair(mine, theirs);
-              if (inst.left || other.left) return;
+              if (inst.left || other.left) {
+                mine.close();
+                theirs.close();
+                return;
+              }
               peers.set(other.tid, { pc: mine, inst: other });
               other.peers.set(tid, { pc: theirs, inst });
               const watch = (pc, owner, remoteTid) =>

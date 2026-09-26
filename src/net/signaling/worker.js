@@ -21,6 +21,8 @@ export const WORKER_ICE_MIN_INTERVAL_MS = 30000;
 export const WORKER_PING_MS = 25000;
 export const WORKER_MAX_MSG_BYTES = 16 * 1024;
 const MAX_EARLY_CANDIDATES = 32;
+/** Negotiated placeholder so the guest's offer carries an SCTP m-line (never opened). */
+export const BOOT_CHANNEL = Object.freeze({ label: 'sk-boot', init: Object.freeze({ negotiated: true, id: 7 }) });
 
 /**
  * `https://x.workers.dev` → `wss://x.workers.dev/room/<room>?role=…&peer=…&proto=1`.
@@ -123,6 +125,15 @@ export function createWorkerSignaling({
     const pc = new RTCPeerConnectionImpl(pcConfig());
     const entry = { pc, pendingCands: [], restarted: false };
     peers.set(peerId, entry);
+    if (role === 'guest') {
+      // The guest's transport creates channels 8/9 only once this pc connects (it commits to
+      // one path), so put SCTP in the offer now with a placeholder that never opens.
+      try {
+        pc.createDataChannel(BOOT_CHANNEL.label, { ...BOOT_CHANNEL.init });
+      } catch {
+        /* the transport's own channels will still work where supported */
+      }
+    }
     pc.addEventListener('icecandidate', (ev) => {
       const c = /** @type {any} */ (ev).candidate;
       if (!c || !c.candidate) return;

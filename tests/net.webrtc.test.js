@@ -385,6 +385,62 @@ describe('WebRtcTransport: leaves, duplicates, failures', () => {
     guest.close();
   });
 
+  it('the GUEST decides: it creates channels on one connected pc only, so the host can never pick another', async () => {
+    const net = createFakeRtcNetwork();
+    const gs = fakeSignaling('worker');
+    const hs = fakeSignaling('worker');
+    const guest = createWebRtcTransport({ signaling: gs, role: 'guest', selfId: GUEST });
+    const host = createWebRtcTransport({ signaling: hs, role: 'host', selfId: HOST });
+    const gW = new net.RTCPeerConnection({});
+    const hW = new net.RTCPeerConnection({});
+    const gP = new net.RTCPeerConnection({});
+    const hP = new net.RTCPeerConnection({});
+    // The host sees both at once and prepares channels on both.
+    hs.emit(GUEST, hP, 'public');
+    hs.emit(GUEST, hW, 'worker');
+    await connectPair(gP, hP);
+    await connectPair(gW, hW);
+    // Both paths are fully connected before the guest transport sees them.
+    gs.emit(HOST, gW, 'worker');
+    gs.emit(HOST, gP, 'public');
+    await settle();
+    expect(gW.channels.map((c) => c.id)).toEqual([8, 9]);
+    expect(gP.channels).toHaveLength(0);
+    expect(host.debug()).toHaveLength(1);
+    expect(host.debug()[0]).toMatchObject({ peerId: GUEST, kind: 'worker' });
+    expect(hP.connectionState).toBe('closed');
+    expect(gP.connectionState).toBe('closed');
+    host.close();
+    guest.close();
+  });
+
+  it('guest: when the committed pc dies before joining, the next connected pc is used', async () => {
+    const net = createFakeRtcNetwork();
+    const gs = fakeSignaling('worker');
+    const hs = fakeSignaling('worker');
+    const guest = createWebRtcTransport({ signaling: gs, role: 'guest', selfId: GUEST });
+    const host = createWebRtcTransport({ signaling: hs, role: 'host', selfId: HOST });
+    const gA = new net.RTCPeerConnection({});
+    const hA = new net.RTCPeerConnection({});
+    const gB = new net.RTCPeerConnection({});
+    const hB = new net.RTCPeerConnection({});
+    await connectPair(gA, hA); // hA never gets channels on the host (a broken path)
+    hs.emit(GUEST, hB, 'public');
+    await connectPair(gB, hB);
+    gs.emit(HOST, gA, 'worker'); // committed first, but its twin will never open 8/9
+    gs.emit(HOST, gB, 'public');
+    await settle();
+    expect(gA.channels).toHaveLength(2);
+    expect(gB.channels).toHaveLength(0);
+    gA._setConn('closed'); // the committed path dies
+    await settle();
+    expect(gB.channels.map((c) => c.id)).toEqual([8, 9]);
+    expect(guest.peers()).toEqual([HOST]);
+    expect(host.peers()).toEqual([GUEST]);
+    host.close();
+    guest.close();
+  });
+
   it('ICE timeout (15 s) closes a pc that never opens and reports onFailure', async () => {
     vi.useFakeTimers();
     const net = createFakeRtcNetwork({ connectable: false });
