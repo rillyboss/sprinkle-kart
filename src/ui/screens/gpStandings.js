@@ -70,6 +70,7 @@ export default {
       hintsBar([hint('A', 'Enter', 'Choose')]));
 
     let t = 0;
+    let lastBusy = false; // celebrations active on the previous frame
     let slid = false;
     let ticked = -1;
     let celebrations = null;
@@ -151,9 +152,12 @@ export default {
         t += dt;
         const before = state.phase;
         state = phasedTick(state, dt);
-        const busy = !!celebrations?.active();
         celebrations?.update(dt);
-        if (before !== state.phase || busy !== !!celebrations?.active()) sync();
+        // The last reveal finishes fading on a timer BETWEEN frames, so compare with the previous frame (not with
+        // the start of this update): otherwise the ceremony's Play again / Menu never showed up.
+        const busy = !!celebrations?.active();
+        if (before !== state.phase || busy !== lastBusy) sync();
+        lastBusy = busy;
         if (phaseName !== 'standings' || slid) return;
         const k = t - TALLY_DELAY;
         if (k > 0) {
