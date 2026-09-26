@@ -158,6 +158,31 @@ body.skx-attract-on .sk-title .sk-floaties { opacity: 0.55; }
 @keyframes skx-caption-in { from { opacity: 0; transform: translateX(-1.5em); } to { opacity: 1; transform: none; } }
 body.skx-gentle .skx-attract-caption { animation: skx-fade-in 0.3s ease both; }
 
+/* ---------- Photo mode ---------- */
+body.skx-photo-on .sk-hud { visibility: hidden; }
+body.skx-photo-on .skx-intro { display: none; }
+.skx-mode-photo { background: transparent; }
+.skx-photo { padding: 0; justify-content: flex-start; animation: skx-fade-in 0.25s ease both; }
+.skx-photo-preview { position: absolute !important; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 !important; }
+.skx-photo-top { display: flex; align-items: center; gap: 0.6em; margin-top: 1.1em; }
+.skx-photo-title, .skx-photo-chip {
+  padding: 0.3em 0.9em; border-radius: 2em; background: rgba(255, 255, 255, 0.9); font-weight: 700;
+  box-shadow: 0 0.15em 0 rgba(160, 70, 150, 0.2), 0 0.4em 0.9em rgba(120, 40, 130, 0.2);
+}
+.skx-photo-title { background: linear-gradient(180deg, #ffa6d6, #ff6fbd); color: #fff; }
+.skx-photo-hints { margin-top: 0.6em; font-size: 0.85em; }
+.skx-photo-toast {
+  position: absolute !important; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.8); opacity: 0;
+  padding: 0.5em 1.2em; border-radius: 1em; background: #fff; font-weight: 700; font-size: 1.3em;
+  box-shadow: 0 0 0 0.2em var(--sk-pink, #ff8fc8), 0 0.6em 1.4em rgba(120, 40, 130, 0.3);
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.skx-photo-toast.skx-on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.skx-photo-snapflash { position: absolute !important; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.skx-photo-snapflash.skx-go { animation: skx-snapflash 0.45s ease-out both; }
+@keyframes skx-snapflash { 0% { opacity: 0.8; } 100% { opacity: 0; } }
+body.skx-gentle .skx-photo-snapflash.skx-go { animation-duration: 0.2s; }
+
 /* ---------- 3D victory podium (results screen) ---------- */
 body.skx-podium3d .sk-menus.sk-mode-results { background: transparent !important; }
 body.skx-podium3d .sk-results .sk-step-portrait { visibility: hidden; animation: none; }
