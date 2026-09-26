@@ -221,19 +221,19 @@ export function settingsReduce(s, ev) {
 /* Sticker Book (collection)                                           */
 /* ------------------------------------------------------------------ */
 
-export const BOOK_TABS = Object.freeze(['racers', 'tracks', 'stats']);
+export const BOOK_TABS = Object.freeze(['racers', 'tracks', 'stats', 'goals']);
 
 /**
- * @param {{ racers: number, tracks: number, racerCols?: number, trackCols?: number, tab?: number }} o
- * focus: 'tabs' (the tab strip) or 'grid'.
+ * @param {{ racers: number, tracks: number, goals?: number, racerCols?: number, trackCols?: number, goalCols?: number, tab?: number }} o
+ * focus: 'tabs' (the tab strip) or 'grid'. The 'goals' page (Fun Goals, src/progress/goals.js) is a grid too.
  */
-export function createBookState({ racers = 0, tracks = 0, racerCols = 7, trackCols = 4, tab = 0 } = {}) {
+export function createBookState({ racers = 0, tracks = 0, goals = 0, racerCols = 7, trackCols = 4, goalCols = 7, tab = 0 } = {}) {
   return {
     tab: clamp(tab, 0, BOOK_TABS.length - 1),
     focus: 'grid',
-    counts: [racers, tracks, 0],
-    cols: [Math.max(1, racerCols), Math.max(1, trackCols), 1],
-    index: [0, 0, 0],
+    counts: [racers, tracks, 0, Math.max(0, goals | 0)],
+    cols: [Math.max(1, racerCols), Math.max(1, trackCols), 1, Math.max(1, goalCols)],
+    index: [0, 0, 0, 0],
   };
 }
 
