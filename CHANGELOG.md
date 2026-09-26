@@ -17,7 +17,7 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
   *Keep going, you can do it!* and the race wraps up 45 seconds later.
 - Unlock surprises cover the trophy ceremony and results fully (no see-through podium text),
   count *Surprise 1 of 2* in a Grand Prix too, and come before the *Play again* buttons.
-- *New sticker* pop-ups moved to the top-right corner, so they no longer cover the headline;
+- *New sticker* pop-ups moved to the top-left corner, so they no longer cover the headline;
   the *Photo finish!* card is gone by the time the results show; podium names stay readable.
 - Race callouts no longer pile up over the race timer or on top of the *Mini-Turbo!* flash.
 - The Rainbow Star makes a kart glow brighter instead of looking muddy.
