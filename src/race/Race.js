@@ -8,6 +8,7 @@ import { ItemSystem, rollItem } from './Items.js';
 import { ItemBoxes } from './ItemBoxes.js';
 import { KartFx } from './KartFx.js';
 import { normalizeGameplay } from './gameplay.js';
+import { normalizeRules } from '../modes/rules.js';
 
 export { aiDriveInput };
 
@@ -45,9 +46,14 @@ export const GRID_SPACING = 6.3;
 export class Race {
   constructor({
     scene, trackDef = {}, path, builtTrack = null, participants = [], speedClass = 'zippy',
-    buildKartModel, onEvent, laps, seed, rng,
+    buildKartModel, onEvent, laps, seed, rng, rules,
   }) {
     this.scene = scene;
+    /** Mode rules (src/modes/rules.js): items on/off, CPUs on/off, starting items. */
+    this.rules = normalizeRules(rules);
+    /** Free-form info for HUD widgets set by the mode (e.g. { ghostGap }). */
+    this.modeInfo = {};
+    if (!this.rules.cpus) participants = participants.filter((p) => p.playerIndex !== null && p.playerIndex !== undefined);
     this.trackDef = trackDef;
     this.path = path;
     this.builtTrack = builtTrack;
@@ -96,6 +102,10 @@ export class Race {
         scene.add(kart.model.group);
       }
       kart.place = i + 1;
+      if (this.rules.startItem && !kart.isCPU) {
+        kart.item = this.rules.startItem;
+        kart.itemCharges = this.rules.startItemCharges;
+      }
       return kart;
     });
 
@@ -111,7 +121,8 @@ export class Race {
     this.items = new ItemSystem({
       scene, path, emit: this._emitFn, rng: this.rng, getStandings: () => this._standings,
     });
-    this.itemBoxes = new ItemBoxes({ scene, slots: builtTrack?.itemBoxSlots ?? defaultItemSlots(trackDef, path) });
+    const slots = this.rules.items ? (builtTrack?.itemBoxSlots ?? defaultItemSlots(trackDef, path)) : [];
+    this.itemBoxes = new ItemBoxes({ scene, slots });
     this.fx = this.karts.map(() => new KartFx(scene));
 
     this._standings = [...this.karts];

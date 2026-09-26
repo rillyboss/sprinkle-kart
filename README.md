@@ -36,10 +36,26 @@ Xbox, PlayStation and Switch Pro controllers all work.
 1. **Title:** press **A** (or **Enter**). Whoever presses first is **P1**.
 2. **Who's playing?:** every other player presses **A** on their controller (or their keyboard's confirm key) to join.
    Press **Y** to switch on **Kid-Assist 🧸** for that player. **B** leaves. When everyone's in, P1 presses **A**.
-3. **Pick your racer:** each player moves their own coloured cursor and presses **A**. Friends can pick the same racer!
-4. **Choose a track:** P1 picks the track, the speed (Cozy 🐢 / Zippy 🐇 / Zoomy 🚀) and how many laps.
-5. **Race!** Press the gas when the countdown says **GO**. Tip: press the gas just before GO for a sparkly
+3. **How do you want to play?** P1 picks **Free Race**, **Grand Prix** or **Time Trial** (see *Game modes* below).
+4. **Pick your racer:** each player moves their own coloured cursor and presses **A**. Friends can pick the same racer!
+5. **Choose a track** (or a **cup** in a Grand Prix): P1 picks the track, the speed (Cozy 🐢 / Zippy 🐇 / Zoomy 🚀) and how many laps.
+6. **Race!** Press the gas when the countdown says **GO**. Tip: press the gas just before GO for a sparkly
    *Rocket Start*!
+
+### Game modes 🏁🏆⏱️
+
+- **Free Race 🏁** — pick any unlocked track and race with friends and CPU pals (the classic mode).
+- **Grand Prix 🏆** — pick a cup and race its 4 tracks with the same racers. Every race gives points
+  (15 / 12 / 10 / 8 / 6 / 4 / 2 / 1); the standings count up between races and the top three get
+  gold, silver and bronze cups at the trophy ceremony. A cup can be played once all 4 of its tracks
+  are unlocked (locked cups show which track to unlock next).
+- **Time Trial ⏱️** — a solo run for P1 (friends cheer!): no CPUs, no item boxes, but you start with
+  **3 sprinkle boosts**. Your best run is saved as a sparkly **ghost** that races you next time, and the
+  timer shows how far ahead (green) or behind you are.
+- **Timers & records:** every race shows the race clock, the current lap time and your lap splits (top
+  middle). Beat your fastest lap for a *Best lap!*, beat the saved record for a *New record!*. The
+  **Records 🏆** button on the mode screen lists the best race and lap on every track, with the racer
+  who set them. (Race records count only for the track's normal number of laps.)
 
 ### Controller buttons
 
@@ -192,5 +208,8 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | `&simspeed=1..8` | Run the simulation N times per frame (for automated tests) |
 | `?unlockreset=1` | Reset saved unlocks and trophies |
 | `?democontent=1` | Menus show locked placeholders for the whole v2 lineup (21 racers, 20 tracks) |
+| `?mode=gp&cup=<cupId>` | Skip the menus and start a Grand Prix (e.g. `sprinkle-cup`; works with `players`, `speed`, `autodrive`, `fastfinish`, `cpus`, `laps`) |
+| `?mode=tt&quick=<trackId>` | Skip the menus and start a Time Trial on that track (P1 only, vs your saved ghost) |
 
-`window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests.
+`window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests,
+plus `gp` / `lastGp` (the running Grand Prix and its latest GrandPrixResult) and `timeTrial` (ghost info).

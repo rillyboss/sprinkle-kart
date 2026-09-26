@@ -1,0 +1,75 @@
+/* Race timer widget (src/ui/widgets/timer.js) — top-center zone. */
+.sk-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.sk-timer-main {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.1em 0.75em 0.1em 0.45em;
+  border-radius: 2em;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0.15em 0 rgba(160, 70, 150, 0.25), 0 0.3em 0.6em rgba(100, 30, 110, 0.2);
+  white-space: nowrap;
+}
+.sk-timer-ico { font-size: 0.95em; }
+.sk-timer-t { font-size: 1.12em; font-weight: 700; color: var(--sk-ink, #6b3a7a); letter-spacing: 0.02em; }
+.sk-timer-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.62em;
+  font-weight: 700;
+  color: #fff;
+  padding: 0.05em 0.7em;
+  border-radius: 1em;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pc, #ff5fb4) 70%, white), var(--pc, #ff5fb4));
+  box-shadow: 0 0.12em 0 rgba(0, 0, 0, 0.12);
+  text-shadow: 0 0.06em 0 rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+.sk-timer-lapn { opacity: 0.9; letter-spacing: 0.05em; }
+.sk-timer-splits { display: flex; gap: 0.3em; font-size: 0.56em; }
+.sk-timer-splits:empty { display: none; }
+.sk-split {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.02em 0.5em;
+  border-radius: 1em;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--sk-ink-soft, #9a6aa8);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 0.1em 0 rgba(160, 70, 150, 0.18);
+}
+.sk-split small { font-weight: 700; color: var(--sk-pink-deep, #ff5fb4); }
+.sk-split i { font-style: normal; font-size: 0.9em; }
+.sk-split-best { background: linear-gradient(180deg, #fff6c9, #ffe98a); color: #8a5a00; }
+.sk-split-new { animation: sk-split-pop 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) both; }
+@keyframes sk-split-pop { from { transform: scale(1.8); opacity: 0; } to { transform: none; opacity: 1; } }
+.sk-timer-extras { display: flex; gap: 0.35em; font-size: 0.68em; }
+.sk-timer-extras[hidden], .sk-timer-extras > [hidden] { display: none; }
+.sk-timer-ghost, .sk-timer-boosts {
+  padding: 0.05em 0.6em;
+  border-radius: 1em;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 0.12em 0 rgba(0, 0, 0, 0.1);
+}
+.sk-timer-ghost { background: rgba(214, 200, 255, 0.92); color: #5b3a9a; }
+.sk-timer-ghost.sk-ahead { background: rgba(170, 245, 210, 0.95); color: #1f7a55; }
+.sk-timer-boosts { background: rgba(255, 214, 236, 0.95); color: #c2378a; }
+.sk-timer-boosts.sk-empty { opacity: 0.55; }
+.sk-timer-done .sk-timer-main { background: linear-gradient(180deg, #fff6c9, #ffe98a); }
+.sk-timer-wait { opacity: 0.8; }
+/* Split-screen viewports: one compact row (clock · lap), no splits. */
+.sk-vp-multi .sk-timer { flex-direction: row; gap: 0.3em; }
+.sk-vp-multi .sk-timer-splits { display: none; }
+.sk-vp-multi .sk-timer-t { font-size: 0.95em; }
+.sk-vp-multi .sk-timer-sub { font-size: 0.7em; }

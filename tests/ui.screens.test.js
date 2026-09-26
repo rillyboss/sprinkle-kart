@@ -35,8 +35,11 @@ describe('screen registry', () => {
     expect([...map.keys()]).toEqual(['a']);
   });
 
-  it('the default flow is title → join → character select → track select', () => {
-    expect(flowOrder(SCREENS, { draft: { skip: new Set() } })).toEqual(['title', 'join', 'character-select', 'track-select']);
+  it('the default flow is title → join → mode select → character select → track select', () => {
+    expect(flowOrder(SCREENS, { draft: { skip: new Set() } })).toEqual(['title', 'join', 'mode-select', 'character-select', 'track-select']);
+    // Grand Prix swaps track select for cup select (modes workstream)
+    expect(flowOrder(SCREENS, { draft: { mode: 'grand-prix', skip: new Set(['track-select']) } }))
+      .toEqual(['title', 'join', 'mode-select', 'character-select', 'cup-select']);
   });
 });
 
