@@ -185,7 +185,9 @@ describe('progress-unlocks system', () => {
     const { bus, session } = setup();
     const s = summaryFor(false);
     bus.emit('race-end', s, session);
-    expect(s.unlocks).toEqual([]);
+    // Finishing still counts (e.g. Bubblegum Bay = finish 1 race), but nothing that needs a win.
+    expect(s.unlocks).not.toContainEqual({ kind: 'character', id: 'cotton-candy-girl' });
+    expect(s.unlocks.filter((u) => u.kind === 'character')).toEqual([]);
     expect(progress.isUnlocked('cotton-candy-girl')).toBe(false);
   });
 });
