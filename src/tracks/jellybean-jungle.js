@@ -190,7 +190,7 @@ export function buildScenery(ctx) {
     floorDisc(ctx, extent + 700, FLOOR_Y, (x, z, out) => {
       out.copy(base);
       const n1 = Math.sin(x * 0.029 + p[0]) * Math.cos(z * 0.033 + p[1]);
-      const n2 = Math.sin((x - z) * 0.047 + p[2]);
+      const n2 = Math.sin(x * 0.061 + p[2]) * Math.sin(z * 0.057 + p[0]);
       out.lerp(moss, smoothstep(0.2, 0.8, n1) * 0.7);
       out.lerp(lime, smoothstep(0.5, 0.95, n2) * 0.5);
       // a dusty toffee verge right beside the road
@@ -408,9 +408,9 @@ export function buildScenery(ctx) {
   /** A lush wall of broadleaf trees hugging the road (canopies kept clear of the cameras). */
   function buildJungleBelt() {
     const reach = 6.5;
-    const spots = scatter(105, (x, z) => {
+    const spots = scatter(150, (x, z) => {
       const d = distToRoad(x, z, hw + 90);
-      return d < hw + 80 && isClearOfCamera(ctx, x, z, reach);
+      return d < hw + 60 && isClearOfCamera(ctx, x, z, reach);
     }, { pad: 100, tries: 60 });
     const trunkGeo = new THREE.CylinderGeometry(0.55, 0.9, 1, 7, 1, true);
     const crownGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -419,12 +419,12 @@ export function buildScenery(ctx) {
     for (const [x, z] of spots) {
       const h = 8 + rng() * 8;
       trunks.push({ m: mat4(x, FLOOR_Y + h / 2, z, { s: [1, h, 1], rz: (rng() - 0.5) * 0.12 }) });
-      const c = pick(greens);
-      const n = 3 + Math.floor(rng() * 2);
+      const c = rng() < 0.22 ? pick([0xff9ed2, 0xffb8e0, 0xc9a8ff, 0xffd27a]) : pick(greens); // a few candy-blossom trees
+      const n = 3;
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2 + rng();
         const rr = k === 0 ? 0 : 2.6;
-        const r = (k === 0 ? 4.2 : 3 + rng()) ;
+        const r = k === 0 ? 4.6 : 3.3 + rng();
         crowns.push({ m: mat4(x + Math.cos(a) * rr, FLOOR_Y + h + (k === 0 ? 1.2 : rng() * 1.2), z + Math.sin(a) * rr, { s: [r, r * 0.8, r] }), c });
         if (rng() < 0.7) beans.push({ m: mat4(x + Math.cos(a) * (rr + r * 0.7), FLOOR_Y + h - 0.8, z + Math.sin(a) * (rr + r * 0.7), { rz: 1.2, ry: a, s: 1.2 }), c: pick(JELLYBEAN_COLORS) });
       }
@@ -449,7 +449,7 @@ export function buildScenery(ctx) {
       const ry = rng() * Math.PI * 2;
       trunks.push({ m: mat4(x, FLOOR_Y + h / 2, z, { s: [1, h, 1], rz: lean, ry }) });
       const tx = x - Math.sin(lean) * h * Math.cos(ry), tz = z + Math.sin(lean) * h * Math.sin(ry);
-      const nf = 6;
+      const nf = 5;
       const c = pick([0x49b85a, 0x6fd45a, 0x3fa85a, 0x8fe36a]);
       for (let k = 0; k < nf; k++) {
         fronds.push({ m: mat4(tx, FLOOR_Y + h, tz, { ry: (k / nf) * Math.PI * 2 + ry, rx: 0.35 + rng() * 0.25 }), c });
@@ -476,12 +476,6 @@ export function buildScenery(ctx) {
       return { m: mat4(x, FLOOR_Y + s * 0.35, z, { s: [s * 1.3, s * 0.8, s * 1.3], ry: rng() * 3 }), c: pick([0x49b85a, 0x6fd45a, 0x3fa85a, 0x8fe36a, 0x2f9a58]) };
     });
     instanced(ctx, bushGeo, toon(0xffffff, { emissive: 0x0f3a14, emissiveIntensity: 0.25 }), items, { outline: 0.05 });
-    // tiny jellybeans scattered on the ground like dropped treats
-    const beanSpots = scatter(150, (x, z) => {
-      const d = distToRoad(x, z, 40);
-      return d > hw + FENCE_OFFSET + 1 && d < hw + 30;
-    }, { pad: 40 });
-    instanced(ctx, capsule(0.28, 0.4, 1, 5), toon(0xffffff, { emissive: 0x331122, emissiveIntensity: 0.3 }), beanSpots.map(([x, z]) => ({ m: mat4(x, FLOOR_Y + 0.28, z, { rz: Math.PI / 2, ry: rng() * 3 }), c: pick(JELLYBEAN_COLORS) })));
   }
 
   /** Giant jungle flowers that sway and slowly turn their faces. */

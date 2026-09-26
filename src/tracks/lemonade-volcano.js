@@ -46,7 +46,7 @@ export const def = makeTrack(
       ambientColor: 0xfff4d8,
       // builder theme extras (see ARCHITECTURE.md → theme fields)
       roadSprinkles: { style: 'stars', count: 160, palette: [0xffffff, 0xfff27a, 0xffe14f, 0xfff9d6] },
-      groundTints: [0xbdf0c0, 0x9fe3b0, 0xffe0c8],
+      groundTints: [0x9fe8a8, 0x7fdc98, 0xffd0c0],
       groundTintMix: 0.8,
       skirt: { color: 0xffd36b, trim: 0xffffff },
       pillar: { shape: 'round', color: 0xfff4e0, ring: 0xffe14f },
@@ -191,6 +191,7 @@ export function buildScenery(ctx) {
   buildStream();
   buildPalms();
   buildBeachProps();
+  buildHibiscus();
   buildLemonadeGlass();
   buildFloaties();
   buildFizz();
@@ -211,7 +212,7 @@ export function buildScenery(ctx) {
 
   /** The friendly volcano: peach rock, a frosting-white top, a glowing lemonade crater. */
   function buildVolcano() {
-    const R = Math.max(30, Math.min(110, site.room - (hw + FENCE_OFFSET + 10)));
+    const R = Math.max(30, Math.min(140, site.room - (hw + FENCE_OFFSET + 5))); // its foot comes right up to the fence
     const H = R * 0.95;
     const { x, z } = site;
     const y0 = groundH(x, z) - 4;
@@ -219,14 +220,13 @@ export function buildScenery(ctx) {
     ctx.batch.add(body, toon(0xffa98a), mat4(x, y0, z));
     const cap = lathe([[R * 0.47, H * 0.64], [R * 0.42, H * 0.7], [R * 0.3, H * 0.94], [R * 0.27, H + 0.4], [R * 0.2, H * 0.93]], 28);
     ctx.batch.add(cap, toon(0xfff6ea), mat4(x, y0 + 0.3, z, { s: [1.03, 1, 1.03] }), false);
-    // frosting drips down from the white cap
-    const drips = [];
-    for (let k = 0; k < 22; k++) {
-      const a = (k / 22) * Math.PI * 2 + rng() * 0.1;
-      const len = 0.8 + rng() * 1.4;
-      drips.push({ m: mat4(x + Math.cos(a) * R * 0.46, y0 + H * 0.62 - len * 2, z + Math.sin(a) * R * 0.46, { s: [R * 0.035, len * R * 0.05, R * 0.035], rx: Math.sin(a) * 0.5, rz: -Math.cos(a) * 0.5 }) });
+    // round frosting dollops piped along the edge of the white cap
+    const dollops = [];
+    for (let k = 0; k < 30; k++) {
+      const a = (k / 30) * Math.PI * 2;
+      dollops.push({ m: mat4(x + Math.cos(a) * R * 0.465, y0 + H * 0.645, z + Math.sin(a) * R * 0.465, { s: [R * 0.055, R * 0.045, R * 0.055] }) });
     }
-    instanced(ctx, capsule(1, 1, 3, 8), toon(0xfff6ea), drips);
+    instanced(ctx, new THREE.SphereGeometry(1, 12, 8), toon(0xfff6ea), dollops, { outline: 0.06 });
     // glowing crater lake of lemonade
     const lakeMat = own(new THREE.MeshBasicMaterial({ color: 0xfff27a }));
     const lake = new THREE.Mesh(new THREE.CircleGeometry(R * 0.22, 28), lakeMat);
@@ -353,6 +353,26 @@ export function buildScenery(ctx) {
     instanced(ctx, trunkGeo, toon(0xd9a066), trunks, { outline: 0.08 });
     instanced(ctx, frondGeo, toon(0xffffff, { emissive: 0x0f3a14, emissiveIntensity: 0.25 }), fronds);
     instanced(ctx, new THREE.SphereGeometry(1, 10, 8), toon(0xffe14f, { emissive: 0x443300, emissiveIntensity: 0.3 }), lemons, { outline: 0.1 });
+  }
+
+  /** Low tropical bushes dotted with hibiscus flowers along the fences. */
+  function buildHibiscus() {
+    const spots = scatter(150, (x, z) => {
+      const d = distToRoad(x, z, 50);
+      return d > hw + FENCE_OFFSET + 1.8 && d < hw + 40 && groundH(x, z) > SEA_Y + 0.5 && !nearStream(x, z, 9);
+    }, { pad: 50 });
+    const bushes = [], flowers = [];
+    for (const [x, z] of spots) {
+      const s = 1.1 + rng() * 1.3;
+      const y = groundH(x, z);
+      bushes.push({ m: mat4(x, y + s * 0.4, z, { s: [s * 1.3, s * 0.9, s * 1.3], ry: rng() * 3 }), c: pick([0x3fcf7a, 0x5fd88a, 0x2fb86a]) });
+      for (let k = 0; k < 2; k++) {
+        const a = rng() * Math.PI * 2;
+        flowers.push({ m: mat4(x + Math.cos(a) * s * 0.9, y + s * 0.8, z + Math.sin(a) * s * 0.9, { s: 0.45 }), c: pick([0xff5fa2, 0xff9f40, 0xffe14f, 0xff7ac8, 0xffffff]) });
+      }
+    }
+    instanced(ctx, new THREE.IcosahedronGeometry(1, 1), toon(0xffffff, { emissive: 0x0f3a14, emissiveIntensity: 0.25 }), bushes, { outline: 0.05 });
+    instanced(ctx, new THREE.IcosahedronGeometry(1, 0), toon(0xffffff, { emissive: 0x442233, emissiveIntensity: 0.3 }), flowers);
   }
 
   /** Striped beach umbrellas, towels and sandcastle-ish sugar cubes on the sand. */
