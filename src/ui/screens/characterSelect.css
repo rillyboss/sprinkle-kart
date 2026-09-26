@@ -1,0 +1,45 @@
+/*
+ * Character select fixes for big rosters (v2.0.1). Loaded after ui.css.
+ * - cursor tags (P1..P4) sit INSIDE the tile, so the scroll box never clips them
+ * - with 2+ players a big roster goes wide (.sk-grid-wide, up to 11 per row) so it fits
+ * - a sticky "More friends below!" cue shows while rows are hidden (.sk-grid-more)
+ */
+.sk-grid.sk-grid-many .sk-tags { top: 0.2em; z-index: 3; }
+.sk-grid.sk-grid-many .sk-tile-hot { transform: translateY(-0.15em) scale(1.04); }
+.sk-grid.sk-grid-many { padding: 0.7em 0.5em 0.7em; scroll-padding: 0.7em 0 0.7em; }
+
+.sk-grid.sk-grid-wide { width: 100%; gap: 0.55em; }
+.sk-grid.sk-grid-wide .sk-tile { width: calc((100% - (var(--cols) - 1) * 0.55em) / var(--cols)); padding: 0.35em 0.25em 0.4em !important; border-radius: 1em !important; }
+.sk-grid.sk-grid-wide .sk-tile .sk-portrait { border-radius: 0.8em; }
+.sk-grid.sk-grid-wide .sk-tile-name { font-size: 0.62em; min-height: 2.3em; }
+.sk-grid.sk-grid-wide .sk-tile-locked .sk-tile-name { font-size: 0.54em; }
+.sk-grid.sk-grid-wide .skp-bar-tile { font-size: 0.62em; }
+.sk-grid.sk-grid-wide .sk-q { font-size: 2.2em; }
+.sk-grid.sk-grid-wide .sk-tag { font-size: 0.72em; }
+
+.sk-grid-cue {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.sk-grid-more .sk-grid-cue { opacity: 1; }
+.sk-grid-cue span {
+  margin-bottom: -0.2em;
+  padding: 0.15em 0.9em;
+  border-radius: 1em;
+  background: #ff7cc3;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8em;
+  box-shadow: 0 0.15em 0 rgba(160, 40, 120, 0.25);
+  animation: sk-bob 1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .sk-grid-cue span { animation: none; } }
