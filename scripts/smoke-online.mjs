@@ -700,8 +700,17 @@ async function raceSteps(sc, host, guest, r, prefix) {
   if (guestHumans[0] !== 2) r.problems.push(`the guest house races with ${guestHumans[0]} seat(s), expected 2`);
   await waitGame(host, () => window.__game?.race?.state === 'racing' && window.__game.race.time > 2, null, T(90000), 'the host race running');
   await waitGame(guest, () => (window.__game?.race?.time ?? 0) > 2, null, T(60000), 'the guest race running');
-  await shot(host, `${sc.path}-race-host`);
-  await shot(guest, `${sc.path}-race-guest`);
+  // nothing from the menus may still cover the race (e.g. "Waiting for friends to pick…")
+  for (const p of [host, guest]) {
+    const cover = await p.page.evaluate(() => {
+      const vis = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05; };
+      const s = [...document.querySelectorAll('.sk-screen')].find(vis);
+      return s ? `${window.__game?.menus?.screenId ?? '?'} (${(s.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60)})` : null;
+    });
+    if (cover) r.problems.push(`${p.name}: a menu screen covers the running race: ${cover}`);
+  }
+  await shot(host, `${prefix}race-host`);
+  await shot(guest, `${prefix}race-guest`);
   await waitGame(host, atResults, null, T(400000), 'the host results');
   await waitGame(guest, atResults, null, T(90000), 'the guest results');
   const standings = (p) => p.page.evaluate(() => {
@@ -715,8 +724,8 @@ async function raceSteps(sc, host, guest, r, prefix) {
   const [hs, gs] = [await standings(host), await standings(guest)];
   r.problems.push(...standingsProblems(hs, gs));
   r.notes.push(`standings: ${hs.map((x) => x.id.replace(/#.*/, '')).join(' > ')}`);
-  await shot(host, `${sc.path}-results-host`);
-  await shot(guest, `${sc.path}-results-guest`);
+  await shot(host, `${prefix}results-host`);
+  await shot(guest, `${prefix}results-guest`);
   // rematch: "Race again" is the host's first results option (unlock celebrations first take their presses)
   await chooseOnResults(host, 0, inRace, 'the rematch on the host');
   await waitGame(guest, inRace, null, T(60000), 'the rematch on the guest');
