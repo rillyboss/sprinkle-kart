@@ -2,57 +2,75 @@
 /**
  * Sprinkle Kart smoke test.
  *
- *   node scripts/smoke.mjs            (or: npm run smoke)
+ *   node scripts/smoke.mjs [filters...]      (or: npm run smoke)
+ *   SMOKE_PORT=5310 node scripts/smoke.mjs cotton-candy-castle menu
  *
- * Starts its own Vite dev server on :5190, drives system Chrome (headless,
- * SwiftShader WebGL) with Playwright and checks:
- *   1. every REGISTERED track (read from the live registry, so new tracks are
- *      covered automatically): 1 player always; 4 players for the original Sprinkle
- *      Cup, for any track named in the filters (e.g. `node scripts/smoke.mjs bubblegum-bay`)
- *      or for all tracks with SMOKE_FULL=1; plus a 3-player spectator run. Autodrive:
- *      no console/page errors, every kart moves forward, fps is reported;
- *   2. the full menu flow with keyboard presses (title → join → racer → track → race),
- *      and the menus at full v2 size (?democontent=1: 21 racers, 20 tracks);
+ * Starts its own Vite dev server (SMOKE_PORT, default 5190), drives system Chrome
+ * (headless, SwiftShader WebGL) with Playwright and checks:
+ *   1. every REGISTERED track (read from the live registry, so new tracks are covered
+ *      automatically) in 1p; 4p for the Sprinkle Cup locally (CI: a couple of tracks,
+ *      see scripts/smoke-plan.mjs), for any track named in the filters
+ *      (`node scripts/smoke.mjs bubblegum-bay` → 1p + 4p) or for all tracks with
+ *      SMOKE_FULL=1; plus a 3-player spectator run. Autodrive: no console/page errors,
+ *      every kart moves forward, fps is reported;
+ *   2. the full menu flow with keyboard presses (title → join → racer → track → race →
+ *      pause → resume), the menus at full v2 size (?democontent=1), and the same flow
+ *      with a (fake) standard gamepad;
  *   3. a 1-lap autodrive race that reaches the results screen and shows the
  *      Cotton Candy Girl unlock celebration (after resetting progress).
- * Screenshots land in smoke-out/ (stale *-FAIL.png files are cleared at the start).
- * Exits non-zero on any failure.
+ *
+ * Robust on slow machines (CI has no GPU: SwiftShader can run at 1–3 fps):
+ *   - every wait is on a GAME condition (window.__game state / race.time / frame count /
+ *     menu cooldown), never a fixed wall-clock sleep, so a slow frame rate only makes
+ *     the run longer, not red;
+ *   - timeouts scale with SMOKE_TIMEOUT_SCALE (4× in CI); a failed scenario is retried
+ *     once (SMOKE_RETRIES) and reported as flaky if the retry passes;
+ *   - in CI (env CI) the viewport is 800×450 at devicePixelRatio 1.
+ * On failure: `<name>-FAIL.png` + `<name>-FAIL.log` (console dump + game state) in
+ * smoke-out/, plus `smoke-out/summary.json` (and a GitHub job summary when available).
+ * Stale *-FAIL.* files are cleared at the start. Exits non-zero on any failure.
+ *
+ * Adding a smoke case for a new screen: write an `async function myTest(t)` like
+ * `menuFlowTest` (use the helpers: waitGame, waitMenusReady, pressKey, tapPad, driveFor,
+ * t.check, t.shot — never fixed sleeps) and append one line to FLOW_TESTS.
  */
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import {
+  ORIGINAL_TRACK_IDS, resolveProfile, timeoutFor, planScenarios, stalledKarts, isIgnorableError,
+} from './smoke-plan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'smoke-out');
-const PORT = Number(process.env.SMOKE_PORT || 5190);
+const PROFILE = resolveProfile(process.env);
+const PORT = PROFILE.port;
 const BASE = `http://localhost:${PORT}/`;
-/** The original Sprinkle Cup: always smoke-tested in 1p and 4p. */
-const ORIGINAL_TRACK_IDS = ['cotton-candy-castle', 'gumdrop-meadow', 'starlight-galaxy', 'sundae-slopes'];
-const FULL = !!process.env.SMOKE_FULL;
-const RACE_WAIT_MS = Number(process.env.SMOKE_WAIT_MS || 12000);
 const only = process.argv.slice(2); // optional filters: e.g. "menu", "results", a track id
+const T = (ms) => timeoutFor(PROFILE, ms);
 
 mkdirSync(OUT, { recursive: true });
-for (const f of readdirSync(OUT)) if (f.endsWith('-FAIL.png')) rmSync(path.join(OUT, f), { force: true });
+for (const f of readdirSync(OUT)) if (/-FAIL\.(png|log)$/.test(f)) rmSync(path.join(OUT, f), { force: true });
 
 const failures = [];
+const flaky = [];
+const results = [];
 const log = (...a) => console.log('[smoke]', ...a);
 const fail = (name, msg) => { failures.push(`${name}: ${msg}`); console.log(`[smoke] FAIL ${name}: ${msg}`); };
-const wanted = (name) => !only.length || only.some((f) => name.includes(f));
 
 /* ---------------- dev server ---------------- */
 
 let server = null;
+let serverOut = '';
 function startServer() {
   server = spawn(`npx vite --port ${PORT} --strictPort`, {
     cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
-  let out = '';
-  server.stdout.on('data', (d) => { out += d; });
-  server.stderr.on('data', (d) => { out += d; });
-  server.on('exit', (code) => { if (code && code !== 0) log(`vite exited (${code})\n${out}`); });
+  server.stdout.on('data', (d) => { serverOut = (serverOut + d).slice(-20000); });
+  server.stderr.on('data', (d) => { serverOut = (serverOut + d).slice(-20000); });
+  server.on('exit', (code) => { if (code && code !== 0) log(`vite exited (${code})\n${serverOut}`); });
 }
 function stopServer() {
   if (!server || server.exitCode !== null) return;
@@ -61,7 +79,7 @@ function stopServer() {
     else server.kill('SIGTERM');
   } catch { /* already gone */ }
 }
-async function waitForServer(ms = 40000) {
+async function waitForServer(ms = T(40000)) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     try {
@@ -70,18 +88,18 @@ async function waitForServer(ms = 40000) {
     } catch { /* not yet */ }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error('vite dev server did not start');
+  throw new Error(`vite dev server did not start\n${serverOut}`);
 }
 process.on('SIGINT', () => { stopServer(); process.exit(130); });
 
-/* ---------------- helpers ---------------- */
+/* ---------------- page + game helpers ---------------- */
 
 /** Track ids from the live registry (src/tracks/index.js via the dev server). */
 async function registeredTrackIds(browser) {
   const ctx = await browser.newContext();
   try {
     const page = await ctx.newPage();
-    await page.goto(`${BASE}?smoke-registry=1`);
+    await page.goto(`${BASE}?smoke-registry=1`, { timeout: T(60000) });
     const ids = await page.evaluate(async () => (await import('/src/tracks/index.js')).TRACKS.map((t) => t.id));
     if (!Array.isArray(ids) || !ids.length) throw new Error('no tracks registered');
     return ids;
@@ -93,184 +111,110 @@ async function registeredTrackIds(browser) {
   }
 }
 
-async function newPage(browser, name, viewport = { width: 1280, height: 720 }) {
-  const ctx = await browser.newContext({ viewport });
+/**
+ * A fresh browser context + page for one scenario attempt.
+ * `t.problems` collects failures of this attempt; `t.consoleLog` keeps everything the page said.
+ */
+async function newTestPage(browser, name) {
+  const ctx = await browser.newContext({ viewport: PROFILE.viewport, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
-  const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
-  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('requestfailed', (r) => {
-    // Fonts are a nice-to-have (offline families still get a rounded fallback).
-    if (!/fonts\.(googleapis|gstatic)\.com/.test(r.url())) errors.push(`requestfailed: ${r.url()}`);
+  page.setDefaultTimeout(T(30000));
+  const t = { ctx, page, name, errors: [], consoleLog: [], problems: [] };
+  const note = (line) => { t.consoleLog.push(line); if (t.consoleLog.length > 400) t.consoleLog.shift(); };
+  page.on('console', (m) => {
+    note(`[${m.type()}] ${m.text()}`);
+    if (m.type() === 'error' && !isIgnorableError(m.text())) t.errors.push(`console: ${m.text()}`);
   });
-  return { ctx, page, errors, name };
+  page.on('pageerror', (e) => { note(`[pageerror] ${e.stack || e.message}`); t.errors.push(`pageerror: ${e.message}`); });
+  page.on('requestfailed', (r) => {
+    note(`[requestfailed] ${r.url()} ${r.failure()?.errorText ?? ''}`);
+    // Fonts are a nice-to-have (offline families still get a rounded fallback).
+    if (!isIgnorableError(r.url())) t.errors.push(`requestfailed: ${r.url()}`);
+  });
+  t.check = (ok, msg) => { if (!ok) t.problems.push(msg); return !!ok; };
+  t.shot = (file) => page.screenshot({ path: path.join(OUT, file) });
+  return t;
 }
 
 const gameInfo = (page) => page.evaluate(() => {
   const g = window.__game;
   if (!g) return null;
+  const r = g.race;
   return {
     state: g.state,
     fps: g.fps,
     frames: g.frames,
     errors: g.errors,
-    raceState: g.race?.state ?? null,
-    karts: g.race ? g.race.karts.map((k) => ({ id: k.characterId, pi: k.playerIndex, progress: k.progress })) : [],
-    lastResults: g.lastResults,
+    screen: g.menus?.screenId ?? null,
+    menuCooldown: g.menus?._cooldown ?? null,
+    raceState: r?.state ?? null,
+    raceTime: r?.time ?? null,
+    raceClock: r?.clock ?? null,
+    karts: r ? r.karts.map((k) => ({ id: k.characterId, pi: k.playerIndex, progress: k.progress, s: k.s, lateral: k.lateral, speed: k.speed })) : [],
+    lastResults: g.lastResults ? { ...g.lastResults, summary: undefined } : null,
   };
-});
+}).catch((err) => ({ unavailable: String(err?.message || err) }));
 
-async function waitFor(page, fn, arg, timeout, what) {
+/** Wait for an in-page predicate (polled every 100 ms). */
+async function waitGame(page, fn, arg, timeout, what) {
   try {
-    await page.waitForFunction(fn, arg, { timeout, polling: 250 });
-    return true;
-  } catch {
-    throw new Error(`timed out waiting for ${what}`);
-  }
-}
-
-function checkErrors(t) {
-  const errs = t.errors.filter((e) => !/favicon/i.test(e));
-  if (errs.length) fail(t.name, `errors:\n    ${errs.slice(0, 8).join('\n    ')}`);
-}
-
-/* ---------------- tests ---------------- */
-
-async function raceTest(browser, trackId, players) {
-  const name = `${trackId}-${players}p`;
-  const n0 = failures.length;
-  const t = await newPage(browser, name);
-  try {
-    await t.page.goto(`${BASE}?quick=${trackId}&players=${players}&autodrive=1&simspeed=2`);
-    await waitFor(t.page, () => window.__game?.state === 'race' && !!window.__game.race, null, 60000, 'race to start');
-    const before = await gameInfo(t.page);
-    await t.page.waitForTimeout(RACE_WAIT_MS);
-    const after = await gameInfo(t.page);
-    await t.page.screenshot({ path: path.join(OUT, `${name}.png`) });
-    if (!after) throw new Error('window.__game missing');
-    if (after.karts.length !== 8) fail(name, `expected 8 karts, got ${after.karts.length}`);
-    const humans = after.karts.filter((k) => k.pi !== null);
-    if (humans.length !== players) fail(name, `expected ${players} human karts, got ${humans.length}`);
-    after.karts.forEach((k, i) => {
-      const b = before.karts[i]?.progress ?? 0;
-      if (!(k.progress > b + 5)) fail(name, `${k.id} did not move (progress ${b.toFixed(1)} → ${k.progress.toFixed(1)})`);
-    });
-    if (!(after.fps > 0)) fail(name, `fps not reported (${after.fps})`);
-    if (after.errors?.length) fail(name, `game loop errors: ${after.errors[0]}`);
-    checkErrors(t);
-    if (failures.length === n0) log(`${name}: ok  fps=${after.fps} state=${after.raceState}`);
+    await page.waitForFunction(fn, arg, { timeout, polling: 100 });
   } catch (err) {
-    fail(name, err.message);
-    await t.page.screenshot({ path: path.join(OUT, `${name}-FAIL.png`) }).catch(() => {});
-  } finally {
-    await t.ctx.close();
+    const info = await gameInfo(page);
+    const brief = info && !info.unavailable
+      ? ` (state=${info.state} screen=${info.screen} race=${info.raceState} t=${info.raceTime?.toFixed?.(1)} fps=${info.fps} frames=${info.frames})`
+      : '';
+    throw new Error(`timed out after ${Math.round(timeout / 1000)}s waiting for ${what}${brief}${/Timeout/.test(err.message) ? '' : `: ${err.message}`}`);
   }
 }
 
-async function menuFlowTest(browser) {
-  const name = 'menu-flow';
-  const n0 = failures.length;
-  const t = await newPage(browser, name);
-  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `menu-${n}.png`) });
-  const press = async (key, pause = 700) => { await t.page.keyboard.press(key); await t.page.waitForTimeout(pause); };
-  try {
-    await t.page.goto(`${BASE}?unlockreset=1`);
-    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, 60000, 'title screen');
-    await t.page.waitForTimeout(1200);
-    await shot('1-title');
-    await press('Enter', 1000);                // kb1 joins as P1 → join screen
-    await shot('2-join');
-    await press('Enter', 1000);                // P1 continues → character select
-    await shot('3-characters');
-    await press('KeyD', 400);                  // move the cursor one step right
-    await press('Enter', 2200);                // lock in → everyone ready → track select
-    await shot('4-tracks');
-    await press('Enter', 500);                 // RACE!
-    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'race to start from menus');
-    await t.page.waitForTimeout(2500);
-    await shot('5-race-countdown');
-    // wait for GO, then drive a bit with the keyboard
-    await waitFor(t.page, () => window.__game?.race?.state === 'racing', null, 30000, 'GO');
-    const start = (await gameInfo(t.page)).karts.find((k) => k.pi === 0)?.progress ?? 0;
-    await t.page.keyboard.down('KeyW');
-    await t.page.waitForTimeout(5000);
-    await t.page.keyboard.up('KeyW');
-    await shot('6-race-driving');
-    const info = await gameInfo(t.page);
-    const me = info.karts.find((k) => k.pi === 0);
-    if (!me) fail(name, 'no P1 kart in the race');
-    else if (!(me.progress > start + 3)) fail(name, `P1 did not drive forward with W (progress ${start.toFixed(1)} → ${me.progress.toFixed(1)})`);
-    // pause and resume
-    await press('Escape', 900);
-    const paused = await gameInfo(t.page);
-    await shot('7-pause');
-    if (paused.state !== 'paused') fail(name, `Esc did not pause (state ${paused.state})`);
-    await press('Escape', 900);
-    const resumed = await gameInfo(t.page);
-    if (resumed.state !== 'race') fail(name, `Esc did not resume (state ${resumed.state})`);
-    checkErrors(t);
-    if (failures.length === n0) log(`${name}: ok`);
-  } catch (err) {
-    fail(name, err.message);
-    await shot('FAIL').catch(() => {});
-  } finally {
-    await t.ctx.close();
-  }
+/** Wait until the game loop has run `n` more frames (input is sampled once per frame). */
+async function waitFrames(page, n = 1, timeout = T(20000)) {
+  const f0 = await page.evaluate(() => window.__game?.frames ?? 0);
+  await waitGame(page, ([f, k]) => (window.__game?.frames ?? 0) >= f + k, [f0, n], timeout, `${n} game frame(s)`);
+}
+
+/** Menus are showing a screen and are past their input cooldown (presses would be dropped before). */
+async function waitMenusReady(page, timeout = T(20000)) {
+  await waitGame(page, () => {
+    const m = window.__game?.menus;
+    return !!m?.screen && m._cooldown <= 0;
+  }, null, timeout, 'menus to accept input');
+}
+
+/** Wait until the race is running and its clock has passed `seconds` (game time, not wall time). */
+async function waitRaceTime(page, seconds, timeout = T(60000)) {
+  await waitGame(page, (s) => window.__game?.race?.state === 'racing' && window.__game.race.time >= s,
+    seconds, timeout, `race clock ${seconds.toFixed(1)}s`);
+}
+
+/** Current race time (0 during the countdown). */
+const raceTime = (page) => page.evaluate(() => window.__game?.race?.time ?? 0);
+
+/** Drive (game time) for `seconds` after GO. */
+async function driveFor(page, seconds) {
+  await waitGame(page, () => window.__game?.race?.state === 'racing', null, T(60000), 'GO');
+  const t0 = await raceTime(page);
+  await waitRaceTime(page, t0 + seconds);
 }
 
 /**
- * The menus at full v2 size (?democontent=1 pads them with locked placeholders
- * for all 21 racers and 20 tracks): the grid scrolls, tracks page by cup, and
- * locked tracks / racers can't be picked.
+ * Press a keyboard key once the menus accept input (unless `inRace`), then let a frame
+ * consume it. With `until`, retry (max `tries`) until the in-page predicate holds.
  */
-async function menuScaleTest(browser) {
-  const name = 'menu-scale';
-  const n0 = failures.length;
-  const t = await newPage(browser, name);
-  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `scale-${n}.png`) });
-  const press = async (key, pause = 450) => { await t.page.keyboard.press(key); await t.page.waitForTimeout(pause); };
-  try {
-    await t.page.goto(`${BASE}?unlockreset=1&democontent=1`);
-    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, 60000, 'title screen');
-    await t.page.waitForTimeout(1200);
-    await press('Enter', 1000);                // kb1 joins as P1
-    await press('Slash', 800);                 // kb2 joins as P2
-    await press('Enter', 1000);                // → character select
-    const tiles = await t.page.evaluate(() => document.querySelectorAll('.sk-tile').length);
-    if (tiles !== 21) fail(name, `expected 21 racer tiles, got ${tiles}`);
-    const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
-    if (locked !== 13) fail(name, `expected 13 locked racer tiles, got ${locked}`);
-    await shot('1-characters');
-    await press('KeyS');                       // P1 down two rows (grid scrolls)
-    await press('KeyS');
-    await shot('2-characters-scrolled');
-    await press('Enter', 500);                 // a locked racer: nope-wiggle, not ready
-    if (await t.page.evaluate(() => !!document.querySelector('.sk-panel-ready'))) fail(name, 'a locked racer was picked');
-    await press('KeyW');
-    await press('KeyW');
-    await press('Enter', 500);                 // P1 picks Rocco
-    await press('Slash', 2400);                // P2 picks too → track select
-    const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-card').length);
-    if (cards !== 20) fail(name, `expected 20 track cards, got ${cards}`);
-    const tabs = await t.page.evaluate(() => document.querySelectorAll('.sk-cup-tab').length);
-    if (tabs !== 5) fail(name, `expected 5 cup tabs, got ${tabs}`);
-    await shot('3-tracks');
-    for (let i = 0; i < 4; i++) await press('KeyD', 300); // → first Bubble Cup track (locked)
-    await shot('4-tracks-bubble-cup');
-    await press('Enter', 900);
-    if ((await gameInfo(t.page)).state !== 'menu') fail(name, 'a locked track started a race');
-    await press('KeyA', 300);                  // back to Sundae Slopes
-    await press('Enter', 500);
-    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'race to start from the big menus');
-    const setup = await t.page.evaluate(() => window.__game.setup);
-    if (setup.trackId !== 'sundae-slopes') fail(name, `expected sundae-slopes, got ${setup.trackId}`);
-    checkErrors(t);
-    if (failures.length === n0) log(`${name}: ok`);
-  } catch (err) {
-    fail(name, err.message);
-    await shot('FAIL').catch(() => {});
-  } finally {
-    await t.ctx.close();
+async function pressKey(t, key, { until = null, arg = null, what = key, inRace = false, tries = 3, timeout = T(8000) } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    if (!inRace) await waitMenusReady(t.page);
+    await t.page.keyboard.press(key);
+    await waitFrames(t.page, 1);
+    if (!until) return;
+    try {
+      await waitGame(t.page, until, arg, timeout, what);
+      return;
+    } catch (err) {
+      if (attempt >= tries) throw err;
+      log(`${t.name}: ${key} did not reach "${what}" yet, pressing again (${attempt}/${tries - 1})`);
+    }
   }
 }
 
@@ -290,131 +234,315 @@ const FAKE_PAD_SCRIPT = () => {
   navigator.getGamepads = () => [pad, null, null, null];
 };
 
-async function gamepadFlowTest(browser) {
-  const name = 'gamepad-flow';
-  const n0 = failures.length;
-  const t = await newPage(browser, name);
-  const shot = (n) => t.page.screenshot({ path: path.join(OUT, `pad-${n}.png`) });
-  const tap = async (button, pause = 900) => {
-    await t.page.evaluate((b) => window.__pad.set(b, true), button);
-    await t.page.waitForTimeout(200); // shorter than the 350 ms menu auto-repeat
-    await t.page.evaluate((b) => window.__pad.set(b, false), button);
-    await t.page.waitForTimeout(pause);
-  };
-  try {
-    await t.ctx.addInitScript(FAKE_PAD_SCRIPT);
-    await t.page.goto(`${BASE}?unlockreset=1`);
-    await waitFor(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, 60000, 'title screen');
-    await t.page.waitForTimeout(1200);
-    await tap(0);                              // A on title → pad joins as P1
-    await tap(3);                              // Y toggles Easy Drive
-    await shot('1-join');
-    await tap(0);                              // A → character select
-    await tap(15, 500);                        // d-pad right (Lenny)
-    await tap(0, 2400);                        // lock in → track select
-    await tap(15, 500);                        // next track (Gumdrop Meadow)
-    await shot('2-tracks');
-    await tap(0, 500);                         // race!
-    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'race to start with the controller');
-    const setup = await t.page.evaluate(() => window.__game.setup);
-    if (setup.players[0]?.deviceId !== 'gp0') fail(name, `P1 should be gp0, got ${setup.players[0]?.deviceId}`);
-    if (!setup.players[0]?.easyDrive) fail(name, 'Y did not toggle Easy Drive');
-    if (setup.trackId !== 'gumdrop-meadow') fail(name, `expected gumdrop-meadow, got ${setup.trackId}`);
-    if (setup.players[0]?.characterId !== 'lenny') fail(name, `expected lenny, got ${setup.players[0]?.characterId}`);
-    await waitFor(t.page, () => window.__game?.race?.state === 'racing', null, 30000, 'GO');
-    const start = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).progress);
-    await t.page.evaluate(() => window.__pad.set(7, true)); // hold RT
-    await t.page.waitForTimeout(4000);
-    const after = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).progress);
-    if (!(after > start + 3)) fail(name, `RT did not drive (progress ${start.toFixed(1)} → ${after.toFixed(1)})`);
-    // steer right with the stick: lateral should go up (right = +lateral)
-    const lat0 = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).lateral);
-    await t.page.evaluate(() => window.__pad.axis(0, 1));
-    await t.page.waitForTimeout(1500);
-    const lat1 = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).lateral);
-    await t.page.evaluate(() => window.__pad.axis(0, 0));
-    if (!(lat1 > lat0)) fail(name, `stick right did not steer right (lateral ${lat0.toFixed(2)} → ${lat1.toFixed(2)})`);
-    await shot('3-race');
-    await tap(9, 900);                         // Start → pause
-    const paused = await t.page.evaluate(() => window.__game.state);
-    if (paused !== 'paused') fail(name, `Start did not pause (state ${paused})`);
-    await shot('4-pause');
-    await tap(9, 900);                         // Start → resume
-    const resumed = await t.page.evaluate(() => window.__game.state);
-    if (resumed !== 'race') fail(name, `Start did not resume (state ${resumed})`);
-    checkErrors(t);
-    if (failures.length === n0) log(`${name}: ok`);
-  } catch (err) {
-    fail(name, err.message);
-    await shot('FAIL').catch(() => {});
-  } finally {
-    await t.ctx.close();
+/**
+ * Press a pad button for EXACTLY one game frame, synchronised in the page with the game's own
+ * 'frame' event (emitted after that frame's input poll): pressed for frame N, released before
+ * frame N+1 polls, resolved after N+1. Releasing from node instead races the game loop: two
+ * polls of a held d-pad more than 350 ms apart (slow CI frames) auto-repeat and skip an entry.
+ */
+async function padTapInPage(page, button, timeout = T(20000)) {
+  await page.evaluate(([b, ms]) => new Promise((resolve, reject) => {
+    const bus = window.__game?.bus;
+    if (!bus) { reject(new Error('window.__game.bus missing')); return; }
+    let n = 0;
+    const timer = setTimeout(() => { off(); window.__pad.set(b, false); reject(new Error(`pad tap: no game frames for ${ms} ms`)); }, ms);
+    const off = bus.on('frame', () => {
+      n++;
+      if (n === 1) window.__pad.set(b, false);
+      else { off(); clearTimeout(timer); resolve(); }
+    });
+    window.__pad.set(b, true);
+  }), [button, timeout]);
+}
+
+/**
+ * Tap a pad button for exactly one sampled frame (never long enough to auto-repeat,
+ * never so short that a slow frame misses it). Same retry rules as pressKey.
+ */
+async function tapPad(t, button, { until = null, arg = null, what = `button ${button}`, inRace = false, tries = 3, timeout = T(8000) } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    if (!inRace) await waitMenusReady(t.page);
+    await padTapInPage(t.page, button);
+    if (!until) return;
+    try {
+      await waitGame(t.page, until, arg, timeout, what);
+      return;
+    } catch (err) {
+      if (attempt >= tries) throw err;
+      log(`${t.name}: button ${button} did not reach "${what}" yet, tapping again (${attempt}/${tries - 1})`);
+    }
   }
 }
 
-async function resultsTest(browser) {
-  const name = 'results-unlock';
-  const n0 = failures.length;
-  const t = await newPage(browser, name);
-  try {
-    await t.page.goto(`${BASE}?quick=cotton-candy-castle&players=1&cpus=0&autodrive=1&fastfinish=1&unlockreset=1&simspeed=6&speed=zoomy`);
-    await waitFor(t.page, () => window.__game?.state === 'race', null, 60000, 'race to start');
-    await waitFor(t.page, () => window.__game?.state === 'results', null, 240000, 'results screen');
-    await t.page.waitForTimeout(900);
-    await t.page.screenshot({ path: path.join(OUT, 'results.png') });
-    await waitFor(t.page, () => !!document.querySelector('.sk-unlock'), null, 10000, 'unlock celebration');
-    await t.page.waitForTimeout(1200);
-    await t.page.screenshot({ path: path.join(OUT, 'results-unlock.png') });
-    const info = await gameInfo(t.page);
-    if (info.lastResults?.newlyUnlocked !== 'cotton-candy-girl') fail(name, `unlock not recorded: ${JSON.stringify(info.lastResults)}`);
-    const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}'));
-    if (!saved.unlocked?.includes('cotton-candy-girl')) fail(name, 'unlock not saved to localStorage');
-    // mashing A right away must NOT skip the reveal
-    await t.page.keyboard.press('Enter');
-    await t.page.waitForTimeout(150);
-    if (!(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')))) fail(name, 'unlock reveal was skipped by an early press');
-    // once the reveal has had its moment, dismiss it, then pick "Race again" → a new race starts
-    await waitFor(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, 30000, 'unlock reveal ready to continue');
-    await t.page.keyboard.press('Enter');
-    await t.page.waitForTimeout(1500);
-    await t.page.screenshot({ path: path.join(OUT, 'results-after.png') });
-    await t.page.keyboard.press('Enter');
-    await waitFor(t.page, () => window.__game?.state === 'race', null, 30000, 'next race after results');
-    checkErrors(t);
-    if (failures.length === n0) log(`${name}: ok`);
-  } catch (err) {
-    fail(name, err.message);
-    await t.page.screenshot({ path: path.join(OUT, `${name}-FAIL.png`) }).catch(() => {});
-  } finally {
-    await t.ctx.close();
-  }
+/** Condition objects for pressKey / tapPad `{ ...cond }` and waitCond(page, cond). */
+const onScreen = (id, what = `${id} screen`) => ({ until: (s) => window.__game?.menus?.screenId === s, arg: id, what });
+const inState = (state, what = `game state "${state}"`) => ({ until: (s) => window.__game?.state === s, arg: state, what });
+const waitCond = (page, c, timeout = T(30000)) => waitGame(page, c.until, c.arg, timeout, c.what);
+/** In-page predicate (arg = n): at least n players joined on the join screen. */
+const joinedAtLeast = (n) => (window.__game?.menus?.draft?.joinState?.players?.length ?? 0) >= n;
+
+function checkErrors(t) {
+  const errs = t.errors.filter((e) => !isIgnorableError(e));
+  t.check(!errs.length, `errors:\n    ${errs.slice(0, 8).join('\n    ')}`);
 }
 
-/* ---------------- run ---------------- */
+/** Screenshot + console dump + game state for a failed attempt. */
+async function writeDiagnostics(t, attempt, problems) {
+  const suffix = attempt > 1 ? `-try${attempt}` : '';
+  await t.page.screenshot({ path: path.join(OUT, `${t.name}${suffix}-FAIL.png`) }).catch(() => {});
+  const info = await gameInfo(t.page);
+  const text = [
+    `scenario: ${t.name} (attempt ${attempt}, profile ${PROFILE.name}, viewport ${PROFILE.viewport.width}x${PROFILE.viewport.height})`,
+    '', 'problems:', ...problems.map((p) => `  - ${p}`),
+    '', 'game state:', JSON.stringify(info, null, 2),
+    '', `console (last ${t.consoleLog.length} lines):`, ...t.consoleLog,
+  ].join('\n');
+  writeFileSync(path.join(OUT, `${t.name}${suffix}-FAIL.log`), text);
+}
+
+/* ---------------- scenarios ---------------- */
+
+async function raceTest(t, { trackId, players }) {
+  await t.page.goto(`${BASE}?quick=${trackId}&players=${players}&autodrive=1&simspeed=2`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race' && !!window.__game.race, null, T(60000), 'race to start');
+  const before = await gameInfo(t.page);
+  // Game clock, not wall clock: slow CI frames just take longer.
+  await waitRaceTime(t.page, PROFILE.driveSeconds, T(90000));
+  const after = await gameInfo(t.page);
+  await t.shot(`${t.name}.png`);
+  if (!t.check(after && !after.unavailable, 'window.__game missing')) return;
+  t.check(after.karts.length === 8, `expected 8 karts, got ${after.karts.length}`);
+  const humans = after.karts.filter((k) => k.pi !== null);
+  t.check(humans.length === players, `expected ${players} human karts, got ${humans.length}`);
+  for (const p of stalledKarts(before.karts, after.karts)) t.check(false, p);
+  t.check(after.fps > 0, `fps not reported (${after.fps})`);
+  t.check(!after.errors?.length, `game loop errors: ${after.errors?.[0]}`);
+  checkErrors(t);
+  t.detail = `fps=${after.fps} raceTime=${after.raceTime?.toFixed(1)}s`;
+}
+
+async function menuFlowTest(t) {
+  const shot = (n) => t.shot(`menu-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
+  await waitMenusReady(t.page);
+  await shot('1-title');
+  await pressKey(t, 'Enter', onScreen('join', 'join screen')); // kb1 joins as P1
+  await shot('2-join');
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select'));
+  await shot('3-characters');
+  await pressKey(t, 'KeyD');                 // move the cursor one step right
+  await pressKey(t, 'Enter');                // lock in → everyone ready → track select (after a 1.1 s game-time beat)
+  await waitCond(t.page, onScreen('track-select'));
+  await waitMenusReady(t.page);
+  await shot('4-tracks');
+  await pressKey(t, 'Enter', { ...inState('race', 'race to start from menus'), timeout: T(30000) }); // RACE!
+  await waitGame(t.page, () => (window.__game?.race?.clock ?? 0) > 1, null, T(60000), 'countdown');
+  await shot('5-race-countdown');
+  // wait for GO, then drive a bit with the keyboard
+  await waitGame(t.page, () => window.__game?.race?.state === 'racing', null, T(60000), 'GO');
+  const start = (await gameInfo(t.page)).karts.find((k) => k.pi === 0)?.progress ?? 0;
+  await t.page.keyboard.down('KeyW');
+  await driveFor(t.page, 3);
+  await t.page.keyboard.up('KeyW');
+  await shot('6-race-driving');
+  const info = await gameInfo(t.page);
+  const me = info.karts.find((k) => k.pi === 0);
+  if (t.check(me, 'no P1 kart in the race')) {
+    t.check(me.progress > start + 3, `P1 did not drive forward with W (progress ${start.toFixed(1)} → ${me.progress.toFixed(1)})`);
+  }
+  // pause and resume
+  await pressKey(t, 'Escape', { inRace: true, ...inState('paused', 'Esc to pause') });
+  await waitMenusReady(t.page);
+  await shot('7-pause');
+  await pressKey(t, 'Escape', inState('race', 'Esc to resume'));
+  checkErrors(t);
+}
+
+/**
+ * The menus at full v2 size (?democontent=1 pads them with locked placeholders
+ * for all 21 racers and 20 tracks): the grid scrolls, tracks page by cup, and
+ * locked tracks / racers can't be picked.
+ */
+async function menuScaleTest(t) {
+  const shot = (n) => t.shot(`scale-${n}.png`);
+  await t.page.goto(`${BASE}?unlockreset=1&democontent=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
+  await pressKey(t, 'Enter', onScreen('join', 'join screen')); // kb1 joins as P1
+  await pressKey(t, 'Slash', { until: joinedAtLeast, arg: 2, what: 'P2 to join' }); // kb2 joins as P2
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select'));
+  await waitMenusReady(t.page);
+  const tiles = await t.page.evaluate(() => document.querySelectorAll('.sk-tile').length);
+  t.check(tiles === 21, `expected 21 racer tiles, got ${tiles}`);
+  const locked = await t.page.evaluate(() => document.querySelectorAll('.sk-tile-locked').length);
+  t.check(locked === 13, `expected 13 locked racer tiles, got ${locked}`);
+  await shot('1-characters');
+  await pressKey(t, 'KeyS');                 // P1 down two rows (grid scrolls)
+  await pressKey(t, 'KeyS');
+  await shot('2-characters-scrolled');
+  await pressKey(t, 'Enter');                // a locked racer: nope-wiggle, not ready
+  await waitFrames(t.page, 2);
+  t.check(!(await t.page.evaluate(() => !!document.querySelector('.sk-panel-ready'))), 'a locked racer was picked');
+  await pressKey(t, 'KeyW');
+  await pressKey(t, 'KeyW');
+  await pressKey(t, 'Enter');                // P1 picks Rocco
+  await pressKey(t, 'Slash');                // P2 picks too → track select
+  await waitCond(t.page, onScreen('track-select'));
+  await waitMenusReady(t.page);
+  const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-card').length);
+  t.check(cards === 20, `expected 20 track cards, got ${cards}`);
+  const tabs = await t.page.evaluate(() => document.querySelectorAll('.sk-cup-tab').length);
+  t.check(tabs === 5, `expected 5 cup tabs, got ${tabs}`);
+  await shot('3-tracks');
+  for (let i = 0; i < 4; i++) await pressKey(t, 'KeyD'); // → first Bubble Cup track (locked)
+  await shot('4-tracks-bubble-cup');
+  await pressKey(t, 'Enter');
+  await waitFrames(t.page, 3);
+  t.check((await gameInfo(t.page)).state === 'menu', 'a locked track started a race');
+  await pressKey(t, 'KeyA');                 // back to Sundae Slopes
+  await pressKey(t, 'Enter', { ...inState('race', 'race to start from the big menus'), timeout: T(30000) });
+  const setup = await t.page.evaluate(() => window.__game.setup);
+  t.check(setup.trackId === 'sundae-slopes', `expected sundae-slopes, got ${setup.trackId}`);
+  checkErrors(t);
+}
+
+async function gamepadFlowTest(t) {
+  const shot = (n) => t.shot(`pad-${n}.png`);
+  await t.ctx.addInitScript(FAKE_PAD_SCRIPT);
+  await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
+  await tapPad(t, 0, onScreen('join', 'join screen')); // A on title → pad joins as P1
+  await tapPad(t, 3);                        // Y toggles Kid-Assist
+  await shot('1-join');
+  await tapPad(t, 0, onScreen('character-select', 'character select'));
+  await tapPad(t, 15);                       // d-pad right (Lenny)
+  await tapPad(t, 0);                        // lock in → track select
+  await waitCond(t.page, onScreen('track-select'));
+  await tapPad(t, 15);                       // next track (Gumdrop Meadow)
+  await shot('2-tracks');
+  await tapPad(t, 0, { ...inState('race', 'race to start with the controller'), timeout: T(30000) });
+  const setup = await t.page.evaluate(() => window.__game.setup);
+  t.check(setup.players[0]?.deviceId === 'gp0', `P1 should be gp0, got ${setup.players[0]?.deviceId}`);
+  t.check(!!setup.players[0]?.easyDrive, 'Y did not toggle Kid-Assist');
+  t.check(setup.trackId === 'gumdrop-meadow', `expected gumdrop-meadow, got ${setup.trackId}`);
+  t.check(setup.players[0]?.characterId === 'lenny', `expected lenny, got ${setup.players[0]?.characterId}`);
+  await waitGame(t.page, () => window.__game?.race?.state === 'racing', null, T(60000), 'GO');
+  const start = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).progress);
+  await t.page.evaluate(() => window.__pad.set(7, true)); // hold RT
+  await driveFor(t.page, 2.5);
+  const after = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).progress);
+  t.check(after > start + 3, `RT did not drive (progress ${start.toFixed(1)} → ${after.toFixed(1)})`);
+  // steer right with the stick: lateral should go up (right = +lateral)
+  const lat0 = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).lateral);
+  await t.page.evaluate(() => window.__pad.axis(0, 1));
+  await driveFor(t.page, 0.6);
+  const lat1 = await t.page.evaluate(() => window.__game.race.getPlayerKart(0).lateral);
+  await t.page.evaluate(() => window.__pad.axis(0, 0));
+  t.check(lat1 > lat0, `stick right did not steer right (lateral ${lat0.toFixed(2)} → ${lat1.toFixed(2)})`);
+  await shot('3-race');
+  await tapPad(t, 9, { inRace: true, ...inState('paused', 'Start to pause') });
+  await waitMenusReady(t.page);
+  await shot('4-pause');
+  await tapPad(t, 9, inState('race', 'Start to resume'));
+  checkErrors(t);
+}
+
+async function resultsTest(t) {
+  await t.page.goto(`${BASE}?quick=cotton-candy-castle&players=1&cpus=0&autodrive=1&fastfinish=1&unlockreset=1&simspeed=6&speed=zoomy`, { timeout: T(60000) });
+  await waitGame(t.page, () => window.__game?.state === 'race', null, T(60000), 'race to start');
+  await waitGame(t.page, () => window.__game?.state === 'results', null, T(240000), 'results screen');
+  await waitMenusReady(t.page);
+  await t.shot('results.png');
+  await waitGame(t.page, () => !!document.querySelector('.sk-unlock'), null, T(30000), 'unlock celebration');
+  await waitFrames(t.page, 3);
+  await t.shot('results-unlock.png');
+  const info = await gameInfo(t.page);
+  t.check(info.lastResults?.newlyUnlocked === 'cotton-candy-girl', `unlock not recorded: ${JSON.stringify(info.lastResults)}`);
+  const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}'));
+  t.check(saved.unlocked?.includes('cotton-candy-girl'), 'unlock not saved to localStorage');
+  // mashing A right away must NOT skip the reveal
+  await t.page.keyboard.press('Enter');
+  await waitFrames(t.page, 1);
+  t.check(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')), 'unlock reveal was skipped by an early press');
+  // once the reveal has had its moment, dismiss it, then pick "Race again" → a new race starts
+  await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, T(30000), 'unlock reveal ready to continue');
+  await pressKey(t, 'Enter', { until: () => !document.querySelector('.sk-unlock:not(.sk-leaving)'), what: 'unlock reveal to close' });
+  await waitMenusReady(t.page);
+  await t.shot('results-after.png');
+  await pressKey(t, 'Enter', { ...inState('race', 'next race after results'), timeout: T(15000) });
+  checkErrors(t);
+}
+
+/**
+ * Non-race scenarios in run order: name (also its CLI filter) → async (t) => {...}.
+ * To add one, append your function above and one line here — nothing else to edit.
+ */
+const FLOW_TESTS = {
+  'menu-flow': menuFlowTest,
+  'menu-scale': menuScaleTest,
+  'gamepad-flow': gamepadFlowTest,
+  'results-unlock': resultsTest,
+};
+
+/* ---------------- runner ---------------- */
+
+/** Run one scenario; retry a failed attempt (PROFILE.retries) with fresh diagnostics each time. */
+async function runScenario(browser, sc) {
+  const fn = sc.kind === 'race' ? raceTest : FLOW_TESTS[sc.name];
+  if (!fn) { fail(sc.name, 'unknown scenario'); return; }
+  const t0 = Date.now();
+  let lastProblems = [];
+  let detail = '';
+  const attempts = PROFILE.retries + 1;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const t = await newTestPage(browser, sc.name);
+    try {
+      await fn(t, sc);
+    } catch (err) {
+      t.problems.push(err.message);
+    }
+    if (t.problems.length) await writeDiagnostics(t, attempt, t.problems);
+    detail = t.detail || '';
+    lastProblems = t.problems;
+    await t.ctx.close().catch(() => {});
+    if (!lastProblems.length) {
+      if (attempt > 1) flaky.push(sc.name);
+      log(`${sc.name}: ok${attempt > 1 ? ` (flaky: passed on try ${attempt})` : ''}  ${detail}  [${((Date.now() - t0) / 1000).toFixed(0)}s]`);
+      break;
+    }
+    if (attempt < attempts) log(`${sc.name}: attempt ${attempt} failed (${lastProblems[0].split('\n')[0]}), retrying once…`);
+  }
+  for (const p of lastProblems) fail(sc.name, p);
+  results.push({ name: sc.name, ok: !lastProblems.length, flaky: flaky.includes(sc.name), seconds: Math.round((Date.now() - t0) / 1000), detail, problems: lastProblems });
+}
+
+function writeSummary(totalSeconds) {
+  const summary = { profile: PROFILE, filters: only, totalSeconds, failures, flaky, results };
+  writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 2));
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const rows = results.map((r) => `| ${r.ok ? (r.flaky ? '🟡' : '✅') : '❌'} | ${r.name} | ${r.seconds}s | ${(r.ok ? r.detail : r.problems[0] || '').replace(/\|/g, '\\|').split('\n')[0]} |`);
+    const md = [`### 🍭 Smoke (${PROFILE.name}, ${totalSeconds}s)`, '', '| | scenario | time | notes |', '|---|---|---|---|', ...rows, ''].join('\n');
+    try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, md); } catch { /* optional */ }
+  }
+}
 
 let browser = null;
 let exitCode = 0;
+const tStart = Date.now();
 try {
+  log(`profile ${PROFILE.name}: viewport ${PROFILE.viewport.width}x${PROFILE.viewport.height}, timeouts x${PROFILE.timeoutScale}, drive ${PROFILE.driveSeconds}s, retries ${PROFILE.retries}`);
   startServer();
   await waitForServer();
   log(`vite up on ${BASE}`);
-  browser = await chromium.launch({
-    channel: 'chrome',
-    headless: true,
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
-  });
+  const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'];
+  if (process.platform === 'linux') args.push('--disable-dev-shm-usage');
+  browser = await chromium.launch({ channel: 'chrome', headless: true, args });
   const trackIds = await registeredTrackIds(browser);
   log(`tracks: ${trackIds.join(', ')}`);
-  for (const id of trackIds) {
-    if (wanted(`${id}-1p`)) await raceTest(browser, id, 1);
-    const named = only.some((f) => f === id || f === `${id}-4p`);
-    if ((ORIGINAL_TRACK_IDS.includes(id) || FULL || named) && wanted(`${id}-4p`)) await raceTest(browser, id, 4);
-  }
-  if (wanted('cotton-candy-castle-3p')) await raceTest(browser, 'cotton-candy-castle', 3);
-  if (wanted('menu')) await menuFlowTest(browser);
-  if (wanted('scale')) await menuScaleTest(browser);
-  if (wanted('gamepad')) await gamepadFlowTest(browser);
-  if (wanted('results')) await resultsTest(browser);
+  const plan = planScenarios({ trackIds, filters: only, profile: PROFILE, flows: Object.keys(FLOW_TESTS) });
+  log(`scenarios (${plan.length}): ${plan.map((s) => s.name).join(', ')}`);
+  if (!plan.length) fail('smoke', `no scenario matches the filters ${JSON.stringify(only)}`);
+  for (const sc of plan) await runScenario(browser, sc);
 } catch (err) {
   fail('smoke', err.stack || err.message);
 } finally {
@@ -422,10 +550,13 @@ try {
   stopServer();
 }
 
+const total = Math.round((Date.now() - tStart) / 1000);
+writeSummary(total);
+if (flaky.length) console.log(`\n[smoke] flaky (passed on retry): ${flaky.join(', ')}`);
 if (failures.length) {
-  console.log(`\n[smoke] ${failures.length} failure(s):\n  - ${failures.join('\n  - ')}`);
+  console.log(`\n[smoke] ${failures.length} failure(s) in ${total}s:\n  - ${failures.join('\n  - ')}\n  (see smoke-out/*-FAIL.png / *-FAIL.log)`);
   exitCode = 1;
 } else {
-  console.log(`\n[smoke] all green. Screenshots in ${OUT}`);
+  console.log(`\n[smoke] all green in ${total}s. Screenshots in ${OUT}`);
 }
 process.exit(exitCode);

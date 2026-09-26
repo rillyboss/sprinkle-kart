@@ -141,12 +141,14 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 
 - **Stack:** Vite + Three.js, plain ES modules. All the sound is made live with Web Audio (there are no audio files).
   There are no 3D model files either: everything is built from code.
-- `npm test` runs the unit tests (vitest).
+- `npm test` runs the unit tests (vitest); `npm run test:coverage` adds the coverage gate CI uses (report in `coverage/`).
 - `npm run build` makes a production build in `dist/`.
 - `npm run smoke` (`node scripts/smoke.mjs`) is the end-to-end test. It starts Vite on port 5190 and uses Playwright
   with the system Chrome to race every track with 1, 3 and 4 players. It also runs the menu flow with the keyboard,
   the menu flow with a simulated controller, the menus at full v2 size, and a race that reaches the results and unlock screens.
-  Screenshots are saved in `smoke-out/`.
+  Screenshots are saved in `smoke-out/` (failures also get a `-FAIL.log` with the console and game state).
+  It waits on the game clock, so slow machines just take longer; `CI=1` runs the lighter CI profile and
+  `SMOKE_PORT=<port>` picks another port. Details in `CONTRIBUTING.md`.
 - See `ARCHITECTURE.md` for how the modules fit together (the v2 contract: content lineup, one file
   per racer in `src/characters/`, one module per track in `src/tracks/`, the event bus and auto-installed
   systems in `src/systems/`, menu screens in `src/ui/screens/`) and `CONTRIBUTING.md` for the git workflow.
