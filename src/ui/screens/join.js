@@ -6,6 +6,7 @@ import * as S from '../menuState.js';
 import { el, escapeHtml, glyph, kbd, hint, floatiesLayer } from '../dom.js';
 import { prettyDeviceName, deviceIcon, keyHintsFor } from '../hudLogic.js';
 import { pc, hintsBar, backButton, shake, JOIN_UNPLUG_DROP } from './_shared.js';
+import { clickDevice } from '../../input/touch/clickDevice.js';
 
 /**
  * Label of the per-player driving helper toggle. OWNER: driving-feel
@@ -34,7 +35,7 @@ export default {
       onclick: (e) => {
         e.stopPropagation();
         let st = d.joinState;
-        if (!st.players.length) st = S.joinReduce(st, { deviceId: 'kb1', action: 'confirm' }).state;
+        if (!st.players.length) st = S.joinReduce(st, { deviceId: clickDevice(ctx.input, [], 'kb1'), action: 'confirm' }).state;
         d.joinState = st;
         handle({ deviceId: st.players[0].deviceId, action: 'start' });
       },
@@ -122,7 +123,8 @@ export default {
         else if (act === 'leave') handle({ deviceId: p.deviceId, action: 'back' });
         return;
       }
-      const free = ['kb1', 'kb2'].find((id) => !d.joinState.players.some((q) => q.deviceId === id));
+      const taken = d.joinState.players.map((q) => q.deviceId);
+      const free = clickDevice(ctx.input, taken, ['kb1', 'kb2'].find((id) => !taken.includes(id)));
       if (free) handle({ deviceId: free, action: 'confirm' });
     }
 

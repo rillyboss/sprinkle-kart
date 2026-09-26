@@ -198,6 +198,7 @@ export function prettyDeviceName(device) {
 
 export function deviceIcon(deviceId, devices = []) {
   const d = devices.find((x) => x.id === deviceId);
+  if (d?.icon) return d.icon; // e.g. touch controls: 👆
   const type = d?.type ?? (/^kb/.test(deviceId) ? 'keyboard' : 'gamepad');
   return type === 'keyboard' ? '⌨️' : '🎮';
 }

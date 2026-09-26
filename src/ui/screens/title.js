@@ -7,6 +7,7 @@
 import * as S from '../menuState.js';
 import { el, glyph, kbd, floatiesLayer, escapeHtml } from '../dom.js';
 import { menuEntries, titleFocusReduce } from '../screenFlow.js';
+import { clickDevice } from '../../input/touch/clickDevice.js';
 
 /** @type {import('./index.js').ScreenDef} */
 export default {
@@ -42,9 +43,10 @@ export default {
       if (r.focus !== focus) { focus = r.focus; ctx.sfx('move'); showFocus(); return; }
       if (r.play) {
         ctx.sfx('confirm');
-        const dev = ev.deviceId === 'mouse' ? 'kb1' : ev.deviceId;
-        // The device that pressed A becomes P1 straight away.
         const d = ctx.draft;
+        // a tap on a phone / tablet joins the touch controls (src/input/touch/clickDevice.js)
+        const dev = ev.deviceId === 'mouse' ? clickDevice(ctx.input, [], 'kb1') : ev.deviceId;
+        // The device that pressed A becomes P1 straight away.
         if (!d.joinState.players.some((p) => p.deviceId === dev)) {
           d.joinState = S.joinReduce(d.joinState, { deviceId: dev, action: 'confirm' }).state;
         }

@@ -1,0 +1,92 @@
+/* On-screen touch controls (src/ui/touch/TouchControls.js). Own file: never edits ui.css. */
+
+.sk-touch {
+  position: absolute;
+  inset: 0;
+  z-index: 3; /* above the HUD (1), below menus (5) */
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: 'Fredoka', 'Baloo 2', 'Nunito', system-ui, sans-serif;
+  --sk-touch-opacity: 0.8;
+}
+.sk-touch[hidden], .sk-touch.sk-touch-suspended { display: none; }
+.sk-touch-set { position: absolute; inset: 0; pointer-events: none; }
+
+.sk-tc {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  opacity: var(--sk-touch-opacity);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%), var(--tc, rgba(255, 122, 200, 0.55));
+  border: 0.22em solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0.35em 0 rgba(120, 40, 120, 0.28), 0 0.6em 1.2em rgba(90, 20, 100, 0.22);
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 0.08em 0 rgba(0, 0, 0, 0.25);
+  transition: transform 0.06s ease-out, filter 0.06s ease-out;
+}
+.sk-tc-i { font-size: 2em; }
+.sk-tc-l { font-size: 0.8em; font-weight: 700; letter-spacing: 0.06em; margin-top: 0.15em; }
+.sk-tc.sk-tc-on {
+  transform: scale(0.92) translateY(0.12em);
+  filter: brightness(1.15) saturate(1.2);
+  box-shadow: 0 0.12em 0 rgba(120, 40, 120, 0.3), 0 0.3em 0.6em rgba(90, 20, 100, 0.2);
+}
+
+.sk-tc-item { --tc: rgba(255, 111, 176, 0.6); }
+.sk-tc-item.sk-tc-has { --tc: rgba(255, 196, 64, 0.8); animation: sk-tc-glow 0.9s ease-in-out infinite alternate; }
+.sk-tc-item.sk-tc-has .sk-tc-i { font-size: 2.6em; }
+.sk-tc-item.sk-tc-rolling .sk-tc-i { animation: sk-tc-wobble 0.25s linear infinite; }
+.sk-tc-gas { --tc: rgba(92, 214, 150, 0.65); }
+.sk-tc-drift { --tc: rgba(150, 120, 255, 0.62); }
+.sk-tc-brake { --tc: rgba(120, 190, 255, 0.6); font-size: 11px; }
+.sk-tc-pause { --tc: rgba(255, 255, 255, 0.35); color: #b0489a; font-size: 12px; text-shadow: none; }
+.sk-tc-recenter { --tc: rgba(255, 214, 90, 0.6); font-size: 11px; }
+.sk-tc-left, .sk-tc-right { border-radius: 28%; --tc: rgba(255, 150, 210, 0.58); }
+.sk-tc-left .sk-tc-i, .sk-tc-right .sk-tc-i { font-size: 2.4em; }
+
+.sk-tc-stickbase {
+  --tc: rgba(255, 255, 255, 0.18);
+  border-style: dashed;
+  box-shadow: none;
+  transition: none;
+}
+.sk-tc-stickbase.sk-tc-on { transform: none; filter: none; --tc: rgba(255, 255, 255, 0.28); }
+.sk-tc-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, #ffc2e4 45%, #ff7ac8 100%);
+  border: 0.2em solid #fff;
+  box-shadow: 0 0.3em 0.6em rgba(120, 40, 120, 0.35);
+}
+
+@keyframes sk-tc-glow { from { box-shadow: 0 0 0 0 rgba(255, 220, 90, 0.8), 0 0.35em 0 rgba(120, 40, 120, 0.28); } to { box-shadow: 0 0 0 0.45em rgba(255, 220, 90, 0), 0 0.35em 0 rgba(120, 40, 120, 0.28); } }
+@keyframes sk-tc-wobble { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .sk-tc-item.sk-tc-has, .sk-tc-item.sk-tc-rolling .sk-tc-i { animation: none; }
+}
+
+/* HUD make-room (additive; phase-2 responsive UI may replace it): lift the bottom-corner
+   place badge above the touch buttons while they are on screen. */
+.sk-touch-on:not(.sk-touch-paused) .sk-vp .sk-place { bottom: calc(var(--sk-touch-bottom, 0px) + 0.4em); }
+.sk-touch-on:not(.sk-touch-paused) .sk-vp[data-place-v='top'] .sk-place { bottom: auto; }
+
+/* Menus on touch screens: no long-press callouts / text selection (gestures, src/ui/touch/menuGestureLayer.js). */
+.sk-touch-menus .sk-menus {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

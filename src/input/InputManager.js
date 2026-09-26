@@ -6,6 +6,8 @@
  *   kb2  Keyboard (Arrows)   always present
  *   gp0..gp3                 gamepads, id = 'gp' + gamepad.index (stable across reconnects)
  *   any string               virtual devices added with addVirtualDevice(id) (automation)
+ *   touch1, touch2           external devices added with addExternalDevice(id, source) — the
+ *                            on-screen touch controls (src/input/touch/, docs in its README.md)
  *
  * KEYBOARD MAPPING (full table in ./keyboardLayouts.js)
  *   kb1: W accel, S brake, A/D steer, Space/L-Shift drift, E item, Q look back, Esc/P pause.
@@ -94,6 +96,8 @@ export class InputManager {
     this._gestureListeners = new Set();
     this._hadDomGesture = false;
     this.rumbleEnabled = true;
+    /** 'mouse' | 'touch' | 'pen' | null — kind of the last pointer press (pointerDevice()). */
+    this.lastPointerType = null;
 
     this._keysHeld = new Set();
     this._keysTapped = new Set();
@@ -191,7 +195,9 @@ export class InputManager {
     this._keysHeld.clear();
   }
 
-  _onPointer() {
+  _onPointer(e) {
+    const pt = e && typeof e.pointerType === 'string' && e.pointerType ? e.pointerType : e && e.type === 'touchend' ? 'touch' : null;
+    if (pt) this.lastPointerType = pt;
     this._domGesture('pointer');
   }
 
@@ -212,6 +218,16 @@ export class InputManager {
 
     // Gamepads
     this._pollGamepads();
+
+    // External devices (touch controls): the source builds a gamepad-shaped frame
+    for (const rec of this._devices.values()) {
+      if (!rec.external) continue;
+      let f = null;
+      try { f = rec.source.read(now); } catch (err) { console.error('InputManager external device failed', err); }
+      rec.frame = f && typeof f === 'object'
+        ? { steer: f.steer ?? 0, accel: f.accel ?? 0, brake: f.brake ?? 0, held: f.held ?? {}, taps: f.taps instanceof Set ? f.taps : new Set(), anyButton: false }
+        : emptyFrame();
+    }
 
     // Virtual devices
     for (const rec of this._devices.values()) {
@@ -325,7 +341,7 @@ export class InputManager {
   // ───────────────────────────── queries ─────────────────────────────
 
   _publicDevice(rec) {
-    return {
+    const out = {
       id: rec.id,
       type: rec.type,
       name: rec.name,
@@ -334,6 +350,8 @@ export class InputManager {
       labels: { ...rec.labels },
       virtual: rec.virtual,
     };
+    if (rec.icon) out.icon = rec.icon;
+    return out;
   }
 
   /**
@@ -345,7 +363,7 @@ export class InputManager {
    */
   getDevices() {
     const all = [...this._devices.values()];
-    const order = (r) => (r.type === 'keyboard' ? 0 : r.virtual ? 2 : 1);
+    const order = (r) => (r.type === 'keyboard' ? 0 : r.virtual ? 2 : r.external ? 1.5 : 1);
     all.sort((a, b) => order(a) - order(b) || (a.index ?? 0) - (b.index ?? 0));
     return all.map((r) => this._publicDevice(r));
   }
@@ -415,10 +433,15 @@ export class InputManager {
   rumble(deviceId, strength = 0.5, ms = 150) {
     if (!this.rumbleEnabled) return;
     const rec = this._devices.get(deviceId);
-    if (!rec || rec.type !== 'gamepad' || rec.virtual || !rec.connected) return;
+    if (!rec || !rec.connected) return;
     const s = num(strength, 0, 1);
     const duration = Math.round(num(ms, 0, 5000));
     if (s <= 0 || duration <= 0) return;
+    if (rec.external) {
+      try { rec.source.rumble?.(s, duration); } catch { /* haptics are a nice-to-have */ }
+      return;
+    }
+    if (rec.type !== 'gamepad' || rec.virtual) return;
     let gp = null;
     try {
       const pads = this._getGamepads() || [];
@@ -550,6 +573,64 @@ export class InputManager {
     this._devices.set(id, rec);
     this._emitDeviceChange('connected', rec);
     return this._publicDevice(rec);
+  }
+
+  // ───────────────────────────── external devices ─────────────────────────────
+
+  /**
+   * Add a device whose input comes from elsewhere — the on-screen touch controls
+   * (src/input/touch/). `source.read(now)` is called once per update() and returns a
+   * gamepad-shaped frame { steer, accel, brake, held: { drift, lookBack, <menu dirs> },
+   * taps: Set<'item'|'pause'|menu action> }; optional `source.rumble(strength, ms)`.
+   * `info`: { name, kind='touch', type='touch', icon, labels, pointerType }.
+   * It then behaves like a gamepad: getDriveInput / menu events / isPausePressed / rumble.
+   */
+  addExternalDevice(id, source, info = {}) {
+    if (!id || typeof id !== 'string') throw new Error('addExternalDevice needs a string id');
+    if (!source || typeof source.read !== 'function') throw new Error('addExternalDevice needs a source with read()');
+    const existing = this._devices.get(id);
+    if (existing && !existing.external) throw new Error(`device id "${id}" is already taken`);
+    if (existing) this._devices.delete(id);
+    const rec = this._makeRecord({
+      id,
+      type: info.type || 'touch',
+      name: info.name || 'Touch screen',
+      kind: info.kind || 'touch',
+      labels: { ...(info.labels || {}) },
+      connected: true,
+      external: true,
+      icon: info.icon || null,
+      pointerType: info.pointerType || null,
+    });
+    rec.source = source;
+    this._devices.set(id, rec);
+    this._emitDeviceChange('connected', rec);
+    return this._publicDevice(rec);
+  }
+
+  removeExternalDevice(id) {
+    const rec = this._devices.get(id);
+    if (!rec || !rec.external) return;
+    this._devices.delete(id);
+    rec.connected = false;
+    this._emitDeviceChange('disconnected', rec);
+    this._menuQueue = this._menuQueue.filter((e) => e.deviceId !== id);
+  }
+
+  /**
+   * The device a mouse / touch CLICK on a menu should act as: the first connected external
+   * device registered for the last pointer type (e.g. 'touch' → 'touch1') that is not in
+   * `taken`, or null (callers then fall back to the keyboards).
+   * @param {string[]} [taken] device ids already used (e.g. joined players)
+   */
+  pointerDevice(taken = []) {
+    const pt = this.lastPointerType;
+    if (!pt) return null;
+    const skip = new Set(taken);
+    for (const rec of this._devices.values()) {
+      if (rec.external && rec.connected && rec.pointerType === pt && !skip.has(rec.id)) return rec.id;
+    }
+    return null;
   }
 
   removeVirtualDevice(id) {
