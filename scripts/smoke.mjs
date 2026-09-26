@@ -274,8 +274,10 @@ async function tapPad(t, button, { until = null, arg = null, what = `button ${bu
   }
 }
 
-const onScreen = (id) => [(s) => window.__game?.menus?.screenId === s, id];
-const inState = (state) => [(s) => window.__game?.state === s, state];
+/** Condition objects for pressKey / tapPad `{ ...cond }` and waitCond(page, cond). */
+const onScreen = (id, what = `${id} screen`) => ({ until: (s) => window.__game?.menus?.screenId === s, arg: id, what });
+const inState = (state, what = `game state "${state}"`) => ({ until: (s) => window.__game?.state === s, arg: state, what });
+const waitCond = (page, c, timeout = T(30000)) => waitGame(page, c.until, c.arg, timeout, c.what);
 /** In-page predicate (arg = n): at least n players joined on the join screen. */
 const joinedAtLeast = (n) => (window.__game?.menus?.draft?.joinState?.players?.length ?? 0) >= n;
 
@@ -325,16 +327,16 @@ async function menuFlowTest(t) {
   await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
   await waitMenusReady(t.page);
   await shot('1-title');
-  await pressKey(t, 'Enter', { until: onScreen('join')[0], arg: 'join', what: 'join screen' }); // kb1 joins as P1
+  await pressKey(t, 'Enter', onScreen('join', 'join screen')); // kb1 joins as P1
   await shot('2-join');
-  await pressKey(t, 'Enter', { until: onScreen('character-select')[0], arg: 'character-select', what: 'character select' });
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select'));
   await shot('3-characters');
   await pressKey(t, 'KeyD');                 // move the cursor one step right
   await pressKey(t, 'Enter');                // lock in → everyone ready → track select (after a 1.1 s game-time beat)
-  await waitGame(t.page, ...onScreen('track-select'), T(30000), 'track select');
+  await waitCond(t.page, onScreen('track-select'));
   await waitMenusReady(t.page);
   await shot('4-tracks');
-  await pressKey(t, 'Enter', { until: inState('race')[0], arg: 'race', what: 'race to start from menus', timeout: T(30000) }); // RACE!
+  await pressKey(t, 'Enter', { ...inState('race', 'race to start from menus'), timeout: T(30000) }); // RACE!
   await waitGame(t.page, () => (window.__game?.race?.clock ?? 0) > 1, null, T(60000), 'countdown');
   await shot('5-race-countdown');
   // wait for GO, then drive a bit with the keyboard
@@ -350,10 +352,10 @@ async function menuFlowTest(t) {
     t.check(me.progress > start + 3, `P1 did not drive forward with W (progress ${start.toFixed(1)} → ${me.progress.toFixed(1)})`);
   }
   // pause and resume
-  await pressKey(t, 'Escape', { inRace: true, until: inState('paused')[0], arg: 'paused', what: 'Esc to pause' });
+  await pressKey(t, 'Escape', { inRace: true, ...inState('paused', 'Esc to pause') });
   await waitMenusReady(t.page);
   await shot('7-pause');
-  await pressKey(t, 'Escape', { until: inState('race')[0], arg: 'race', what: 'Esc to resume' });
+  await pressKey(t, 'Escape', inState('race', 'Esc to resume'));
   checkErrors(t);
 }
 
@@ -366,9 +368,9 @@ async function menuScaleTest(t) {
   const shot = (n) => t.shot(`scale-${n}.png`);
   await t.page.goto(`${BASE}?unlockreset=1&democontent=1`, { timeout: T(60000) });
   await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
-  await pressKey(t, 'Enter', { until: onScreen('join')[0], arg: 'join', what: 'join screen' }); // kb1 joins as P1
+  await pressKey(t, 'Enter', onScreen('join', 'join screen')); // kb1 joins as P1
   await pressKey(t, 'Slash', { until: joinedAtLeast, arg: 2, what: 'P2 to join' }); // kb2 joins as P2
-  await pressKey(t, 'Enter', { until: onScreen('character-select')[0], arg: 'character-select', what: 'character select' });
+  await pressKey(t, 'Enter', onScreen('character-select', 'character select'));
   await waitMenusReady(t.page);
   const tiles = await t.page.evaluate(() => document.querySelectorAll('.sk-tile').length);
   t.check(tiles === 21, `expected 21 racer tiles, got ${tiles}`);
@@ -385,7 +387,7 @@ async function menuScaleTest(t) {
   await pressKey(t, 'KeyW');
   await pressKey(t, 'Enter');                // P1 picks Rocco
   await pressKey(t, 'Slash');                // P2 picks too → track select
-  await waitGame(t.page, ...onScreen('track-select'), T(30000), 'track select');
+  await waitCond(t.page, onScreen('track-select'));
   await waitMenusReady(t.page);
   const cards = await t.page.evaluate(() => document.querySelectorAll('.sk-card').length);
   t.check(cards === 20, `expected 20 track cards, got ${cards}`);
@@ -398,7 +400,7 @@ async function menuScaleTest(t) {
   await waitFrames(t.page, 3);
   t.check((await gameInfo(t.page)).state === 'menu', 'a locked track started a race');
   await pressKey(t, 'KeyA');                 // back to Sundae Slopes
-  await pressKey(t, 'Enter', { until: inState('race')[0], arg: 'race', what: 'race to start from the big menus', timeout: T(30000) });
+  await pressKey(t, 'Enter', { ...inState('race', 'race to start from the big menus'), timeout: T(30000) });
   const setup = await t.page.evaluate(() => window.__game.setup);
   t.check(setup.trackId === 'sundae-slopes', `expected sundae-slopes, got ${setup.trackId}`);
   checkErrors(t);
@@ -409,16 +411,16 @@ async function gamepadFlowTest(t) {
   await t.ctx.addInitScript(FAKE_PAD_SCRIPT);
   await t.page.goto(`${BASE}?unlockreset=1`, { timeout: T(60000) });
   await waitGame(t.page, () => window.__game?.state === 'menu' && !!document.querySelector('.sk-menus:not([hidden])'), null, T(60000), 'title screen');
-  await tapPad(t, 0, { until: onScreen('join')[0], arg: 'join', what: 'join screen' }); // A on title → pad joins as P1
+  await tapPad(t, 0, onScreen('join', 'join screen')); // A on title → pad joins as P1
   await tapPad(t, 3);                        // Y toggles Kid-Assist
   await shot('1-join');
-  await tapPad(t, 0, { until: onScreen('character-select')[0], arg: 'character-select', what: 'character select' });
+  await tapPad(t, 0, onScreen('character-select', 'character select'));
   await tapPad(t, 15);                       // d-pad right (Lenny)
   await tapPad(t, 0);                        // lock in → track select
-  await waitGame(t.page, ...onScreen('track-select'), T(30000), 'track select');
+  await waitCond(t.page, onScreen('track-select'));
   await tapPad(t, 15);                       // next track (Gumdrop Meadow)
   await shot('2-tracks');
-  await tapPad(t, 0, { until: inState('race')[0], arg: 'race', what: 'race to start with the controller', timeout: T(30000) });
+  await tapPad(t, 0, { ...inState('race', 'race to start with the controller'), timeout: T(30000) });
   const setup = await t.page.evaluate(() => window.__game.setup);
   t.check(setup.players[0]?.deviceId === 'gp0', `P1 should be gp0, got ${setup.players[0]?.deviceId}`);
   t.check(!!setup.players[0]?.easyDrive, 'Y did not toggle Kid-Assist');
@@ -438,10 +440,10 @@ async function gamepadFlowTest(t) {
   await t.page.evaluate(() => window.__pad.axis(0, 0));
   t.check(lat1 > lat0, `stick right did not steer right (lateral ${lat0.toFixed(2)} → ${lat1.toFixed(2)})`);
   await shot('3-race');
-  await tapPad(t, 9, { inRace: true, until: inState('paused')[0], arg: 'paused', what: 'Start to pause' });
+  await tapPad(t, 9, { inRace: true, ...inState('paused', 'Start to pause') });
   await waitMenusReady(t.page);
   await shot('4-pause');
-  await tapPad(t, 9, { until: inState('race')[0], arg: 'race', what: 'Start to resume' });
+  await tapPad(t, 9, inState('race', 'Start to resume'));
   checkErrors(t);
 }
 
@@ -467,7 +469,7 @@ async function resultsTest(t) {
   await pressKey(t, 'Enter', { until: () => !document.querySelector('.sk-unlock:not(.sk-leaving)'), what: 'unlock reveal to close' });
   await waitMenusReady(t.page);
   await t.shot('results-after.png');
-  await pressKey(t, 'Enter', { until: inState('race')[0], arg: 'race', what: 'next race after results', timeout: T(15000) });
+  await pressKey(t, 'Enter', { ...inState('race', 'next race after results'), timeout: T(15000) });
   checkErrors(t);
 }
 
