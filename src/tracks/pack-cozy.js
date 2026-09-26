@@ -7,6 +7,7 @@
 import pumpkinPatch from './pumpkin-patch.js';
 import teacupGarden from './teacup-garden.js';
 import peppermintVillage from './peppermint-village.js';
+import pillowFort from './pillow-fort.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [pumpkinPatch, teacupGarden, peppermintVillage];
+export default [pumpkinPatch, teacupGarden, peppermintVillage, pillowFort];
