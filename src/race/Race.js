@@ -8,6 +8,8 @@ import { ItemSystem, rollItem } from './Items.js';
 import { ItemBoxes } from './ItemBoxes.js';
 import { KartFx } from './KartFx.js';
 import { normalizeGameplay } from './gameplay.js';
+import { buildJumps, buildRings } from './jumps.js';
+import { applyKartPose } from './kartPose.js';
 import { normalizeRules } from '../modes/rules.js';
 
 export { aiDriveInput };
@@ -99,6 +101,9 @@ export class Race {
     this.boostPads = (builtTrack?.boostPads ?? (trackDef.boostPads || []).map((b) => ({
       s: path.wrap(b.at * L), lateral: b.lateral ?? 0, length: 6, halfWidth: 2.5,
     }))).map((b) => ({ length: 6, halfWidth: 2.5, ...b }));
+    /** Candy ramps + boost rings (src/race/jumps.js): the built track's, else from the TrackDef. */
+    this.jumps = builtTrack?.jumps ?? buildJumps(trackDef, path);
+    this.rings = builtTrack?.rings ?? buildRings(trackDef, path);
 
     // --- karts on the grid (two staggered columns behind the line) ---
     const hw = path.halfWidth;
@@ -149,7 +154,7 @@ export class Race {
     this._standings = [...this.karts];
     /** Track gameplay modifiers (see ./gameplay.js), also handed to stepKart via env.gameplay. */
     this.gameplay = normalizeGameplay(trackDef.gameplay);
-    this._env = { path, boostPads: this.boostPads, emit: this._emitFn, gameplay: this.gameplay };
+    this._env = { path, boostPads: this.boostPads, jumps: this.jumps, rings: this.rings, emit: this._emitFn, gameplay: this.gameplay };
     this._syncVisuals(0);
   }
 
@@ -429,9 +434,7 @@ export class Race {
       const k = this.karts[i];
       const p = k.phys;
       if (k.model) {
-        const g = k.model.group;
-        g.position.copy(k.position);
-        g.rotation.set(p.pitch, k.heading + p.spinAngle, p.roll);
+        applyKartPose(k.model.group, k, k.position.x, k.position.y, k.position.z);
         k.model.update(dt, {
           speed: k.speed,
           steer: p.steerSmoothed,
@@ -445,6 +448,8 @@ export class Race {
           driftDir: k.driftDir,
           hop: p.hopY,
           offRoad: k.offRoad,
+          air: p.airborne,
+          trick: p.trick,
         });
       }
       this.fx[i]?.update(k, this.clock);

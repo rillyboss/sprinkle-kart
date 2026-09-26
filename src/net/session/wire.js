@@ -27,7 +27,7 @@ export const INTENT_KINDS = Object.freeze(['seat-join', 'seat-leave', 'pick', 'r
 export const BYE = Object.freeze({ leaving: 0, hostEnding: 1, removed: 2 });
 export const EMOTE_COUNT = 8;
 export const EMOTE_INTERVAL_MS = 1500;
-export const PROTOCOL = 1;
+export const PROTOCOL = 2; // 2: v3.1 drift arc + jumps (kart block 44 B, owner tail, land/launch/trick/ring events)
 export const TICK_HZ = 60;
 
 const enc = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;

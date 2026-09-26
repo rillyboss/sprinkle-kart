@@ -16,6 +16,9 @@
  * @property {number} driftWindow @property {boolean} driftHeld @property {number} driftCharge
  * @property {number} driftTime @property {number} slide @property {number} slideDir
  * @property {number} driftSlip @property {number} driftOmega0 @property {number} yawRate   v3.1 drift arc (slip angle, entry turn, last turn rate)
+ * @property {boolean} airborne @property {number} airVy @property {number} airTime @property {number} onRamp   v3.1 jumps
+ * @property {number} trick @property {number} trickTime @property {number} trickLen @property {boolean} trickDone
+ * @property {boolean} trickQueued @property {number} trickCount @property {number} landSquash                   v3.1 tricks
  * @property {number} steerSmoothed @property {number} throttle @property {boolean} braking
  * @property {boolean} reversing @property {number} groundY @property {number} pitch @property {number} roll
  * @property {number} onPad @property {number} wallCooldown @property {number} wrongWayTime
@@ -95,7 +98,8 @@ export const SIM_STATE_SHAPE = Object.freeze({
   phys: {
     boostTime: 'num', spinTime: 'num', spinAngle: 'num', shieldTime: 'num', hopTime: 'num', hopY: 'num',
     hopLen: 'num', driftWindow: 'num', driftHeld: 'bool', driftCharge: 'num', driftTime: 'num', slide: 'num',
-    slideDir: 'num', driftSlip: 'num', driftOmega0: 'num', yawRate: 'num', steerSmoothed: 'num', throttle: 'num', braking: 'bool', reversing: 'bool', groundY: 'num',
+    slideDir: 'num', driftSlip: 'num', driftOmega0: 'num', yawRate: 'num', airborne: 'bool', airVy: 'num', airTime: 'num', onRamp: 'int', trick: 'int', trickTime: 'num',
+    trickLen: 'num', trickDone: 'bool', trickQueued: 'bool', trickCount: 'int', landSquash: 'num', steerSmoothed: 'num', throttle: 'num', braking: 'bool', reversing: 'bool', groundY: 'num',
     pitch: 'num', roll: 'num', onPad: 'int', wallCooldown: 'num', wrongWayTime: 'num', rouletteTime: 'num',
     pendingItem: 'str?', lastLapStart: 'num', accelPressedAt: 'num?', prevAccel: 'bool', frameStartX: 'num',
     frameStartZ: 'num', assist: 'assist?',
@@ -287,6 +291,17 @@ export function makeSimStateFixture({
         driftSlip: id % 2 === 0 ? 0.3125 : 0,
         driftOmega0: 0,
         yawRate: id % 2 === 0 ? 0.875 : 0,
+        airborne: id === 3,
+        airVy: id === 3 ? 4.25 : 0,
+        airTime: id === 3 ? 0.25 : 0,
+        onRamp: -1,
+        trick: id === 3 ? 2 : 0,
+        trickTime: id === 3 ? 0.125 : 0,
+        trickLen: id === 3 ? 0.5 : 0,
+        trickDone: false,
+        trickQueued: false,
+        trickCount: id === 3 ? 2 : 0,
+        landSquash: id === 5 ? 0.5 : 0,
         steerSmoothed: round(between(-1, 1)),
         throttle: 1,
         braking: false,

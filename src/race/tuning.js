@@ -46,6 +46,22 @@ export const TUNING = {
   driftLevels: [0.5, 1.35, 2.35], // charge needed for blue, pink, rainbow (blue comes quickly!)
   miniTurbo: [0, 0.6, 0.95, 1.4], // boost seconds per level
 
+  // Jumps, tricks + boost rings (src/race/jumps.js; TrackDef.jumps / TrackDef.rings)
+  airGravity: 26, // m/s^2 while airborne (x env.gameplay.gravity); a Zippy ramp jump flies ~0.8 s
+  jumpLaunch: 1, // take-off vy = speed x sin(launchAngle) x this
+  airSteer: 0.35, // share of normal steering you keep in the air
+  airGrip: 1.2, // sideways grip in the air (the kart drifts a little toward its nose)
+  airEdgeMargin: 1.4, // in the air karts are guided inside halfWidth - this (never land off the road)
+  airEdgeSpring: 7, // 1/s: how firmly that guide pulls
+  rampTrickZone: 0.6, // pressing hop on the last 60% of a ramp queues a trick for take-off
+  trickMinAir: 0.24, // seconds of flight left needed to start a trick
+  trickMin: 0.3, // trick duration range (fitted to the flight left, so it lands complete)
+  trickMax: 0.55,
+  trickBoost: 0.95, // boost seconds for landing a trick
+  ringBoost: 0.9, // boost seconds for flying through a boost ring
+  kartCenterY: 0.7, // kart centre above its wheels (ring hits, trick pivot)
+  landSquashTime: 0.28, // seconds the landing squash takes to spring back
+
   // Kid-Assist (easyDrive karts)
   kidAssistBrake: 0.5, // brake must be pressed at least this hard to override the auto-gas
   kidAssistTurn: 1.12, // a little extra steering authority so full gas still makes the bends

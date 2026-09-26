@@ -21,9 +21,9 @@ export const NO_KART = 255;
 const CATALOGUE = {
   countdown: (e) => ({ n: e.n | 0 }),
   go: () => ({}),
-  boost: (e) => ({ source: ['start', 'pad', 'item'].includes(e.source) ? e.source : 'other' }),
+  boost: (e) => ({ source: ['start', 'pad', 'item', 'trick', 'ring'].includes(e.source) ? e.source : 'other' }),
   hop: () => ({}),
-  land: () => ({}),
+  land: (e) => ({ strength: clamp01(e.strength ?? 0.5), air: !!e.air, trick: !!e.trick }),
   'drift-start': (e) => ({ dir: Math.sign(e.dir || 0) }),
   'drift-level': (e) => ({ level: e.level | 0 }),
   'drift-boost': (e) => ({ level: e.level | 0 }),
@@ -48,6 +48,9 @@ const CATALOGUE = {
   'battle-out': () => ({}),
   'battle-bonus': () => ({}),
   robo: (e) => ({ on: !!e.on }),
+  launch: (e) => ({ jump: Number.isInteger(e.jump) ? e.jump : NO_KART }),
+  trick: (e) => ({ kind: e.kind | 0 }),
+  ring: (e) => ({ ring: Number.isInteger(e.ring) ? e.ring : NO_KART }),
 };
 
 export const REPLICATED_EVENT_TYPES = Object.freeze(Object.keys(CATALOGUE));

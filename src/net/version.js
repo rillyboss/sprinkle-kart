@@ -5,7 +5,7 @@
  *   buildId()         the deploy (`__SK_BUILD__`, a git sha baked in by vite.config.js; 'dev' elsewhere). Shown
  *                     in the debug overlay; a different build with the same content still plays together.
  *   contentHash()     FNV-1a 32 over everything that makes two machines simulate or draw the same race: racer
- *                     ids + stats, track ids + laps + width + control points + item-box rows + boost pads,
+ *                     ids + stats, track ids + laps + width + control points + item-box rows + boost pads + jumps + rings,
  *                     TUNING, SPEED_CLASSES, RACERS_PER_RACE and PROTOCOL_VERSION. Every push to main redeploys
  *                     Pages, so a friend whose tab was opened before a content change gets the friendly
  *                     "Different game version — everyone refresh the page 🔄" instead of racing on a different
@@ -55,7 +55,7 @@ export function contentSummary({ tracks = TRACKS, characters = CHARACTERS, tunin
     racers: [...characters].map((c) => ({ id: c.id, stats: c.stats ?? null })).sort((a, b) => (a.id < b.id ? -1 : 1)),
     tracks: [...tracks].map((t) => ({
       id: t.id, laps: t.laps ?? null, width: t.width ?? null, controlPoints: t.controlPoints ?? null,
-      itemBoxRows: t.itemBoxRows ?? null, boostPads: t.boostPads ?? null,
+      itemBoxRows: t.itemBoxRows ?? null, boostPads: t.boostPads ?? null, jumps: t.jumps ?? null, rings: t.rings ?? null,
     })).sort((a, b) => (a.id < b.id ? -1 : 1)),
     tuning,
     speedClasses,

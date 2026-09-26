@@ -62,6 +62,14 @@ export function applyKartRecord(kart, rec, owner = null, path = null) {
   p.throttle = rp.throttle;
   p.braking = rp.braking;
   p.reversing = rp.reversing;
+  // v3.1 jumps (older records without these fields leave the kart grounded)
+  p.airborne = !!rp.airborne;
+  p.trick = rp.trick | 0;
+  p.trickTime = Number.isFinite(rp.trickTime) ? rp.trickTime : 0;
+  p.trickLen = Number.isFinite(rp.trickLen) ? rp.trickLen : 0;
+  p.trickDone = !!rp.trickDone;
+  p.trickQueued = !!rp.trickQueued;
+  p.landSquash = Number.isFinite(rp.landSquash) ? rp.landSquash : 0;
   if (owner) {
     const o = owner.phys;
     p.driftHeld = o.driftHeld;
@@ -81,8 +89,14 @@ export function applyKartRecord(kart, rec, owner = null, path = null) {
     if (Number.isFinite(o.driftSlip)) p.driftSlip = o.driftSlip;
     if (Number.isFinite(o.driftOmega0)) p.driftOmega0 = o.driftOmega0;
     if (Number.isFinite(o.yawRate)) p.yawRate = o.yawRate;
+    if (Number.isFinite(o.airVy)) p.airVy = o.airVy;
+    if (Number.isFinite(o.airTime)) p.airTime = o.airTime;
+    if (Number.isInteger(o.onRamp)) p.onRamp = o.onRamp;
+    if (Number.isFinite(o.trickTime)) p.trickTime = o.trickTime;
+    if (Number.isFinite(o.trickLen)) p.trickLen = o.trickLen;
+    if (Number.isInteger(o.trickCount)) p.trickCount = o.trickCount;
     if (Number.isFinite(owner.aiSpeedMult)) kart.aiSpeedMult = owner.aiSpeedMult;
-  } else {
+  } else if (!p.airborne) {
     p.groundY = rec.position[1] - rp.hopY;
   }
   // s / lateral are derived: s = wrap(distance) (measured exact), lateral from projecting the position.

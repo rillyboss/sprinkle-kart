@@ -145,12 +145,12 @@ export function collideKarts(karts, { emit = () => {}, bumpTimes = new Map(), ti
  * One tick for this machine's local karts together (Race.update(1/60) order for those karts only).
  * @param {object[]} localKarts
  * @param {object[]} inputs   DriveInput per local kart (same order)
- * @param {{ path, boostPads, gameplay, tick: number, startTick?: number, goTick: number, countdownAfter?: (r:number)=>number,
+ * @param {{ path, boostPads, jumps?, rings?, gameplay, tick: number, startTick?: number, goTick: number, countdownAfter?: (r:number)=>number,
  *           emit?: Function, bumpTimes?: Map, lapsTotal?: number, time?: number }} ctx
  */
 export function predictTick(localKarts, inputs, ctx) {
   const emit = ctx.emit || (() => {});
-  const env = { path: ctx.path, boostPads: ctx.boostPads, emit, gameplay: ctx.gameplay };
+  const env = { path: ctx.path, boostPads: ctx.boostPads, jumps: ctx.jumps, rings: ctx.rings, emit, gameplay: ctx.gameplay };
   const startTick = ctx.startTick ?? 1;
   const r = ctx.tick - startTick + 1; // race tick number (1-based)
   const goR = ctx.goTick - startTick + 1;

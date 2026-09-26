@@ -81,6 +81,48 @@ export function cpuDriftChance(skill, spicy = false) {
   return spicy ? 0.25 + skill * 0.6 : 0.06 + skill * 0.3;
 }
 
+/** Chance a CPU of this skill does a trick off a ramp (Kid-Assist always does). */
+export function cpuTrickChance(skill) {
+  return clamp(0.35 + 0.6 * skill, 0, 0.95);
+}
+
+/** Chance a CPU of this skill steers over a ramp it could reach (instead of driving past it). */
+export function cpuRampChance(skill) {
+  return clamp(0.4 + 0.55 * skill, 0, 1);
+}
+
+/**
+ * Lateral target that stays on ramp `jump` (with a margin), starting from `lat`.
+ */
+export function onRampLateral(jump, lat, margin = 1.2) {
+  const half = Math.max(0, jump.halfWidth - margin);
+  return clamp(lat, jump.lateral - half, jump.lateral + half);
+}
+
+/**
+ * The next ramp within `reach` metres ahead of s (built jumps), or null: { index, jump, ahead }.
+ */
+export function rampAhead(path, jumps, s, reach = 55) {
+  if (!jumps?.length) return null;
+  let best = null;
+  for (let i = 0; i < jumps.length; i++) {
+    const ahead = path.delta(s, jumps[i].s);
+    if (ahead < -1 || ahead > reach + jumps[i].length) continue;
+    if (!best || ahead < best.ahead) best = { index: i, jump: jumps[i], ahead };
+  }
+  return best;
+}
+
+/**
+ * Should a helper (CPU / Kid-Assist) press the hop button now for a trick? Returns the drift
+ * input to send: a fresh press (toggles against the held state) while airborne with no trick done yet.
+ */
+export function trickPress(kart, delay = 0.06) {
+  const p = kart.phys;
+  if (!p?.airborne || p.trickDone || p.trick > 0 || kart.spinning || p.airTime < delay) return null;
+  return !p.driftHeld;
+}
+
 /**
  * Rubber-band speed multiplier for a CPU `gap` metres ahead (+) or behind (-)
  * of the best human. CPUs ahead are eased back quickly and firmly; CPUs behind
@@ -121,6 +163,10 @@ export class CpuBrain {
     this.itemHeldFor = 0;
     this.itemDelay = 1;
     this.driftPlan = null; // null = undecided for this bend, true/false once decided
+    this.rampPlans = new Map(); // "rampIndex:lap" -> use it?
+    this.trickPlan = null; // per flight: { go, at }
+    this.trickChance = cpuTrickChance(this.skill);
+    this.rampChance = cpuRampChance(this.skill);
     this.driftOutFor = 0;
     // countdown: skilled drivers sometimes nail the rocket start
     this.startPress = rng() < this.skill * 0.6 ? 0.25 + rng() * 0.85 : 99;
@@ -163,6 +209,18 @@ export class CpuBrain {
         if (cost < bestCost) { bestCost = cost; best = b; }
       }
       if (best && bestCost < 7) lat += (best.slot.lateral - lat) * (0.4 + 0.5 * this.skill);
+    }
+    // A candy ramp ahead? Most CPUs line up for it (big air + a trick boost).
+    const ramp = rampAhead(path, race.jumps, k.s);
+    if (ramp) {
+      const key = `${ramp.index}:${k.lap}`;
+      let use = this.rampPlans.get(key);
+      if (use === undefined) {
+        use = this.rng() < this.rampChance;
+        this.rampPlans.set(key, use);
+        if (this.rampPlans.size > 64) this.rampPlans.clear();
+      }
+      if (use) lat = onRampLateral(ramp.jump, lat);
     }
     // Look for gumdrops in our lane and (sometimes) dodge them.
     const gumdrops = race.items?.gumdrops || [];
@@ -266,6 +324,15 @@ export class CpuBrain {
       if (!input.drift) this.driftPlan = false;
     }
 
+    // Jumps: a trick in the air (lands with a mini-boost). Airborne, the hop button means "trick" only.
+    if (k.phys.airborne) {
+      if (!this.trickPlan) this.trickPlan = { go: this.rng() < this.trickChance, at: 0.04 + this.rng() * 0.14 };
+      const press = this.trickPlan.go ? trickPress(k, this.trickPlan.at) : null;
+      input.drift = press ?? false;
+    } else {
+      this.trickPlan = null;
+    }
+
     // Items
     if (k.item && k.itemRoulette <= 0) {
       if (this.itemHeldFor === 0) this.itemDelay = 0.4 + this.rng() * 2.4 * (1.25 - this.skill);
@@ -309,6 +376,8 @@ export const KID_ASSIST = Object.freeze({
   kidShare: 0.45, // share of the kid's own stick mixed straight into the steering
   stuckAfter: 1.2, // seconds stalled before the helper backs up a little
   backUpFor: 0.7,
+  rampPull: 3, // metres: a ramp this close to the kid's lane pulls the lane onto it
+  trickDelay: 0.06, // seconds after take-off the helper presses for a trick
 });
 
 /** Kid-Assist memory for a kart (created on first use). */
@@ -342,7 +411,8 @@ export function kidAssistPedals(race, input) {
  * Kid-Assist (the field stays `easyDrive`): always full gas + strong but
  * natural steering help that follows the racing line, keeps clear of the
  * walls and lets the kid choose a lane with the stick. It never drifts by
- * itself (the kid still can). Returns a new DriveInput.
+ * itself (the kid still can), lines up for a candy ramp near the chosen lane
+ * and does the trick in the air for the kid. Returns a new DriveInput.
  */
 export function applyEasyDrive(race, kart, input) {
   const out = { ...input };
@@ -365,7 +435,12 @@ export function applyEasyDrive(race, kart, input) {
 
   const look = 7 + speed * 0.42;
   const line = race.racingLine ? racingLineAt(race.racingLine, kart.s + look * 0.5) : 0;
-  const tgtLat = clamp(line * KID_ASSIST.lineFollow + st.lane, -edge, edge);
+  let tgtLat = clamp(line * KID_ASSIST.lineFollow + st.lane, -edge, edge);
+  // a ramp close to the chosen lane: help the kid line up for it (jumps are the fun part!)
+  const ramp = rampAhead(path, race.jumps, kart.s, 40);
+  if (ramp && Math.abs(tgtLat - ramp.jump.lateral) < ramp.jump.halfWidth + KID_ASSIST.rampPull) {
+    tgtLat = clamp(onRampLateral(ramp.jump, tgtLat, 1.4), -edge, edge);
+  }
   const tp = path.positionAt(kart.s + look, tgtLat, _t);
   const assist = steerToward(kart, tp.x, tp.z, KID_ASSIST.gain);
 
@@ -374,8 +449,12 @@ export function applyEasyDrive(race, kart, input) {
   const share = KID_ASSIST.kidShare * Math.abs(s) * (1 - 0.8 * nearWall);
   out.steer = clamp(assist + (s - assist) * share, -1, 1);
 
+  // Auto-tricks: in the air Kid-Assist presses the hop button for a trick (and its landing boost).
+  const press = trickPress(kart, KID_ASSIST.trickDelay);
+  if (press !== null) out.drift = press;
+
   // Stalled nose-first in a pile-up? Back up for a moment, then carry on.
-  if (st.backUp > 0) {
+  if (st.backUp > 0 && !kart.phys?.airborne) {
     st.backUp -= dt;
     out.accel = 0;
     out.brake = 1;

@@ -29,7 +29,8 @@ export function isPredictedForMe(e, isMine) {
   if (!isMine(e.kart)) return false;
   switch (e.type) {
     case 'hop': case 'land': case 'drift-start': case 'drift-level': case 'drift-boost': return true;
-    case 'boost': return e.source === 'start' || e.source === 'pad' || e.source === 'item';
+    case 'launch': case 'trick': case 'ring': return true; // v3.1 jumps are predicted like hops
+    case 'boost': return e.source === 'start' || e.source === 'pad' || e.source === 'item' || e.source === 'trick' || e.source === 'ring';
     case 'bump': return e.other === 255 || isMine(e.other);
     case 'item-use': return PREDICTED_SELF_ITEMS.has(e.item);
     default: return false;

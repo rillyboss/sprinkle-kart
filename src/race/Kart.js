@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TUNING as T, statsToPhysics } from './tuning.js';
+import { rampAt, pastLip, airGravity, launchSpeed, timeToLand } from './jumps.js';
 
 /**
  * Kart state + arcade physics. Everything here is pure simulation (no
@@ -117,6 +118,18 @@ export function createKart({ id, participant, charDef, speedClass, lapsTotal, pa
       driftSlip: 0, // current drift slip angle (rad, nose into the bend)
       driftOmega0: 0, // turn rate (rad/s, + = right) the drift arc blends in from
       yawRate: 0, // heading turn rate of the last step (rad/s, + = right)
+      // jumps (src/race/jumps.js): airborne state, tricks, landing squash
+      airborne: false,
+      airVy: 0, // vertical speed while airborne (m/s, + = up)
+      airTime: 0, // seconds since take-off
+      onRamp: -1, // index of the ramp under the kart (-1 = none)
+      trick: 0, // trick playing now: 0 none, 1 flip, 2 spin, 3 twirl (TRICKS in jumps.js)
+      trickTime: 0, // seconds into the current trick
+      trickLen: 0, // duration of the current trick (fitted to the flight left)
+      trickDone: false, // a trick was completed this flight (boost on landing)
+      trickQueued: false, // hop pressed on the ramp: trick at take-off
+      trickCount: 0, // tricks done this race (picks the next trick kind)
+      landSquash: 0, // 0..1 landing squash, springs back over landSquashTime
       hopLen: T.hopDuration, // duration of the current hop (low gravity = floatier)
       steerSmoothed: 0,
       throttle: 0, // the accel actually applied last step (0..1, for engine sounds)
@@ -162,6 +175,10 @@ export function bonkKart(kart) {
   }
   kart.phys.spinTime = T.spinDuration;
   kart.spinning = true;
+  kart.phys.trick = 0;
+  kart.phys.trickTime = 0;
+  kart.phys.trickDone = false;
+  kart.phys.trickQueued = false;
   kart.velocity.multiplyScalar(T.bonkSpeedKeep);
   kart.speed *= T.bonkSpeedKeep;
   cancelDrift(kart);
@@ -279,6 +296,7 @@ export function stepKart(kart, input, env, dt) {
     if (p.spinTime === 0) p.spinAngle = 0;
   }
   kart.spinning = p.spinTime > 0;
+  if (p.landSquash > 0) p.landSquash = Math.max(0, p.landSquash - dt / T.landSquashTime);
 
   let steer = clamp(input.steer || 0, -1, 1);
   let accel = clamp(input.accel || 0, 0, 1);
@@ -300,7 +318,9 @@ export function stepKart(kart, input, env, dt) {
 
   // ---- throttle / brake ---------------------------------------------------
   p.braking = false;
-  if (boosting) {
+  if (p.airborne && !boosting) {
+    p.throttle = accel; // wheels spin in the air (engine sound), no traction
+  } else if (boosting) {
     f = Math.max(f, 0);
     if (f < max) f = Math.min(max, f + T.boostAccel * dt);
     p.throttle = 1;
@@ -339,13 +359,17 @@ export function stepKart(kart, input, env, dt) {
 
   const pressed = driftBtn && !p.driftHeld;
   p.driftHeld = driftBtn;
-  if (pressed && !kart.spinning && p.hopTime <= 0 && f > T.driftMinSpeed * 0.8) {
+  if (p.airborne) {
+    if (pressed) startTrick(kart, env, emit);
+  } else if (pressed && p.onRamp >= 0 && onRampTrickZone(kart, env)) {
+    p.trickQueued = true; // hop on the ramp's lip = a trick at take-off
+  } else if (pressed && !kart.spinning && p.hopTime <= 0 && f > T.driftMinSpeed * 0.8) {
     const hop = hopShape(env.gameplay);
     p.hopTime = p.hopLen = hop.duration;
     p.driftWindow = hop.duration + T.driftStartWindow;
     emit({ type: 'hop', kart });
   }
-  if (!kart.drifting && driftBtn && p.driftWindow > 0 && Math.abs(steer) > T.driftSteerStart && f > T.driftMinSpeed * 0.8) {
+  if (!kart.drifting && !p.airborne && driftBtn && p.driftWindow > 0 && Math.abs(steer) > T.driftSteerStart && f > T.driftMinSpeed * 0.8) {
     kart.drifting = true;
     kart.driftDir = Math.sign(steer);
     kart.driftLevel = 0;
@@ -378,6 +402,15 @@ export function stepKart(kart, input, env, dt) {
       }
     }
   }
+  if (p.trick > 0) {
+    p.trickTime += dt;
+    if (p.trickTime >= p.trickLen) {
+      p.trick = 0;
+      p.trickTime = 0;
+      p.trickDone = true;
+    }
+  }
+
   // ---- steering -----------------------------------------------------------
   p.steerSmoothed += (steer - p.steerSmoothed) * Math.min(1, dt * T.steerSmoothing);
   const travel = Math.hypot(f, side);
@@ -427,6 +460,7 @@ export function stepKart(kart, input, env, dt) {
     }
     if (f < -0.5) yaw = -yaw; // reversing steers like a real car
     if (kart.spinning) yaw = 0;
+    if (p.airborne) yaw *= T.airSteer;
 
     // Re-compose world velocity, rotate heading, re-decompose (inertia -> slide).
     vx = fx * f + rx * side;
@@ -436,8 +470,8 @@ export function stepKart(kart, input, env, dt) {
     rx = -fz; rz = fx;
     f2 = vx * fx + vz * fz;
     const s2 = vx * rx + vz * rz;
-    const grip = kart.spinning ? 3 : T.grip + (T.driftGrip - T.grip) * p.slide;
-    const transfer = T.gripTransfer + (T.driftGripTransfer - T.gripTransfer) * p.slide;
+    const grip = p.airborne ? T.airGrip : kart.spinning ? 3 : T.grip + (T.driftGrip - T.grip) * p.slide;
+    const transfer = p.airborne ? 1 : T.gripTransfer + (T.driftGripTransfer - T.gripTransfer) * p.slide;
     newSide = s2 * Math.exp(-grip * dt);
     if (f2 > 0.5) {
       // Scrubbed sideways speed flows back into forward speed, but never
@@ -465,10 +499,18 @@ export function stepKart(kart, input, env, dt) {
   kart.speed = f2;
   v.set(vx, 0, vz);
   // ---- integrate ----------------------------------------------------------
+  const sBefore = kart.s;
   kart.position.x += vx * dt;
   kart.position.z += vz * dt;
+  if (p.airborne) {
+    p.airVy -= airGravity(env.gameplay) * dt;
+    kart.position.y += p.airVy * dt;
+    p.airTime += dt;
+  }
 
   constrainToTrack(kart, env, dt);
+  updateFlight(kart, env, emit);
+  if (env.rings) checkRings(kart, env, sBefore, emit);
 
   // Wrong-way detection (for a friendly HUD hint).
   const tan = path.tangentAt(kart.s, _r);
@@ -505,6 +547,24 @@ export function constrainToTrack(kart, env, dt) {
   kart.distance += path.delta(kart.s, pr.s);
   kart.s = pr.s;
   kart.lateral = pr.lateral;
+
+  // In the air a soft guide steers the kart back over the road, so nobody ever lands off the track.
+  if (p.airborne) {
+    const lim = Math.max(0, path.halfWidth - T.airEdgeMargin);
+    const abs = Math.abs(pr.lateral);
+    if (abs > lim) {
+      const sideSign = Math.sign(pr.lateral);
+      const pen = abs - lim;
+      const r = path.rightAt(pr.s, _r);
+      const move = (pen * Math.exp(-T.airEdgeSpring * dt) - pen) * sideSign;
+      kart.position.x += r.x * move;
+      kart.position.z += r.z * move;
+      kart.lateral = pr.lateral = sideSign * (lim + pen * Math.exp(-T.airEdgeSpring * dt));
+      const v = kart.velocity;
+      const out = (v.x * r.x + v.z * r.z) * sideSign;
+      if (out > 0) { v.x -= r.x * sideSign * out; v.z -= r.z * sideSign * out; }
+    }
+  }
 
   const soft = path.halfWidth + T.wallMargin - T.kartHalfWidth;
   const absLat = Math.abs(pr.lateral);
@@ -549,19 +609,147 @@ export function constrainToTrack(kart, env, dt) {
       kart.heading = wrapAngle(kart.heading + clamp(target, -rate, rate));
     }
   }
-  kart.offRoad = Math.abs(kart.lateral) > path.halfWidth + 0.4;
+  kart.offRoad = !p.airborne && Math.abs(kart.lateral) > path.halfWidth + 0.4;
 
-  // Height with smoothing (+ hop), and slope pitch for the model.
+  // Height with smoothing (+ hop, + the ramp under the kart, unsmoothed so the lip is exact),
+  // and slope pitch for the model. Airborne karts fly on their own (stepKart integrates y).
   p.groundY += (pr.height - p.groundY) * Math.min(1, dt * T.heightSmoothing);
-  kart.position.y = p.groundY + p.hopY;
+  const ramp = rampAt(env.jumps, path, pr.s, kart.lateral, _ramp);
+  if (!p.airborne) kart.position.y = p.groundY + ramp.height + p.hopY;
   const hA = path.pointAt(pr.s + 2, _v).y;
   const hB = path.pointAt(pr.s - 2, _v).y;
   const tan = path.tangentAt(pr.s, _v);
   const along = Math.sin(kart.heading) * tan.x + Math.cos(kart.heading) * tan.z;
-  const slope = ((hA - hB) / 4) * along;
-  const targetPitch = -Math.atan(slope);
+  const slope = ((hA - hB) / 4) * along + ramp.slope * Math.max(0, along);
+  const targetPitch = p.airborne
+    ? -Math.atan2(p.airVy, Math.max(6, Math.abs(kart.speed))) * 0.6 // the nose follows the flight arc
+    : -Math.atan(slope);
   p.pitch += (targetPitch - p.pitch) * Math.min(1, dt * T.pitchSmoothing);
   const speedFrac = clamp(Math.abs(kart.speed) / Math.max(1, kart.stats.maxSpeed), 0, 1);
   const targetRoll = -p.steerSmoothed * 0.06 * speedFrac - kart.driftDir * 0.05;
   p.roll += (targetRoll - p.roll) * Math.min(1, dt * 8);
+}
+
+const _ramp = { index: -1, height: 0, slope: 0 };
+
+/** Is the kart on the last part of its ramp (where a hop press means "trick at take-off")? */
+function onRampTrickZone(kart, env) {
+  const j = env.jumps?.[kart.phys.onRamp];
+  if (!j) return false;
+  return env.path.delta(j.s, kart.s) >= -j.length * T.rampTrickZone;
+}
+
+/** Height of the surface under an airborne kart (road + any ramp). */
+function floorUnder(kart, env) {
+  return kart.phys.groundY + rampAt(env.jumps, env.path, kart.s, kart.lateral, _ramp).height;
+}
+
+/**
+ * Start a trick (flip / spin / twirl) if there is enough flight left to finish it.
+ * The trick length is fitted to the flight so it lands complete. Returns true if one started.
+ */
+export function startTrick(kart, env, emit = () => {}) {
+  const p = kart.phys;
+  if (!p.airborne || p.trick > 0 || kart.spinning) return false;
+  const left = timeToLand(p.airVy, kart.position.y - floorUnder(kart, env), airGravity(env.gameplay));
+  if (!(left >= T.trickMinAir)) return false;
+  p.trick = (p.trickCount % 3) + 1;
+  p.trickCount++;
+  p.trickTime = 0;
+  p.trickLen = clamp(left * 0.85, T.trickMin, T.trickMax);
+  emit({ type: 'trick', kart, kind: p.trick });
+  return true;
+}
+
+/** Take off from ramp `index`. */
+function launch(kart, env, index, emit) {
+  const p = kart.phys;
+  const j = env.jumps[index];
+  if (kart.drifting) {
+    // flying ends the drift and hands out its turbo
+    const lvl = kart.driftLevel;
+    cancelDrift(kart);
+    if (lvl > 0) {
+      giveBoost(kart, T.miniTurbo[lvl]);
+      emit({ type: 'drift-boost', kart, level: lvl });
+    }
+  }
+  p.airborne = true;
+  p.airTime = 0;
+  p.airVy = launchSpeed(j, kart.speed);
+  p.hopTime = 0;
+  p.hopY = 0;
+  kart.position.y = p.groundY + j.lipHeight;
+  emit({ type: 'launch', kart, jump: index, vy: p.airVy });
+  if (p.trickQueued) startTrick(kart, env, emit);
+  p.trickQueued = false;
+}
+
+/** Touch down: squash, dust (the 'land' event), and the trick boost. */
+function land(kart, env, floor, emit) {
+  const p = kart.phys;
+  const vy = p.airVy;
+  const path = env.path;
+  p.airborne = false;
+  p.airVy = 0;
+  kart.position.y = floor;
+  // never land off the road (the air guide makes this a tiny nudge at most)
+  const lim = path.halfWidth - 0.5;
+  if (Math.abs(kart.lateral) > lim) {
+    const r = path.rightAt(kart.s, _r);
+    const move = (lim - Math.abs(kart.lateral)) * Math.sign(kart.lateral);
+    kart.position.x += r.x * move;
+    kart.position.z += r.z * move;
+    kart.lateral = Math.sign(kart.lateral) * lim;
+  }
+  const strength = clamp(0.25 + -vy / 22, 0.3, 1);
+  p.landSquash = strength;
+  const tricked = p.trickDone;
+  const airTime = p.airTime;
+  p.trick = 0;
+  p.trickTime = 0;
+  p.trickDone = false;
+  p.trickQueued = false;
+  emit({ type: 'land', kart, strength, air: true, airTime, trick: tricked });
+  if (tricked && !kart.spinning) {
+    giveBoost(kart, T.trickBoost);
+    emit({ type: 'boost', kart, source: 'trick' });
+  }
+}
+
+/** Launch off a ramp lip / land after a flight (called every step after constrainToTrack). */
+export function updateFlight(kart, env, emit = () => {}) {
+  const p = kart.phys;
+  if (p.airborne) {
+    const floor = floorUnder(kart, env);
+    if (kart.position.y <= floor && p.airVy <= 0) land(kart, env, floor, emit);
+    return;
+  }
+  const idx = env.jumps ? _ramp.index : -1; // _ramp was filled by constrainToTrack this step
+  if (p.onRamp >= 0 && idx !== p.onRamp) {
+    const j = env.jumps?.[p.onRamp];
+    if (j && kart.speed > 1 && pastLip(j, env.path, kart.s, kart.lateral)) {
+      const from = p.onRamp;
+      p.onRamp = -1;
+      launch(kart, env, from, emit);
+      return;
+    }
+  }
+  p.onRamp = idx;
+}
+
+/** Fly through a boost ring (crossing its plane this step, inside its hoop) = a boost. */
+function checkRings(kart, env, sBefore, emit) {
+  const path = env.path;
+  const cy = kart.position.y + T.kartCenterY;
+  for (let i = 0; i < env.rings.length; i++) {
+    const r = env.rings[i];
+    const d0 = path.delta(r.s, sBefore);
+    const d1 = path.delta(r.s, kart.s);
+    if (!(d0 < 0 && d1 >= 0 && d0 > -12)) continue;
+    if (Math.hypot(kart.lateral - r.lateral, cy - r.y) > r.radius) continue;
+    giveBoost(kart, T.ringBoost);
+    emit({ type: 'ring', kart, ring: i });
+    emit({ type: 'boost', kart, source: 'ring' });
+  }
 }

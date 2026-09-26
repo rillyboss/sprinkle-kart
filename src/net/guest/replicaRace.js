@@ -25,6 +25,8 @@ import { createKart } from '../../race/Kart.js';
 import { aiDriveInput } from '../../race/Race.js';
 import { computeRacingLine, applyEasyDrive } from '../../race/AI.js';
 import { normalizeGameplay } from '../../race/gameplay.js';
+import { buildJumps, buildRings } from '../../race/jumps.js';
+import { applyKartPose } from '../../race/kartPose.js';
 import { normalizeRules } from '../../modes/rules.js';
 import { SPEED_CLASSES, DEFAULT_LAPS } from '../../config.js';
 import { getCharacter } from '../../data/characters.js';
@@ -104,6 +106,8 @@ export class ReplicaRace {
     this.boostPads = (builtTrack?.boostPads ?? (trackDef.boostPads || []).map((b) => ({
       s: path.wrap(b.at * L), lateral: b.lateral ?? 0, length: 6, halfWidth: 2.5,
     }))).map((b) => ({ length: 6, halfWidth: 2.5, ...b }));
+    this.jumps = builtTrack?.jumps ?? buildJumps(trackDef, path);
+    this.rings = builtTrack?.rings ?? buildRings(trackDef, path);
     this.rng = null;
     this.lastDt = TICK_DT;
     this.state = 'countdown';
@@ -231,7 +235,7 @@ export class ReplicaRace {
 
   _ctxFor(tick, emit, hazards = null) {
     return {
-      path: this.path, boostPads: this.boostPads, gameplay: this.gameplay, rules: this.rules, tick,
+      path: this.path, boostPads: this.boostPads, jumps: this.jumps, rings: this.rings, gameplay: this.gameplay, rules: this.rules, tick,
       startTick: this.startTick, goTick: this.goTick, countdownAfter: this._countdownAfter, emit,
       bumpTimes: this._bumpTimes, lapsTotal: this.lapsTotal, time: Math.max(0, (tick - this.goTick) / 60),
       ...(hazards ? { hazards } : {}),
@@ -654,12 +658,11 @@ export class ReplicaRace {
     r.roll = k.phys.roll;
     r.hopY = k.phys.hopY;
     if (k.model?.group) {
-      k.model.group.position.set(x, y, z);
-      k.model.group.rotation.set(k.phys.pitch, heading + k.phys.spinAngle, k.phys.roll);
+      applyKartPose(k.model.group, k, x, y, z, heading);
       k.model.update?.(dt, {
         speed: k.speed, steer: k.phys.steerSmoothed, drifting: k.drifting, driftLevel: k.driftLevel, spinning: k.spinning,
         boosting: k.boosting, shielded: k.shielded, time: this.clock, star: k.starPower > 0, driftDir: k.driftDir,
-        hop: k.phys.hopY, offRoad: k.offRoad,
+        hop: k.phys.hopY, offRoad: k.offRoad, air: !!k.phys.airborne, trick: k.phys.trick | 0,
       });
     }
   }
