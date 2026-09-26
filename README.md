@@ -169,8 +169,14 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
   lemonade fizz, stardust in space.
 - **Finish line party 🎉:** crossing the line throws a confetti fountain and the camera swings up
   and round to the front of your kart. Two karts within a quarter of a second? *"📸 Photo finish!"*
-- **3D podium 🏆:** on the results screen the top three are real 3D racers dancing their own
-  happy dance (gigglers twirl, ho-ho-ers wobble, boing-ers bounce like springs).
+- **3D podium 🏆:** on the results screen and at the Grand Prix trophy ceremony the top three are
+  real 3D racers dancing their own happy dance (gigglers twirl, ho-ho-ers wobble, boing-ers bounce
+  like springs), and they cheer in their own voices as they pop up.
+- **Music that follows along 🎵:** the title screen has its own bouncy theme; the band goes lighter
+  on "Who's playing?", calm (no drums) in the grown-up corners, soft and dreamy when you pause or
+  take photos, plays just a heartbeat during the countdown until everyone joins in at GO, and turns
+  up the drums on the final lap. Didn't make the top 3? Instead of the big fanfare you get the
+  cosy *"Good try!"* tune, because every finish is worth a little dance.
 - **Photo mode 📸:** pause the race and pick **Photo mode**. Move the camera round your kart with the
   stick / arrows (Up/Down = closer/further, Start = tilt), **Y / Tab** picks a frame (snapshot,
   hearts, sprinkles, stars), **A / Enter** snaps and saves a picture (it lands in your downloads),
@@ -178,8 +184,8 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 - **✨ Effects & comfort** (on the title screen, press Down): **Motion: Gentle** for calmer cameras,
   fewer wiggles and sparkles (it starts on Gentle if the device asks for reduced motion), **Screen
   wobble**, **Racer chatter**, **Weather & sparkles**, **Title show**, and **Colour-friendly shapes**,
-  which give every player a shape as well as a colour (P1 ♥ · P2 ★ · P3 ◆ · P4 ●, with a different
-  border pattern in split-screen). These are saved separately from the Sticker Book, so starting a
+  which give every player a shape as well as a colour (P1 ♥ · P2 ★ · P3 ◆ · P4 ●, on the race HUD
+  and on the P1–P4 tags in the menus, with a different border pattern in split-screen). These are saved separately from the Sticker Book, so starting a
   fresh book keeps them.
 
 ---
@@ -302,5 +308,5 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 
 `window.__game` exposes `state`, `race`, `session`, `fps`, `setup`, `lastResults` (with the race summary) and the event `bus` for tests,
 plus `gp` / `lastGp` (the running Grand Prix and its latest GrandPrixResult) and `timeTrial` (ghost info).
-Showcase extras add `attract()`, `weather()`, `reactions()`, `spectacle()`, `podium()`, `photoMode()` (each `null` when idle),
+Showcase extras add `attract()`, `weather()`, `reactions()`, `spectacle()`, `podium()`, `photoMode()` (each `null` when idle), `music()` (song + layer mix),
 `lastPhoto` and `confettiBurst(pos, opts)`.
