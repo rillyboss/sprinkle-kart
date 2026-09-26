@@ -208,6 +208,15 @@ example `http://localhost:5173/?unlockreset=1`) also starts a fresh Sticker Book
 | **Teddy Toyland** | Toy-sized racing on a play-mat road that snakes round the playroom floor, up a crayon ramp onto giant picture books, past a waving teddy and a toy train | Finish 3 races |
 | **Honeycomb Hive** | Bizzy's home: a hexagon honey road round a flower-shaped loop, over a hilltop honey pot and straight through a giant beehive full of friendly bees | Use 10 items |
 
+### ☕ Cozy Cup
+
+| Track | What's there | Unlock |
+|---|---|---|
+| **Pumpkin Pie Patch** | A golden harvest farm: smiling pumpkins, hay-bale hops, a red covered bridge over Apple Juice Creek and spinning pie windmills round a big hairpin | Finish top 3 on 2 different tracks |
+| **Teacup Garden** | A tea party on a gingham tablecloth road: a long swoop round a steaming polka-dot teapot, the spinning teacup ride, macaron towers and a hedge-maze wiggle | Win 2 races |
+| **Peppermint Village** | A candy-cane shaped road through a snowy gingerbread village at twilight, with twinkly lights, a village tree, snowmen and a skating pond | Do 15 drift mini-turbos |
+| **Pillow Fort Dreamland** | Bedtime! A cloud-shaped pajama road over blanket hills, through a pillow-fort tunnel, past counting sheep and a sleepy crescent-moon night-light | Finish 6 races |
+
 ---
 
 ## For developers
