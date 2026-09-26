@@ -1,0 +1,40 @@
+// Donut Downtown: a twinkly night-city disco. Smooth synth lead, glassy
+// sparkle arpeggios, pulsing bass and a clap-and-hat groove. C major 7ths.
+export default {
+  id: 'donut-downtown',
+  bpm: 118,
+  echo: 0.25,
+  instruments: { lead: 'lead', arp: 'glass', pad: 'pad', bass: 'bass' },
+  mix: { lead: 0.5, arp: 0.12, pad: 0.14, bass: 0.42, drums: 0.4 },
+  reverb: { lead: 0.3, arp: 0.45, pad: 0.4 },
+  kit: {
+    A: 'k . h . c . h . k . h k c . h o',
+    B: 'k . h . c . h . k k h . c . h o',
+    F: 'k . h . c . h . k . c . c c c c',
+  },
+  main: {
+    bassStyle: 'pulse',
+    arpStyle: 'updown8',
+    padStyle: 'whole',
+    chords: ['Cmaj7', 'Am7', 'Dm7', 'G', 'Cmaj7', 'Am7', 'Fmaj7', 'G', 'Fmaj7', 'G', 'Em7', 'Am7', 'Dm7', 'G', 'C', 'G7'],
+    drums: 'ABABABAF ABABABAF',
+    lead: [
+      'E5 . G5 . B5 - A5 G5',
+      'A5 - E5 . C5 - E5 .',
+      'F5 . A5 . D6 - C6 A5',
+      'B5 - - - G5 . D5 .',
+      'E5 . G5 . C6 - B5 A5',
+      'C6 - A5 . E5 - A5 .',
+      'A5 . C6 . F6 - E6 C6',
+      'D6 - - - B5 . G5 .',
+      'A5 . A5 G5 F5 . C5 .',
+      'B5 . B5 A5 G5 . D5 .',
+      'G5 - E5 - B5 - G5 E5',
+      'A5 - - - E6 - C6 .',
+      'F5 . A5 . D6 - C6 A5',
+      'G5 . B5 . D6 - F6 D6',
+      'E6 - C6 - G5 - E5 G5',
+      'D6 - - - B5 - . .',
+    ],
+  },
+};
