@@ -23,6 +23,11 @@ export const MAX_EXTRAPOLATION_MS = 250;
 export const LOSS_ALLOWANCE_MS = 33;
 export const FRAME_HEADROOM_MS = 1000 / 60;
 export const BLEND_TAU_MS = 100;
+/** Snapshot gaps longer than this are bridged in a straight line (Hermite tangents over seconds overshoot). */
+export const MAX_HERMITE_GAP_MS = 250;
+/** An own kart handed from P to R (Robo Driver took it) glides back over this τ instead of popping. */
+export const HANDOVER_TAU_MS = 300;
+export const HANDOVER_SNAP = 40;
 
 const TAU = Math.PI * 2;
 export const wrapAngle = (a) => { let x = (a + Math.PI) % TAU; if (x < 0) x += TAU; return x - Math.PI; };
@@ -173,6 +178,14 @@ export function sampleKartPose(buffer, kartId, renderTick, { tickMs = 1000 / 60,
     const dt = ((b.tick - a.tick) * tickMs) / 1000;
     const teleport = b.flags?.teleport;
     if (teleport) return { x: rb.position[0], y: rb.position[1], z: rb.position[2], heading: rb.heading, vx: rb.velocity[0], vz: rb.velocity[2], rec: ra, snap: a, mode: 'interp' };
+    if (dt * 1000 > MAX_HERMITE_GAP_MS) {
+      // a long gap (outage, host stall): velocity tangents over seconds would swing wildly; go straight
+      return {
+        x: ra.position[0] + (rb.position[0] - ra.position[0]) * t, z: ra.position[2] + (rb.position[2] - ra.position[2]) * t,
+        y: ra.position[1] + (rb.position[1] - ra.position[1]) * t, heading: slerpAngle(ra.heading, rb.heading, t),
+        vx: (rb.position[0] - ra.position[0]) / dt, vz: (rb.position[2] - ra.position[2]) / dt, rec: ra, snap: a, mode: 'gap',
+      };
+    }
     return {
       x: hermite(ra.position[0], ra.velocity[0], rb.position[0], rb.velocity[0], t, dt),
       z: hermite(ra.position[2], ra.velocity[2], rb.position[2], rb.velocity[2], t, dt),
@@ -200,6 +213,8 @@ export function createPoseSmoother({ tauMs = BLEND_TAU_MS, snapDist = 8, popDist
   let off = { x: 0, y: 0, z: 0, h: 0 };
   let last = null; // drawn pose
   let target = null; // previous target pose (with velocity)
+  let handover = false; // seeded from a predicted pose: glide back slowly, never snap
+  let handoverSteps = 0;
   const stats = { pops: 0, snaps: 0 };
   return {
     /**
@@ -211,16 +226,17 @@ export function createPoseSmoother({ tauMs = BLEND_TAU_MS, snapDist = 8, popDist
      */
     step(pose, dtMs, { teleport = false } = {}) {
       if (!pose) return last;
-      const k = Math.exp(-Math.max(0, dtMs) / tauMs);
+      const k = Math.exp(-Math.max(0, dtMs) / (handover ? HANDOVER_TAU_MS : tauMs));
       off = { x: off.x * k, y: off.y * k, z: off.z * k, h: off.h * k };
-      if (teleport) { off = { x: 0, y: 0, z: 0, h: 0 }; stats.snaps++; } else if (target) {
+      if (handover && ++handoverSteps > 2 && Math.hypot(off.x, off.z) < 0.05) handover = false;
+      if (teleport) { off = { x: 0, y: 0, z: 0, h: 0 }; stats.snaps++; handover = false; } else if (target) {
         const s = Math.max(0, dtMs) / 1000;
         const ex = target.x + (target.vx || 0) * s;
         const ez = target.z + (target.vz || 0) * s;
         const dx = pose.x - ex;
         const dz = pose.z - ez;
         const dev = Math.hypot(dx, dz);
-        if (dev > snapDist) { off = { x: 0, y: 0, z: 0, h: 0 }; stats.snaps++; } else if (dev > popDist) {
+        if (dev > (handover ? HANDOVER_SNAP : snapDist)) { off = { x: 0, y: 0, z: 0, h: 0 }; stats.snaps++; } else if (dev > popDist) {
           off.x -= dx; off.z -= dz; off.y -= pose.y - target.y;
           stats.pops++;
         }
@@ -233,6 +249,14 @@ export function createPoseSmoother({ tauMs = BLEND_TAU_MS, snapDist = 8, popDist
     },
     get offset() { return Math.hypot(off.x, off.z); },
     reset() { off = { x: 0, y: 0, z: 0, h: 0 }; last = null; target = null; },
+    /** Start from a pose drawn elsewhere (an own kart handed from prediction to interpolation): no pop. */
+    seed(pose) {
+      off = { x: 0, y: 0, z: 0, h: 0 };
+      handover = true;
+      handoverSteps = 0;
+      target = { x: pose.x, y: pose.y, z: pose.z, vx: pose.vx || 0, vz: pose.vz || 0, heading: pose.heading };
+      last = { x: pose.x, y: pose.y, z: pose.z, heading: pose.heading };
+    },
     stats,
   };
 }

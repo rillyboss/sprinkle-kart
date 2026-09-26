@@ -351,11 +351,13 @@ export function runNetRace({
         g.interpLog.push({ t, ms: g.replica.interpDelayMs });
         // remote pose continuity
         for (const k of g.replica.karts) {
-          if (g.replica.isPredicted(k.id)) continue;
+          // continuity of every kart drawn on the remote timeline (own karts count from the frame after a
+          // hand-over from prediction, so the hand-over itself is measured too)
           const p = k.render.position;
           const last = g.lastRender.get(k.id);
-          if (last && fr.R > goTick + 30) g.jumps.push({ t, kart: k.id, d: Math.hypot(p.x - last.x, p.z - last.z) });
-          g.lastRender.set(k.id, { x: p.x, z: p.z });
+          const remote = !g.replica.isPredicted(k.id);
+          if (remote && last && fr.R > goTick + 30) g.jumps.push({ t, kart: k.id, d: Math.hypot(p.x - last.x, p.z - last.z), handover: !last.remote });
+          g.lastRender.set(k.id, { x: p.x, z: p.z, remote });
         }
       }
       if (recordFrames) g.frames.push({ t, ...fr });
@@ -391,13 +393,15 @@ export function runNetRace({
   const results = hostSummary.value || hostResults();
 
   const durS = (wireEnd.t - (wireStart?.t ?? 0)) / 1000;
-  const kbps = (key) => {
-    const a = wireStart?.links[key] || { wireBytesOut: 0, sackBytesOut: 0 };
+  const kbps = (key, field = 'wireBytesOut') => {
+    const a = wireStart?.links[key] || {};
     const b = wireEnd.links[key];
-    return ((b.wireBytesOut - a.wireBytesOut) * 8) / 1000 / Math.max(1e-9, durS);
+    return (((b[field] || 0) - (a[field] || 0)) * 8) / 1000 / Math.max(1e-9, durS);
   };
   const guestUp = guestIds.map((id) => kbps(`${id}>host`));
   const guestDown = guestIds.map((id) => kbps(`host>${id}`));
+  const ctrlDown = guestIds.map((id) => kbps(`host>${id}`, 'ctrlWireBytes'));
+  const ctrlPayload = guestIds.map((id) => kbps(`host>${id}`, 'ctrlBytes'));
 
   // contact windows: host disturbances a guest cannot predict (bumps with karts of other machines, bonks,
   // shield pops, item pickups/drops). Bumps between two karts of the same guest house are predicted there.
@@ -416,7 +420,8 @@ export function runNetRace({
   }
   const guestOut = guests.map((g, gi) => {
     const classify = (c) => (disturb.some((d) => d.sib !== gi && d.karts.includes(c.kart) && d.tick >= c.tick - 20 && d.tick <= c.P + 2) ? 'contact' : 'clean');
-    const corr = g.corrections.filter((c) => c.tick > goTick + 6).map((c) => ({ ...c, kind: classify(c) }));
+    // after its finish an own kart is driven by the host's CPU brain (the guest autopilots it): not measured
+    const corr = g.corrections.filter((c) => c.tick > goTick + 6 && !c.auto).map((c) => ({ ...c, kind: classify(c) }));
     const pct = (arr, p) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))] : 0; };
     const clean = corr.filter((c) => c.kind === 'clean').map((c) => c.err);
     const contact = corr.filter((c) => c.kind === 'contact').map((c) => c.err);
@@ -451,7 +456,7 @@ export function runNetRace({
     lastSeq: driver.stats().lastSentSeq,
     metrics: {
       durationS: durS,
-      wire: { guestUpKbps: guestUp, guestDownKbps: guestDown, hostUpKbps: guestDown.reduce((a, b) => a + b, 0) },
+      wire: { guestUpKbps: guestUp, guestDownKbps: guestDown, hostUpKbps: guestDown.reduce((a, b) => a + b, 0), ctrlDownKbps: ctrlDown, ctrlPayloadKbps: ctrlPayload },
       hostStats: driver.stats(),
       presses,
       lateAfter,

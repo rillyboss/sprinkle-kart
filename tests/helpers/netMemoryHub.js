@@ -61,7 +61,7 @@ export function createMemoryHub({ seed = 1, start = 0 } = {}) {
       l = {
         from, to, cond: { ...DEFAULT_COND }, bad: false, burstLeft: 0, cool: false,
         ctrlSeq: 0, ctrlNext: 0, ctrlReady: new Map(), lastSentAt: -Infinity, rxPackets: 0, lastDeliverAt: -Infinity,
-        stats: { bytesOut: 0, wireBytesOut: 0, packetsOut: 0, sackBytesOut: 0, lost: 0, dup: 0, reordered: 0, retransmits: 0, stateSkips: 0, oversize: 0 },
+        stats: { bytesOut: 0, wireBytesOut: 0, packetsOut: 0, sackBytesOut: 0, lost: 0, dup: 0, reordered: 0, retransmits: 0, stateSkips: 0, oversize: 0, ctrlMessages: 0, ctrlWireBytes: 0, ctrlBytes: 0 },
         buffered: 0,
       };
       links.set(key, l);
@@ -132,6 +132,9 @@ export function createMemoryHub({ seed = 1, start = 0 } = {}) {
   function sendCtrl(l, bytes) {
     const seq = l.ctrlSeq++;
     const nPackets = Math.max(1, Math.ceil(bytes.length / PACKET_PAYLOAD));
+    l.stats.ctrlMessages++;
+    l.stats.ctrlBytes += bytes.length;
+    l.stats.ctrlWireBytes += bytes.length + nPackets * l.cond.overhead;
     const copy = bytes.slice();
     const msg = { seq, bytes: copy, left: nPackets, arrivedAt: 0 };
     const rtt = 2 * l.cond.latencyMs + l.cond.jitterMs;

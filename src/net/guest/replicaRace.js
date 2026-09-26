@@ -22,6 +22,7 @@
  *   itemView / boxView / bursts           presentation adapters (default: none)
  */
 import { createKart } from '../../race/Kart.js';
+import { aiDriveInput } from '../../race/Race.js';
 import { computeRacingLine } from '../../race/AI.js';
 import { normalizeGameplay } from '../../race/gameplay.js';
 import { normalizeRules } from '../../modes/rules.js';
@@ -129,7 +130,8 @@ export class ReplicaRace {
     this.resolver = createLocalResolver(this.localKartIds.length);
     this._smoothers = new Map(this.karts.map((k) => [k.id, createPoseSmoother()]));
     this._prevPose = new Map();
-    this._predicting = new Set(this.localKartIds); // own karts currently predicted (not Robo-driven, not finished)
+    this._predicting = new Set(this.localKartIds); // own karts currently predicted (not Robo-driven)
+    this._auto = new Set(); // own karts that finished: the host's CPU brain drives them home, we autopilot the prediction
     this._bumpTimes = new Map();
     this._countdownShown = 4;
     this._goEmitted = false;
@@ -169,6 +171,9 @@ export class ReplicaRace {
   getPlayerKart(playerIndex) { return this.karts.find((k) => k.playerIndex === playerIndex) || null; }
 
   isPredicted(kartId) { return this._predicting.has(kartId); }
+
+  /** Own kart that finished and now rolls on with the local autopilot. */
+  isAutopiloted(kartId) { return this._auto.has(kartId); }
 
   get interpDelayMs() { return this.interp.ms; }
 
@@ -254,6 +259,11 @@ export class ReplicaRace {
     const wire = (sample ? sample(tick) : null) || this.localKartIds.map(() => ({ steer: 0, accel: 0, brake: 0, drift: false, itemCount: 0, hopCount: 0 }));
     const q = wire.map((x) => this._quantize(x));
     const resolved = this.resolver.resolve(tick, q);
+    // a finished own kart keeps rolling on P with a local autopilot (the host drives it with its CPU brain),
+    // so the camera never hops back to the remote timeline at the finish line
+    this.localKartIds.forEach((id, seat) => {
+      if (this._auto.has(id) && this._predicting.has(id)) resolved[seat] = { ...aiDriveInput(this, this.karts[id], TICK_DT), useItem: false };
+    });
     this.history.put(tick, q, resolved);
     const karts = this._predictedKarts();
     if (!karts.length) return;
@@ -329,8 +339,13 @@ export class ReplicaRace {
       const r = snap.karts[id];
       if (!r) continue;
       const wasPredicting = this._predicting.has(id);
-      const shouldPredict = !r.roboDriven && !r.finished;
+      if (r.finished) this._auto.add(id);
+      const shouldPredict = !r.roboDriven;
       if (wasPredicting && !shouldPredict) {
+        // hand the drawn pose over to interpolation so the kart glides back to the remote timeline
+        const k = this.karts[id];
+        const d = this.reconciler.drawn(k);
+        this._smoothers.get(id).seed({ ...d, vx: k.velocity.x, vz: k.velocity.z });
         this._predicting.delete(id);
         this.reconciler.clear(id);
         if (r.roboDriven) this.stats.roboOn++;
@@ -360,6 +375,7 @@ export class ReplicaRace {
         normalizeOwner: (o) => this._normalizeOwner(o),
       });
       this.lastCorrections = res.errors;
+      for (const e of res.errors) e.auto = this._auto.has(e.kart);
       this.onCorrection?.(snap, res.errors);
     }
     return true;
