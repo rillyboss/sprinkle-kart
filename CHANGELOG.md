@@ -2,6 +2,30 @@
 
 What's new in Sprinkle Kart, newest first. Player-facing details live in the [README](README.md).
 
+## Unreleased — Play with friends online 🌐
+
+### Online play (Free Race)
+- **🌐 Online** on the title screen once a grown-up turns on *Online play with friends* in ⚙️ Grown-ups
+  (behind the parent gate, after a short privacy note). Nothing online is even downloaded before that.
+- **Host a game** makes a room with a code like `SPRINKLE-4821` and 6 **secret sweets**; share the
+  **invite link** or its QR code. **Join a friend** with the link, or type the code and pick the sweets.
+- A **match check** before anyone gets in: both screens show the same two animals, and the host says
+  yes. The host can lock the room or remove a house (which locks it too).
+- Every house brings 1–4 players on its own screen, up to 8 people in a room, CPU friends fill the grid.
+  Each house picks its own racers (and kart paint); the host picks the track.
+- Your own kart feels like playing at home; everyone else glides smoothly. Places, finishes and results
+  always come from the host, so a *1st!* never turns into *2nd*.
+- The host's Start is **Pause everyone 🍪**; a friend's Start opens their own menu while 🤖 **Robo
+  Driver** steers. Robo Driver also helps when a controller naps or a connection drops.
+- Every house keeps its own stickers, unlocks and records, and online races count as races with a friend.
+- An invite link on a computer with online play off shows *Ask a grown-up to turn on online play in
+  Settings → Grown-ups 🔒* and is wiped from the address bar right away.
+- Say hi with 8 preset emotes (no typed chat anywhere). Grand Prix, Team Race and Bubble Battle come next.
+
+### Under the hood
+- `src/online/` wires the netcode and the room into the game; `runHeadlessNetSession` races a host and
+  guest houses in node (with network delay and loss) through the real glue for the tests.
+
 ## v2.0.1 — Peekaberry & Friends Fix-Up (2026-09-26)
 
 ### Racers

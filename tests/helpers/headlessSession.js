@@ -30,6 +30,9 @@ import { createFakeAudio } from './fakeAudio.js';
 import { createFakeInput } from './fakeInput.js';
 import { trackFixture, defaultRacerIds, stubKartModel, kartProblems } from './raceHarness.js';
 
+// Online (WS7): a host + guest houses over the in-memory transport, each with its own bus / systems / progress.
+export { runHeadlessNetSession, createMemoryProgress, NET_SECRET } from './headlessNetSession.js';
+
 /** A HUD stand-in recording flashes and hosting widgets (create() gets fake nodes). */
 export function createFakeHud() {
   const widgets = [];

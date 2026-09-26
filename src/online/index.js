@@ -1,0 +1,18 @@
+/**
+ * Everything main.js needs for online play, in ONE lazily loaded chunk (`import('./online/index.js')`),
+ * fetched only after a grown-up turned online on and the family opened Online (NETWORKING.md §1 rule 1).
+ *
+ * OWNER: WS7 (online game integration).
+ */
+export { netStack } from './stack.js';
+export * from './netRace.js';
+export * from './onlineFlow.js';
+export { netKartBuilder, createBoxView, createItemView } from './views.js';
+export { ReplicaRace } from '../net/guest/replicaRace.js';
+export { createTickPump } from '../net/tickPump.js';
+export { jsonEncode } from '../net/session/wire.js';
+export { housePis } from '../net/session/lobby.js';
+export { matchEmoji } from '../net/session/approval.js';
+export { TEXT, signalingErrorText } from '../net/session/texts.js';
+export { resolveSignalConfig } from '../net/signaling/index.js';
+export { createDebugOverlay, shouldShowNetDebug } from '../net/debugOverlay.js';

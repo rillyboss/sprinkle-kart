@@ -50,7 +50,9 @@ export default {
     };
     const offs = [
       bus.on('race-start', () => { tally = createRaceStats(); }),
-      ...TALLY_EVENTS.map((type) => bus.on(`race:${type}`, (e) => tally.onEvent({ type, ...e }))),
+      // Online, a guest's locally predicted events (`predicted: true`) are presentation only: counters come
+      // from the host's stats in the localized summary (NETWORKING.md §9.6, §12), never from a guess.
+      ...TALLY_EVENTS.map((type) => bus.on(`race:${type}`, (e) => { if (e?.predicted !== true) tally.onEvent({ type, ...e }); })),
       bus.on('race-end', (summary) => {
         const progress = app.progress;
         if (!progress || !summary || typeof summary !== 'object' || seen.has(summary)) return;
