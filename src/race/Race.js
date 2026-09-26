@@ -53,6 +53,17 @@ export class Race {
     this.rules = normalizeRules(rules);
     /** Free-form info for HUD widgets set by the mode (e.g. { ghostGap }). */
     this.modeInfo = {};
+    /**
+     * Optional mode hooks (src/modes/battleSession.js, teamSession.js):
+     *   itemRoller(kart, rng) -> ItemId   replaces the place-based item odds
+     *   friendly(a, b) -> boolean         team-mates never bonk each other (items + star bumps)
+     *   rocketTarget(kart) -> { target, distance } | null   who a cupcake rocket chases
+     * Karts with `battleOut = true` (Bubble Pop Battle, out of bubbles) drive on as
+     * cheering ghosts: no items, no item boxes, no bumps.
+     */
+    this.itemRoller = null;
+    this.friendly = null;
+    this.rocketTarget = null;
     if (!this.rules.cpus) participants = participants.filter((p) => p.playerIndex !== null && p.playerIndex !== undefined);
     this.trackDef = trackDef;
     this.path = path;
@@ -121,6 +132,8 @@ export class Race {
     this.items = new ItemSystem({
       scene, path, emit: this._emitFn, rng: this.rng, getStandings: () => this._standings,
     });
+    this.items.isFriendly = (a, b) => !!(this.friendly && this.friendly(a, b));
+    this.items.pickTarget = (k) => (this.rocketTarget ? this.rocketTarget(k) : null);
     const slots = this.rules.items ? (builtTrack?.itemBoxSlots ?? defaultItemSlots(trackDef, path)) : [];
     this.itemBoxes = new ItemBoxes({ scene, slots });
     this.fx = this.karts.map(() => new KartFx(scene));
@@ -180,7 +193,7 @@ export class Race {
 
     // Items are used once per frame (useItem is an edge).
     this.karts.forEach((k, i) => {
-      if (frameInputs[i].useItem && k.item && k.itemRoulette <= 0 && !k.spinning) this.items.use(k);
+      if (frameInputs[i].useItem && k.item && k.itemRoulette <= 0 && !k.spinning && !k.battleOut) this.items.use(k);
     });
 
     for (const k of this.karts) { k.phys.frameStartX = k.position.x; k.phys.frameStartZ = k.position.z; }
@@ -192,8 +205,9 @@ export class Race {
       for (const k of this.karts) this._updateLap(k);
     }
 
-    this.items.update(dt, this.karts);
-    this.itemBoxes.update(dt, this.karts, (k) => this._onBoxBreak(k));
+    const active = this.rules.battle ? this.karts.filter((k) => !k.battleOut) : this.karts;
+    this.items.update(dt, active);
+    this.itemBoxes.update(dt, active, (k) => this._onBoxBreak(k));
     this._updateRoulettes(dt);
     this._updateStandings();
     this._checkComplete();
@@ -232,7 +246,7 @@ export class Race {
 
   _updateLap(k) {
     k.progress = k.distance;
-    if (k.finished) return;
+    if (k.finished || this.rules.battle) return; // a battle has no laps
     const L = this.path.length;
     const lapNow = Math.floor(Math.max(0, k.distance) / L) + 1;
     if (lapNow <= k.lap) return;
@@ -263,7 +277,8 @@ export class Race {
     this._emit({ type: 'item-box', kart: k, rolling: canRoll });
     if (!canRoll) return;
     k.phys.rouletteTime = T.rouletteDuration;
-    k.phys.pendingItem = rollItem(k.place || this.karts.length, this.karts.length, this.rng);
+    const rolled = this.itemRoller ? this.itemRoller(k, this.rng) : null;
+    k.phys.pendingItem = rolled || rollItem(k.place || this.karts.length, this.karts.length, this.rng);
     k.itemRoulette = 1;
   }
 
@@ -289,8 +304,10 @@ export class Race {
     const karts = this.karts;
     for (let i = 0; i < karts.length; i++) {
       const a = karts[i];
+      if (a.battleOut) continue;
       for (let j = i + 1; j < karts.length; j++) {
         const b = karts[j];
+        if (b.battleOut) continue;
         let dx = b.position.x - a.position.x;
         let dz = b.position.z - a.position.z;
         if (Math.abs(dx) > R || Math.abs(dz) > R || Math.abs(b.position.y - a.position.y) > 2) continue;
@@ -311,7 +328,8 @@ export class Race {
           b.velocity.x += (nx * jImp) / mb; b.velocity.z += (nz * jImp) / mb;
         }
         // Rainbow star power twirls whoever you bump.
-        if (a.starPower > 0 && b.starPower <= 0) this.items.bonk(b, 'star', a);
+        const pals = !!(this.friendly && this.friendly(a, b));
+        if (pals) { /* team-mates: a friendly nudge, never a twirl */ } else if (a.starPower > 0 && b.starPower <= 0) this.items.bonk(b, 'star', a);
         else if (b.starPower > 0 && a.starPower <= 0) this.items.bonk(a, 'star', b);
         const key = i * 64 + j;
         const last = this._bumpTimes.get(key) ?? -Infinity;
@@ -335,7 +353,7 @@ export class Race {
   }
 
   _checkComplete() {
-    if (this.state !== 'racing') return;
+    if (this.state !== 'racing' || this.rules.battle) return; // a battle ends via completeWith()
     const humans = this.karts.filter((k) => !k.isCPU);
     let done;
     if (humans.length) {
@@ -360,6 +378,30 @@ export class Race {
       k.finishEstimated = true;
     }
     this._updateStandings();
+    this.state = 'finished';
+    this._emit({ type: 'race-complete', standings: this.getStandings() });
+  }
+
+  /**
+   * End the race now with this finishing order (Bubble Pop Battle: the battle
+   * ranking). Karts missing from `order` follow in standings order. Places are
+   * 1..n, nobody is "estimated", finish times = now. Emits 'race-complete' once.
+   * @param {object[]} order karts, best first
+   */
+  completeWith(order = []) {
+    if (this.state === 'finished') return;
+    if (this.state === 'countdown') { this.state = 'racing'; this.countdown = 0; }
+    const list = order.filter((k) => this.karts.includes(k));
+    for (const k of this._standings) if (!list.includes(k)) list.push(k);
+    this.finishCount = 0;
+    list.forEach((k) => {
+      k.finished = true;
+      k.finishPlace = ++this.finishCount;
+      k.place = k.finishPlace;
+      k.finishTime = this.time;
+      k.finishEstimated = false;
+    });
+    this._standings = list;
     this.state = 'finished';
     this._emit({ type: 'race-complete', standings: this.getStandings() });
   }

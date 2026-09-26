@@ -18,8 +18,8 @@ import { cupRaceSetup } from '../src/ui/screens/cupSelect.js';
 const ev = (action, extra = {}) => ({ deviceId: 'kb1', action, ...extra });
 
 describe('mode select reducer', () => {
-  it('three friendly cards in order', () => {
-    expect(MODE_CARDS.map((m) => m.id)).toEqual(['free', 'grand-prix', 'time-trial']);
+  it('five friendly cards in order (showcase modes at the end)', () => {
+    expect(MODE_CARDS.map((m) => m.id)).toEqual(['free', 'grand-prix', 'time-trial', 'team', 'battle']);
     for (const m of MODE_CARDS) expect(m.blurb).not.toMatch(/\b(hit|kill|crash|destroy)\b/i);
   });
 
@@ -27,7 +27,10 @@ describe('mode select reducer', () => {
     let s = createModeSelectState({ controllerId: 'kb1' });
     expect(s.index).toBe(0);
     let r = modeSelectReduce(s, ev('left'));
-    expect(r.state.index).toBe(2);
+    expect(r.state.index).toBe(MODE_CARDS.length - 1);
+    r = modeSelectReduce(r.state, ev('right'));
+    expect(r.state.index).toBe(0);
+    r = modeSelectReduce(r.state, ev('left'));
     expect(r.fx).toEqual(['move']);
     r = modeSelectReduce(r.state, ev('right'));
     r = modeSelectReduce(r.state, ev('right'));
@@ -243,15 +246,15 @@ describe('debug params for modes', () => {
 describe('mode rules', () => {
   it('Free Race and Grand Prix keep items and CPUs', () => {
     for (const m of ['free', 'grand-prix', undefined, 'nonsense']) {
-      expect(rulesForMode(m)).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0 });
+      expect(rulesForMode(m)).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0, battle: false });
     }
   });
   it('Time Trial: no item boxes, no CPUs, 3 sprinkle boosts', () => {
-    expect(rulesForMode('time-trial')).toEqual({ items: false, cpus: false, startItem: 'triple-sprinkle', startItemCharges: TIME_TRIAL_BOOSTS });
+    expect(rulesForMode('time-trial')).toEqual({ items: false, cpus: false, startItem: 'triple-sprinkle', startItemCharges: TIME_TRIAL_BOOSTS, battle: false });
     expect(TIME_TRIAL_BOOSTS).toBe(3);
   });
   it('normalizes odd rules', () => {
-    expect(normalizeRules()).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0 });
+    expect(normalizeRules()).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0, battle: false });
     expect(normalizeRules(null).items).toBe(true);
     expect(normalizeRules({ startItem: 'banana' }).startItem).toBe(null);
     expect(normalizeRules({ startItem: 'gumdrop' }).startItemCharges).toBe(1);
@@ -260,6 +263,12 @@ describe('mode rules', () => {
     expect(Object.isFrozen(normalizeRules())).toBe(true);
     expect(modeId('time-trial')).toBe('time-trial');
     expect(modeId('x')).toBe('free');
+    expect(modeId('team')).toBe('team');
+    expect(modeId('battle')).toBe('battle');
+    expect(normalizeRules({ battle: 1 }).battle).toBe(false); // only an explicit true
+    expect(normalizeRules({ battle: true }).battle).toBe(true);
+    expect(rulesForMode('battle')).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0, battle: true });
+    expect(rulesForMode('team')).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0, battle: false });
   });
 });
 

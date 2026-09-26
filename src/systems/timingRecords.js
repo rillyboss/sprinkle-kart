@@ -49,6 +49,7 @@ export function createTimingRecords({ holders = sharedHolders } = {}) {
           s.sfx('timing-record', { pan: s.panFor?.(k) ?? 0 });
         }),
         bus.on('race-end', (summary, s) => {
+          if (summary?.mode === 'battle') return; // no finish line, no best times
           const res = submitRaceRecords(app.progress, summary, s?.trackDef);
           try { holders?.remember(res); } catch { /* ignore */ }
           summary.records = res;

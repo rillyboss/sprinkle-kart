@@ -13,11 +13,13 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 /* ---------------- mode select ---------------- */
 
-/** The three big mode cards, in order. */
+/** The big mode cards, in order (showcase modes: Team Race + Bubble Battle at the end). */
 export const MODE_CARDS = Object.freeze([
   Object.freeze({ id: 'free', name: 'Free Race', emoji: '🏁', blurb: 'Pick any track and zoom with friends!', art: ['🏁', '🍭', '🎈'] }),
   Object.freeze({ id: 'grand-prix', name: 'Grand Prix', emoji: '🏆', blurb: '4 races, sparkly points, a shiny cup!', art: ['🏆', '⭐', '🎀'] }),
   Object.freeze({ id: 'time-trial', name: 'Time Trial', emoji: '⏱️', blurb: 'Race your sparkly ghost. Beat your best!', art: ['⏱️', '👻', '✨'] }),
+  Object.freeze({ id: 'team', name: 'Team Race', emoji: '🤝', blurb: 'Race together! Team points win the day.', art: ['🤝', '🍭', '⭐'] }),
+  Object.freeze({ id: 'battle', name: 'Bubble Battle', emoji: '🫧', blurb: 'Pop bubbles! Last one bobbing wins!', art: ['🫧', '🎯', '🛁'] }),
 ]);
 
 /**

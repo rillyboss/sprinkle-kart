@@ -88,6 +88,9 @@ export function applyRaceSummary(p, summary, { tallies = null } = {}) {
     bump(p, 'itemBoxes', t.itemBoxes);
   }
 
+  // Bubble Pop Battle is not a race (no finish line): only the per-action counters count.
+  if (summary.mode === 'battle') return p;
+
   if (summary.mode === 'time-trial') {
     if (finishers.length) {
       bump(p, 'timeTrialsFinished');

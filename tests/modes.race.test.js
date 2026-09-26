@@ -13,7 +13,7 @@ const mixed = () => [...cpuParticipants(6), ...humanParticipants(2)];
 describe('Race rule toggles', () => {
   it('defaults keep the Free Race exactly as before', async () => {
     const race = await makeRace({ participants: mixed() });
-    expect(race.rules).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0 });
+    expect(race.rules).toEqual({ items: true, cpus: true, startItem: null, startItemCharges: 0, battle: false });
     expect(race.karts).toHaveLength(8);
     expect(race.itemBoxes.boxes.length).toBeGreaterThan(0);
     expect(race.karts.every((k) => k.item === null)).toBe(true);

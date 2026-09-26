@@ -21,7 +21,11 @@
  * Modes (setup.mode): 'free' (single races), 'grand-prix' (runGrandPrix: 4
  * races, 'gp-race-end' / 'gp-end', standings + trophy ceremony) and
  * 'time-trial' (runTimeTrial: solo, no CPUs, no item boxes, 3 sprinkle boosts,
- * ghost of your best run).
+ * ghost of your best run), 'battle' (runBattle: Bubble Pop Battle in an arena,
+ * src/modes/battleSession.js) and 'team' (runTeamRaces: the family + CPU buddies
+ * vs a CPU team, src/modes/teamSession.js). Battle and Team plug into a race
+ * session through `opts.controller` (onEvent / update / decorateSummary /
+ * showResults / dispose) — the generic mode hook for new modes.
  */
 import * as THREE from 'three';
 import { RACERS_PER_RACE, MAX_PLAYERS, SPEED_CLASSES, DEFAULT_LAPS } from './config.js';
@@ -49,6 +53,9 @@ import { createGrandPrix, gpRaceSetup, gpRecordRace, gpNextRace, gpIsLastRace } 
 import { createGhostRecorder, encodeGhost, decodeGhost, ghostGap, ghostStore } from './modes/ghost.js';
 import { createGhostKart } from './modes/ghostKart.js';
 import { raceRecordEligible } from './modes/timing.js';
+import { getArena, nextArenaId, arenaIdOr } from './modes/arenas/index.js';
+import { createBattleSession } from './modes/battleSession.js';
+import { createTeamSession, createTeamSeries } from './modes/teamSession.js';
 import { bus } from './game/events.js';
 import { createSessionHelpers } from './game/session.js';
 import { createRaceStats } from './game/raceStats.js';
@@ -241,6 +248,8 @@ async function flow() {
     const mode = modeId(setup.mode);
     if (mode === 'grand-prix') previous = await runGrandPrix(setup);
     else if (mode === 'time-trial') previous = await runTimeTrial(setup);
+    else if (mode === 'battle') previous = await runBattle(setup);
+    else if (mode === 'team') previous = await runTeamRaces(setup);
     else previous = await runFreeRaces(setup);
     // 'menu' / 'quit' → back to the join screen with everyone still there.
     previous = menuPrevious(previous);
@@ -258,6 +267,39 @@ async function runFreeRaces(setup) {
     if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, availableTracks()) };
     outcome = await playRace(setup);
   }
+  return setup;
+}
+
+/**
+ * Bubble Pop Battle: an arena (not a race track), everyone floats bubbles,
+ * items pop them, the last one bobbing wins. Again / another arena / menu.
+ */
+async function runBattle(setup) {
+  let arenaId = arenaIdOr(setup.arenaId ?? params.arena);
+  let outcome;
+  do {
+    const arena = getArena(arenaId);
+    outcome = await playRace({ ...setup, mode: 'battle', arenaId }, {
+      trackDef: arena.def,
+      trackModule: arena,
+      controller: (ctx) => createBattleSession(ctx),
+    });
+    if (outcome === 'next-track') arenaId = nextArenaId(arenaId);
+  } while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart');
+  return { ...setup, mode: 'battle', arenaId };
+}
+
+/** Team Race: the family (+ CPU buddies) vs a CPU team; points by place, the series score carries over. */
+async function runTeamRaces(setup) {
+  setup = { ...setup, mode: 'team' };
+  let series = createTeamSeries();
+  let outcome;
+  do {
+    outcome = await playRace(setup, {
+      controller: (ctx) => createTeamSession({ ...ctx, series, onScored: (next) => { series = next; } }),
+    });
+    if (outcome === 'next-track') setup = { ...setup, trackId: nextTrackId(setup.trackId, availableTracks()) };
+  } while (outcome === 'again' || outcome === 'next-track' || outcome === 'restart');
   return setup;
 }
 
@@ -355,10 +397,14 @@ function playRace(setup, opts = {}) {
 /**
  * @param {object} setup RaceSetup (+ mode, cupId, cpuIds for a Grand Prix)
  * @param {(outcome:string)=>void} done
- * @param {{ resultOptions?: Array, onRaceEnd?: (summary, session)=>void }} [opts]
+ * @param {{ resultOptions?: Array, onRaceEnd?: (summary, session)=>void, trackDef?: object, trackModule?: object,
+ *   controller?: (ctx) => { onEvent?, update?, decorateSummary?, showResults?, dispose? } }} [opts]
+ *   trackDef / trackModule race somewhere that is not a registered track (a battle arena);
+ *   controller(ctx) builds a mode controller once the Race exists (ctx: race, scene, session, setup,
+ *   trackDef, humans, hud, menus, audio, bus).
  */
 function startRace(setup, done, opts = {}) {
-  const trackDef = getTrack(setup.trackId);
+  const trackDef = opts.trackDef ?? getTrack(setup.trackId);
   const mode = modeId(setup.mode);
   const rules = rulesForMode(mode);
   const theme = trackDef.theme || {};
@@ -371,7 +417,7 @@ function startRace(setup, done, opts = {}) {
   }
 
   const path = new TrackPath(trackDef.controlPoints, trackDef.width);
-  const built = buildTrack(trackDef, path);
+  const built = buildTrack(trackDef, path, opts.trackModule ? { module: opts.trackModule } : undefined);
   scene.add(built.group);
 
   // Grand Prix races keep the cup's CPU racers (setup.cpuIds); a Time Trial has none.
@@ -390,9 +436,11 @@ function startRace(setup, done, opts = {}) {
   const stats = createRaceStats();
   const helpers = createSessionHelpers({ humans, audio, input, hud, getCharacter });
   let session = null; // assigned below, before the first race.update()
+  let ctrl = null; // mode controller (opts.controller), built right after the Race
   // Every Race event: count it, then forward it to the bus as 'race:<type>'.
   const onEvent = (e) => {
     stats.onEvent(e);
+    try { ctrl?.onEvent?.(e); } catch (err) { console.error('[modes] controller event failed', err); }
     if (e.type === 'race-complete') completeAt = race.clock;
     bus.emit(`race:${e.type}`, e, session);
   };
@@ -437,6 +485,13 @@ function startRace(setup, done, opts = {}) {
     tick,
     dispose,
   };
+
+  if (opts.controller) {
+    try {
+      ctrl = opts.controller({ race, scene, session, setup, trackDef, humans, hud, menus, audio, bus });
+    } catch (err) { console.error('[modes] controller failed to start', err); ctrl = null; }
+  }
+  game.modeController = ctrl;
 
   audio.setMusicTempo?.(1);
   audio.playMusic(theme.music || 'castle');
@@ -492,6 +547,7 @@ function startRace(setup, done, opts = {}) {
     const standings = race.getStandings();
     const humanWinner = standings.find((k) => helpers.isHuman(k) && k.finishPlace === 1 && !k.finishEstimated) || null;
     const summary = buildRaceSummary({ setup, trackDef, humans, standings, stats, laps, raceTime: race.time });
+    try { ctrl?.decorateSummary?.(summary); } catch (err) { console.error('[modes] summary hook failed', err); }
     // Subscribers (src/systems/progressUnlocks.js, ...) record progress and push into summary.unlocks.
     bus.emit('race-end', summary, session);
     trial?.finish(race, summary);
@@ -512,9 +568,10 @@ function startRace(setup, done, opts = {}) {
     audio.setMusicTempo?.(1);
     audio.playMusic('victory');
     hud.hide();
-    const shown = trial
+    const custom = ctrl?.showResults ? ctrl.showResults({ menus, summary, standings, trackDef, unlocks, humanWinner }) : null;
+    const shown = custom || (trial
       ? menus.open('time-trial-results', { summary, trackDef, unlocks, ghostSaved: trial.saved, hadGhost: trial.hadGhost, bestBefore: trial.bestBefore(summary) })
-      : menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked, unlocks, summary, ...(opts.resultOptions ? { options: opts.resultOptions } : {}) });
+      : menus.showResults({ standings, trackDef, humanWinner, newlyUnlocked, unlocks, summary, ...(opts.resultOptions ? { options: opts.resultOptions } : {}) }));
     shown.then((choice) => {
       bus.emit('results-choice', { choice }, session);
       end(choice);
@@ -552,6 +609,7 @@ function startRace(setup, done, opts = {}) {
       }
       built.update(dt * steps, race.clock);
       trial?.update(race, dt * steps);
+      try { ctrl?.update?.(dt * steps); } catch (err) { game.errors.push(String(err?.stack || err)); }
     }
 
     if (completeAt !== null && !resultsShown && race.clock - completeAt >= (params.simSpeed > 1 ? 1.2 : 2.6)) {
@@ -575,6 +633,8 @@ function startRace(setup, done, opts = {}) {
     bus.emit('race-exit', { outcome: session.outcome }, session);
     try { unsubDevice?.(); } catch { /* ignore */ }
     try { trial?.dispose(); } catch (err) { console.warn(err); }
+    try { ctrl?.dispose?.(); } catch (err) { console.warn(err); }
+    if (game.modeController === ctrl) game.modeController = null;
     try { race.dispose(); } catch (err) { console.warn(err); }
     try { built.dispose(); } catch (err) { console.warn(err); }
     scene.clear();

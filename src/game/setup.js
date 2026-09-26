@@ -43,6 +43,7 @@ export function parseDebugParams(search = '') {
     demoContent: flag(q, 'democontent'),
     mode: modeParam(q.get('mode')),
     cup: q.has('cup') ? String(q.get('cup') || '').trim() || null : null,
+    arena: q.has('arena') ? String(q.get('arena') || '').trim() || null : null,
   };
 }
 
@@ -50,17 +51,19 @@ const MODE_ALIASES = {
   free: 'free', race: 'free',
   gp: 'grand-prix', 'grand-prix': 'grand-prix', grandprix: 'grand-prix', cup: 'grand-prix',
   tt: 'time-trial', 'time-trial': 'time-trial', timetrial: 'time-trial', trial: 'time-trial',
+  battle: 'battle', bubble: 'battle', 'bubble-battle': 'battle',
+  team: 'team', 'team-race': 'team', teams: 'team',
 };
 
-/** ?mode=gp|tt|free (and long names) -> 'grand-prix' | 'time-trial' | 'free' | null. */
+/** ?mode=gp|tt|free|battle|team (and long names) -> 'grand-prix' | 'time-trial' | 'free' | 'battle' | 'team' | null. */
 export function modeParam(v) {
   if (v == null) return null;
   return MODE_ALIASES[String(v).trim().toLowerCase()] ?? null;
 }
 
-/** True when the URL asks to skip the menus (?quick=..., or ?mode=gp&cup=...). */
+/** True when the URL asks to skip the menus (?quick=..., ?mode=gp&cup=... or ?mode=battle). */
 export function wantsQuickStart(params) {
-  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup);
+  return !!params.quick || (params.mode === 'grand-prix' && !!params.cup) || params.mode === 'battle';
 }
 
 /** Fisher–Yates shuffle (returns a new array). */
@@ -158,6 +161,7 @@ export function quickSetup(params, input, characters, tracks, { cups = [] } = {}
     laps: params.laps ?? track.laps ?? DEFAULT_LAPS,
   };
   if (mode !== 'free') setup.mode = mode;
+  if (mode === 'battle' && params.arena) setup.arenaId = params.arena;
   if (cup) {
     setup.cupId = cup.id;
     setup.laps = params.laps ?? null; // each cup race uses its track's own laps
