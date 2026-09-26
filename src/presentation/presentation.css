@@ -64,6 +64,76 @@ body.skx-cb .sk-vp.sk-vp-multi[data-skx-p='4']::after { border-style: double; bo
 .skx-shape { display: none; }
 body.skx-cb .skx-shape { display: inline; margin-right: 0.15em; }
 
+/* ---------- Track intro card (during the countdown) ---------- */
+.skx-intro {
+  position: absolute; left: 50%; top: 79%; z-index: 4; pointer-events: none;
+  transform: translate(-50%, -50%);
+  font-family: var(--sk-font); color: var(--sk-ink, #6b3a7a);
+  font-size: clamp(11px, calc(min(2.3vh, 1.35vw) + 2px), 30px);
+}
+.skx-intro.skx-intro-multi { top: 50%; font-size: clamp(10px, calc(min(1.9vh, 1.1vw) + 2px), 26px); }
+.skx-intro-card {
+  position: relative; text-align: center; padding: 0.7em 2.4em 0.8em; border-radius: 1.4em;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 244, 251, 0.97));
+  box-shadow: 0 0 0 0.22em #fff, 0 0 0 0.44em var(--sk-pink, #ff8fc8), 0 0.9em 1.8em rgba(120, 40, 130, 0.35);
+  animation: skx-intro-in 0.7s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  min-width: 14em;
+}
+.skx-intro.skx-out .skx-intro-card { animation: skx-intro-out 0.55s cubic-bezier(0.5, -0.4, 0.8, 0.4) both; }
+@keyframes skx-intro-in {
+  0% { opacity: 0; transform: translateY(1.6em) scale(0.6) rotate(-3deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes skx-intro-out {
+  0% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-1.2em) scale(0.8); }
+}
+body.skx-gentle .skx-intro-card { animation: skx-fade-in 0.3s ease both; }
+body.skx-gentle .skx-intro.skx-out .skx-intro-card { animation: skx-fade-out 0.3s ease both; }
+@keyframes skx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes skx-fade-out { from { opacity: 1; } to { opacity: 0; } }
+.skx-intro-kicker {
+  display: inline-block; margin-top: -1.6em; margin-bottom: 0.2em; padding: 0.2em 0.9em; border-radius: 2em;
+  background: linear-gradient(180deg, #ff9fd0, #ff5fb4); color: #fff; font-weight: 700; font-size: 0.95em;
+  box-shadow: 0 0.15em 0 #e0409a, 0 0.3em 0.6em rgba(200, 50, 140, 0.3); white-space: nowrap;
+}
+.skx-intro-title {
+  font-size: 2.6em; font-weight: 700; line-height: 1.05; color: #fff; white-space: nowrap;
+  text-shadow: 0 0.05em 0 #ff5fb4, 0.04em 0.04em 0 #ff5fb4, -0.04em 0.04em 0 #ff5fb4, 0 0.1em 0 #ff5fb4, 0 0.16em 0 #c93d8e, 0 0.26em 0.3em rgba(150, 40, 120, 0.35);
+  -webkit-text-stroke: 0.02em #ff5fb4;
+}
+.skx-intro-sub { margin-top: 0.3em; font-weight: 600; font-size: 1.05em; color: var(--sk-ink-soft, #9a6aa8); }
+.skx-intro-art { position: absolute; font-size: 2.1em; animation: skx-art-bob 1.6s ease-in-out infinite; }
+.skx-intro-art.skx-a1 { left: -0.55em; top: -0.5em; }
+.skx-intro-art.skx-a2 { right: -0.5em; top: 0.1em; animation-delay: -0.5s; }
+.skx-intro-art.skx-a3 { left: 0.1em; bottom: -0.6em; font-size: 1.6em; animation-delay: -1s; }
+@keyframes skx-art-bob { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-0.18em) rotate(6deg); } }
+body.skx-gentle .skx-intro-art { animation: none; }
+
+/* ---------- Photo finish flash ---------- */
+.skx-photo-flash {
+  position: absolute; inset: 0; z-index: 4; pointer-events: none; display: flex; align-items: flex-start; justify-content: center;
+  animation: skx-flash 1.8s ease-out both; font-family: var(--sk-font);
+}
+@keyframes skx-flash {
+  0% { background: rgba(255, 255, 255, 0.72); }
+  12% { background: rgba(255, 255, 255, 0.0); }
+  100% { background: rgba(255, 255, 255, 0); }
+}
+body.skx-gentle .skx-photo-flash { animation: none; }
+.skx-photo-card {
+  margin-top: 13vh; padding: 0.3em 1em; border-radius: 0.4em; background: #fff; color: var(--sk-ink, #6b3a7a);
+  font-weight: 700; font-size: clamp(16px, 3.4vh, 40px); transform: rotate(-3deg);
+  box-shadow: 0 0 0 0.25em #fff, 0 0.5em 1.2em rgba(90, 30, 100, 0.35);
+  animation: skx-polaroid 1.8s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+@keyframes skx-polaroid {
+  0% { opacity: 0; transform: rotate(-12deg) scale(1.6); }
+  15% { opacity: 1; transform: rotate(-3deg) scale(1); }
+  80% { opacity: 1; transform: rotate(-3deg) scale(1); }
+  100% { opacity: 0; transform: rotate(-3deg) scale(0.9); }
+}
+
 /* ---------- Racer chatter: speech bubble above the place badge ---------- */
 .skx-bubble-wrap {
   position: absolute; bottom: 4.9em; z-index: 3; pointer-events: none;

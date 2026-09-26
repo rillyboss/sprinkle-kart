@@ -92,9 +92,11 @@ export default {
       const def = kart.charDef ?? null;
       const text = lineFor(kind, def, rng, { rival: rival ? shortName(rival.charDef ?? rival) : 'friend' });
       const shown = state.get(kart.playerIndex).queue.offer(kind, text, state.clock);
+      if (shown) blip(s, kart);
       if (shown && voice && REACTION_VOICE[kind]) s.voice(kart, REACTION_VOICE[kind]);
       return shown;
     };
+    const blip = (s, kart) => s.sfx?.('skx-bubble', { pan: s.panFor?.(kart) ?? 0, volume: 0.7 });
     const standingsOf = (s) => { try { return s.race?.getStandings?.() ?? []; } catch { return []; } };
 
     let removeWidget = null;
@@ -155,7 +157,7 @@ export default {
           if (p.giggleVoiceAt != null && state.clock >= p.giggleVoiceAt) {
             p.giggleVoiceAt = null;
             const kart = s.race?.getPlayerKart?.(pi);
-            if (kart) s.voice(kart, 'select');
+            if (kart) { s.voice(kart, 'select'); blip(s, kart); }
           }
         }
       }),
@@ -167,7 +169,7 @@ export default {
         // finishing voices come from race-flow reactions; the bubble lingers a little longer
         if (!state?.enabled || !s.isHuman(e.kart)) return;
         const text = lineFor(kind, e.kart.charDef, rng);
-        state.get(e.kart.playerIndex).queue.offer(kind, text, state.clock, { duration: 3.2 });
+        if (state.get(e.kart.playerIndex).queue.offer(kind, text, state.clock, { duration: 3.2 })) blip(s, e.kart);
       }),
       bus.on('race-exit', () => { state = null; }),
       store.subscribe(() => { if (state) state.enabled = enabled(); }),

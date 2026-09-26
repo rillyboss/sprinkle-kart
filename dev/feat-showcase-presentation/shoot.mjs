@@ -19,7 +19,12 @@ page.on('pageerror', (e) => errs.push(e.stack || e.message));
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push(`[${m.type()}] ${m.text()}`); });
 await page.goto(`http://localhost:5411/${query}`);
 await page.waitForFunction(new Function(`return (${waitExpr});`), null, { timeout: 600000, polling: 200 });
-if (action) await page.evaluate(new Function(action));
+if (action) {
+  await page.evaluate(new Function(action));
+  const f0 = await page.evaluate(() => window.__game.frames);
+  await page.waitForFunction((f) => window.__game.frames >= f, f0 + 4, { timeout: 600000 });
+  await page.waitForTimeout(600); // let CSS transitions settle
+}
 const n = Number(shotsArg);
 for (let i = 0; i < n; i++) {
   if (i > 0) {
