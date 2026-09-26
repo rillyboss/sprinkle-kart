@@ -550,6 +550,14 @@ async function progressionTest(t) {
   await pressKey(t, 'Tab');
   await waitFrames(t.page, 2);
   await shot('3-book-totals');
+  await pressKey(t, 'Tab');
+  await waitFrames(t.page, 2);
+  const goals = await t.page.evaluate(() => {
+    const pg = document.querySelector('.skp-page-goals');
+    return { shown: !!pg && !pg.hidden, n: pg ? pg.querySelectorAll('.skp-goal').length : 0 };
+  });
+  t.check(goals.shown && goals.n >= 29, `Fun Goals page: ${JSON.stringify(goals)}`);
+  await shot('3b-book-goals');
   await pressKey(t, 'Escape', onScreen('title', 'B back to the title'));
   await openEntry('Grown-ups', 'settings');
   t.check(await has('.skp-settings'), 'Grown-ups corner did not open');
