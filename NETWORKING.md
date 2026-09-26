@@ -363,15 +363,23 @@ Quantisation (all saturating; round-to-nearest):
 | heading, spinAngle | u16 / u8 over 2π | 0.0055° / 1.4° | |
 | vx, vz, speed | i16 × 256 | ±128 m/s, 4 mm/s | top speed incl. boosts < 70 m/s |
 | distance | i32, cm | ±21 000 km | `s = path.wrap(distance)` is exact **(measured, max error 0)** so `s` is never sent |
-| timers (boost/spin/shield/star, roulette) | u8 × 32 | 0–7.97 s, 31 ms | |
-| hopTime, hopY | u8 × 256 s / u8 × 128 m | 1 s / 2 m | |
+| item/effect timers `boostTime, spinTime, shieldTime, starPower` | **u16 milliseconds** | 0–65.5 s, 1 ms | `shieldDuration` is 18 s and `starDuration` 7 s in `TUNING`; the first draft's u8 × 32 (≤ 7.97 s) saturated the shield for its first 10 s |
+| short timers `rouletteTime`, `wrongWayTime`, `itemRoulette` | u8 × 32 | 0–7.97 s, 31 ms | `rouletteDuration` 1.2 s |
+| hopTime, hopY | u8 × 256 s / u8 × 128 m | 1 s / 2 m | `hopDuration` 0.3 s |
 | steer, pitch, roll, steerSmoothed | i8 over ±1 / ±0.5 rad | 1/127 | |
 | accel, brake | 4 bits each | 1/15 | triggers are analog but kids are not |
 | race times sent in events | u32 milliseconds | 49 days | |
 
+**Timer ranges are tested against tuning.** `tests/net.codec.timers.test.js` walks every key of `TUNING` whose
+name ends in `Duration`, `Window` or `Time`, maps it to its wire field (`TIMER_FIELDS` table in
+`src/net/codec.js`, or the explicit `NOT_ON_WIRE` list for keys like `startBoostWindow`; a key in neither fails
+the test) and asserts `2 × value` fits the field's range without
+saturating, so a future tuning change cannot silently break the wire.
+
 **Reconciling from quantised state costs 1.2 cm p50 / 2.1 cm p99 and does not grow over 6–12 ticks
 (measured).** So the owner's own kart is corrected from exactly the same quantised numbers everyone else sees,
-plus the owner-only block of discrete physics fields (§6.2).
+plus the owner-only block of discrete physics fields (§6.2). WS2 re-runs that measurement with the rev-2 timer
+fields (`tests/net.baseline.test.js`) and adds a case with an active shield and star.
 
 ---
 
@@ -384,21 +392,23 @@ short reads (`reader.ok === false`), wrong-channel types and oversize messages a
 
 ### 6.1 `state` channel (unreliable, unordered)
 
-**0x01 INPUT** guest → host, every sim tick (60 Hz), redundant.
+**0x01 INPUT** guest → host, **30 Hz**: sent right after the guest predicts every 2nd tick, so each packet
+carries ≥ 2 new ticks plus redundant copies of older ones (§9.2).
 
 | Field | Type | Notes |
 |---|---|---|
 | type | u8 | 0x01 |
-| seq | u16 | packet counter (loss stats) |
+| seq | u16 | packet counter (loss + burst stats) |
 | newestTick | u32 | host-tick number of the newest input in this packet |
-| n | u8 | ticks carried, 1..12 (newest first): every tick after the last tick the host acked, + 2 extra, min 3 |
+| n | u8 | ticks carried, newest first: `n = clamp(slackTarget + 4, 4, 8)` (only copies that can still arrive before the host simulates their tick are worth sending, §9.2) |
 | p | u8 | local players on this machine, 1..4 (seat order) |
 | lastSnapTick | u32 | newest snapshot tick received (for the host's per-house stats) |
-| inputs | n × p × 3 B | per player-tick: `steer i8`, `pedals u8` (accel high nibble, brake low nibble, 0..15), `flags u8`: bit0 drift held · bit1 lookBack · bits2–4 **useItem press counter mod 8** · bit5 robo (player paused / pad asleep → host CPU drives) · bit6 assisted (Kid-Assist already applied) |
+| inputs | n × p × 4 B | per player-tick: `steer i8` · `pedals u8` (accel high nibble, brake low nibble, 0..15) · `flags u8`: bit0 drift held · bit1 lookBack · bit2 robo (player paused / pad asleep → host CPU drives) · bit3 assisted (Kid-Assist already applied) · `presses u8`: bits0–2 **useItem press counter mod 8** · bits3–5 **hop/drift press counter mod 8** (counts drift-button press edges) · bits6–7 spare |
 
-Size = 13 + 3·n·p B: 1 player steady (n≈8) ≈ 37 B; 4 players worst (n = 12) = 157 B.
-The press counter makes redundancy safe: repeating a packet never doubles a press, and a lost packet never
-loses one (the next packet's counter still differs).
+Size = 13 + 4·n·p B: 1 player steady (n = 6) = 37 B; 4 players steady = 109 B; 4 players worst (n = 8) = 141 B.
+The two press counters make redundancy safe: repeating a packet never doubles a press, and a lost packet never
+loses one (the next packet's counter still differs). The host's rules for counter deltas (late presses,
+several presses in one tick, baselines after Robo Driver / reconnect) are in §9.3.
 
 **0x02 SNAPSHOT** host → each guest, every 2nd tick (30 Hz). Built from a shared body + a small per-house tail.
 
@@ -406,36 +416,38 @@ loses one (the next packet's counter still differs).
 |---|---|---|---|
 | header | type, tick | u8, u32 | state **after** simulating `tick` |
 | | flags | u8 | bit0 racing · bit1 finished · bit2 battle block · bit3 globally paused · bit4 teleport (snap, no smoothing) |
+| | epoch | u8 | timebase epoch (§7.3); a guest ignores snapshots of an older epoch for clock filtering |
 | | countdown | u8 × 64 | seconds left |
 | | lastInputTick | u32 | per house: newest input tick the host has consumed for this house (the ack) |
 | | inputSlack | i8 | per house: how many ticks early the input for `tick` arrived (−128 = missing, repeated) |
 | | kartCount, boxCount | u8, u8 | |
-| karts | per kart, in `race.karts` order | 36 B | layout below |
+| karts | per kart, in `race.karts` order | 41 B | layout below |
 | boxes | active bitmask | ⌈boxCount/8⌉ B | respawn timers are host-only |
 | gumdrops | count u8 + per gumdrop `id u16, x i16, z i16, y i16` | 8 B | colour comes with the spawn event |
 | rockets | count u8 + per rocket `id u16, x, z, y i16, heading u16, target u8, flags u8` | 12 B | |
 | battle (flag) | `timeLeft u16 × 10`, per kart `bubbles u4 \| out u1` | 2 + kartCount B | |
 | owner tail | count u8 + per local kart of this house: `kart u8` + 19 B | 20 B | below |
 
-Kart block (36 B): `x i16, z i16, y i16, heading u16, vx i16, vz i16, speed i16, distance i32` (18) ·
+Kart block (41 B): `x i16, z i16, y i16, heading u16, vx i16, vz i16, speed i16, distance i32` (18) ·
 `flags u16`: boosting, spinning, shielded, drifting, offRoad, wrongWay, finished, finishEstimated, battleOut,
-braking, reversing, star, driftDir (2 bits), roboDriven · `boostTime, spinTime, shieldTime, starPower u8×32`
-(4) · `hopTime u8, hopY u8, spinAngle u8, driftCharge u8` (4) · `steerSmoothed i8, slide u8, pitch i8, roll i8,
+braking, reversing, star, driftDir (2 bits), roboDriven (2) · `boostTime, spinTime, shieldTime, starPower u16 ms`
+(8) · `hopTime u8, hopY u8, spinAngle u8, driftCharge u8` (4) · `steerSmoothed i8, slide u8, pitch i8, roll i8,
 throttle u8` (5) · `itemByte` = item 3b \| charges 2b \| driftLevel 2b \| hasPending 1b · `lapByte` = lap 4b \|
-finishPlace 4b · `itemRoulette u8 × 255` (3).
+**live place 4b** (host standings at this tick; the guest HUD's place comes only from here, §9.1) ·
+`finishByte` = finishPlace 4b \| spare 4b · `itemRoulette u8 × 255` (4).
 
 Owner tail (19 B + kart id per own kart; needed to predict hop/drift/pad edges exactly): `driftHeld, prevAccel,
 driftWindow>0` bit flags u8 · `driftWindow u8 × 256` · `hopLen u8 × 256` · `onPad i8` · `wallCooldown u8 × 256` ·
 `accelPressedAt i8 × 32 (−128 = null)` · `slideDir i8` · `wrongWayTime u8 × 32` · `lastLapStart u32 ms` ·
 `driftTime u16 × 256` · `groundY i16 × 64` · `pendingItem u8` · `rouletteTime u8 × 32` · `aiSpeedMult u8 × 128`.
 
-Sizes (14 B header, 8 karts × 36 B, 32 boxes): **typical ≈ 330 B** (1 own kart, no items) · 8 gumdrops + 2 rockets
-**≈ 420 B** · **cap-case ≈ 690 B** (24 gumdrops, 8 rockets, 4 own karts, battle). All < 1150 B = one SCTP packet (Chrome dcSCTP
+Sizes (15 B header, 8 karts × 41 B, 32 boxes): **typical ≈ 370 B** (1 own kart, no items) · 8 gumdrops + 2 rockets
+**≈ 460 B** · **cap-case ≈ 730 B** (24 gumdrops, 8 rockets, 4 own karts, battle). All < 1150 B = one SCTP packet (Chrome dcSCTP
 packets ≤ 1191 B; a fragmented unreliable message is lost if any fragment is). Caps are enforced by the sim
 (`MAX_GUMDROPS = 24` oldest-first eviction, `MAX_ROCKETS = 8`) and asserted by a codec test.
 
 **Every snapshot is self-contained** (a full "keyframe" of hot state). No delta encoding in v1: measured full
-snapshots are ~275–420 B, far inside the budget, and self-contained packets make loss/reorder trivial. The
+snapshots are ~275–420 B (first-draft layout; ~370–460 B with the rev-2 fields), far inside the budget, and self-contained packets make loss/reorder trivial. The
 `flags` byte reserves bit7 for a future delta-vs-acked-baseline format if the budget is ever exceeded (it isn't
 at 8 karts). Cold state that rarely changes (lap times, finish times, entity colours) travels as reliable
 events and in **RESYNC** (0x2D) instead.
@@ -448,26 +460,28 @@ events and in **RESYNC** (0x2D) instead.
 
 | Code | Name | Dir | Enc | Fields | Size |
 |---|---|---|---|---|---|
-| 0x20 | HELLO | G→H | JSON | `{ proto: 1, build: string≤40, content: u32, house: { localPlayers 1..4 }, canHost: bool, token?: hex32 }` (token = reconnect ticket) | < 200 B |
+| 0x20 | HELLO | G→H | JSON | `{ proto: 1, build: string≤40, content: u32, house: { localPlayers 1..4 }, canHost: bool, match: [u8, u8], token?: hex32 }` (match = the 2 match-check animal indices this guest shows, §1 rule 3; token = reconnect ticket) | < 200 B |
 | 0x21 | WELCOME | H→G | JSON | `{ houseId 0..7, emoji, token: hex32, hostBuild, tickHz: 60, lobby: LobbyState }` | < 3 KB |
 | 0x22 | REJECT | H→G | JSON | `{ reason: 'version'\|'full'\|'declined'\|'locked'\|'in-race-full'\|'removed'\|'host-leaving', detail? }` then disconnect | < 100 B |
 | 0x23 | BYE | both | u8 | `reason u8` (0 leaving, 1 host ending, 2 removed) | 2 B |
-| 0x24 | LOBBY | H→G | JSON | full `LobbyState` (§10.3), sent whole on every change, ≤ 10/s | 0.5–3 KB |
+| 0x24 | LOBBY | H→G | JSON | full `LobbyState` (§10.3), **coalesced**: at most 4/s per guest (changes within 250 ms merge into one send), never during a race (in-race lobby changes wait for results) | 0.5–3 KB |
 | 0x25 | INTENT | G→H | JSON | `{ kind: 'seat-join'\|'seat-leave'\|'pick'\|'ready'\|'unready', seat 0..3, characterId?, paintId?, easyDrive? }` | < 150 B |
 | 0x26 | EMOTE | both | bin | `globalPi u8, emote u8` (host validates + relays with a tick) | 3 B |
 | 0x27 | KICK | H→G | bin | `scope u8 (0 house, 1 seat), seat u8` | 3 B |
 | 0x28 | PHASE | H→G | JSON | `{ phase, screen, params }` — which screen every machine shows (§10.4) | < 2 KB |
 | 0x29 | SETUP | H→G | JSON | `NetRaceSetup` (§10.5) | < 3 KB |
 | 0x2A | LOADED | G→H | bin | `raceId u32` | 5 B |
-| 0x2B | START | H→G | bin | `raceId u32, startTick u32, hostMsAtTick0 f64` | 17 B |
+| 0x2B | START | H→G | bin | `raceId u32, startTick u32, goTick u32, epoch u8` (followed at once by TIMEBASE) | 14 B |
 | 0x2C | EVENTS | H→G | bin | batch (§6.3) | 10 + ~4/event B |
 | 0x2D | RESYNC | H→G | JSON | cold full state for (re)joining mid-race: `{ raceId, tick, karts: [{ lapTimes, finishTime, finishPlace, finishEstimated, roboDriven }], gumdrops: [{ id, color }], rockets: [{ id, owner }], lastEventSeq, battle?, modeInfo }` | < 4 KB |
 | 0x2E | RESULT | H→G | JSON | `{ raceId, summary: HostRaceSummary, options: [[id,label,emoji]] }` (§12) | < 6 KB |
 | 0x2F | GP | H→G | JSON | `{ gp: GrandPrixResult (host view), final: bool, nextTrackId }` | < 8 KB |
-| 0x30 | PAUSE | H→G | bin | `paused u8, reason u8` (0 host snack break, 1 host tab hidden) | 3 B |
+| 0x30 | PAUSE | H→G | bin | `paused u8, reason u8, tick u32, epoch u8`: on pause `tick` = pauseTick (last simulated tick), on resume `tick` = resumeTick (next tick to simulate); reason 0 host snack break, 1 host starved/hidden, 2 host catch-up skip | 8 B |
 | 0x31 | CHOICE | H→G | JSON | `{ screen, choice }` resolves the guest's copy of a host-owned screen | < 100 B |
 | 0x32 | FOCUS | H→G | JSON | `{ screen, focusId }` optional 2 Hz preview of what the host is pointing at | < 100 B |
 | 0x33 | NETSTAT | H→G | bin | 1 Hz: per house `houseId u8, rttMs u16, lossPct u8, state u8 (ok/wobbly/asleep)` | ≤ 42 B |
+| 0x34 | TIMEBASE | H→G | bin | `epoch u8, tick u32, hostMs f64, reason u8` (0 periodic 1 Hz, 1 start, 2 pause, 3 resume, 4 catch-up skip): host tick `tick` began at host time `hostMs` | 15 B |
+| 0x3F | FRAG | both | bin | `msgId u16, index u8, count u8, bytes` — one piece of a ctrl message > `CTRL_FRAGMENT_BYTES` sent during a race (§4.1) | ≤ 1029 B |
 
 ### 6.3 EVENTS batch (0x2C) and the replicated event catalogue
 
@@ -523,16 +537,22 @@ messages per type decode to a valid message or `null`, never throw.
 ### 7.1 Handshake
 
 ```
-guest                                         host
-  | ── signaling: find host, WebRTC up ──────▶ |
-  | ── HELLO {proto, build, content, n, token?} ▶ |  compatible()? room full? locked? blocked?
-  |                                            |  new house → approval prompt on the host ("Let them in?") (≤ 60 s)
-  | ◀─ WELCOME {houseId, emoji, token, lobby} ─ |  or REJECT {reason} + disconnect
-  | ── PING/PONG ×8 (clock sync warm-up) ─────▶ |
-  | ◀─ LOBBY … ────────────────────────────────  |
+guest                                            host
+  | ── signaling: find host (room ids from key), WebRTC up ─▶ |
+  | ── HELLO {proto, build, content, n, match, token?} ─────▶ |  compatible()? full? locked?
+  |    guest screen: "Waiting for the host… show them 🦊🐸"   |  new house → approval prompt with the match check
+  |                                                          |  ("Ask your friend: do you see 🦊🐸? Let them in?")
+  |                                                          |  queued while the host is racing; ≤ 120 s, then REJECT declined
+  | ◀─ WELCOME {houseId, emoji, token, lobby} ────────────── |  or REJECT {reason} + disconnect
+  | ── PING/PONG ×8 (clock sync warm-up) ──────────────────▶ |
+  | ◀─ LOBBY … (coalesced, ≤ 4/s) ─────────────────────────── |
 ```
 
-A HELLO carrying a valid reconnect `token` skips approval and re-attaches to its old house (§13.2).
+A HELLO carrying a valid reconnect `token` skips approval and re-attaches to its old house (§13.2), even while
+the room is locked (the house was never removed). A HELLO without a token while the room is locked gets REJECT
+`locked` without any prompt. The match-check pair is drawn with `crypto.getRandomValues` from a fixed 32-animal
+list (`MATCH_ANIMALS` in `src/net/session/approval.js`, different from the secret sweets so nobody mixes them
+up) and is never reused for another attempt.
 
 ### 7.2 Versioning — `src/net/version.js`
 
@@ -546,14 +566,39 @@ A HELLO carrying a valid reconnect `token` skips approval and re-attaches to its
   Otherwise REJECT `version` → guest sees **"Different game version — everyone refresh the page 🔄"** (the
   wording INFRA_SETUP.md troubleshooting uses).
 
-### 7.3 Clock sync — `src/net/clock.js`
+### 7.3 Clock sync and the host timebase — `src/net/clock.js`, `src/net/guest/hostTimeline.js`
 
-NTP-style 4-timestamp PING/PONG: `rtt = (t3 − t0) − (t2 − t1)`, `offset = ((t1 − t0) + (t2 − t3)) / 2`.
+Two separate things are estimated: the **clock offset** (host wall time vs mine) and the **host timebase**
+(which host tick is being simulated at a given host wall time). Host ticks do **not** follow wall time
+forever: "Pause everyone", a starved host and catch-up skips all break the link, so the timebase is explicit
+and re-anchored instead of being extrapolated from START alone (the first draft's bug).
+
+**Offset.** NTP-style 4-timestamp PING/PONG: `rtt = (t3 − t0) − (t2 − t1)`, `offset = ((t1 − t0) + (t2 − t3)) / 2`.
 Keep the last 16 samples; take samples within 1 σ of the median RTT, weight by `1 / rtt`, average their
 offsets. `jitterMs` = EWMA (α = 1/8) of |rtt − rttPrev|. The estimate is `ready` after 5 samples.
-`hostNow() = localNow + offset`; `hostTickAt(ms) = startTick + (ms + offset − hostMsAtTick0) × 60 / 1000`.
-Offsets are slewed (≤ 2 ms per second) once ready, so the timeline never jumps; a > 50 ms disagreement over 8
-samples triggers a hard re-sync (rare: sleep/resume).
+`hostNow() = localNow + offset`, slewed ≤ 2 ms per second once ready; a > 50 ms disagreement over 8 samples
+triggers a hard re-sync (rare: sleep/resume).
+
+**Timebase.** The host keeps `{ epoch, anchorTick, anchorMs }` with the promise: *within an epoch, host tick
+`k` begins at host time `anchorMs + (k − anchorTick) × 1000/60`, ± 1 tick* (§9.9 explains how the host keeps
+it). Whenever the promise would break, the host starts a new epoch. It sends **TIMEBASE** (0x34, reliable)
+right after START, after every pause and resume, after any catch-up skip, and at 1 Hz. PAUSE carries
+`pauseTick` / `resumeTick` (§6.2).
+
+The guest's `createHostTimeline({ clock })`:
+- `onTimebase(tb)`: a newer epoch (or a same-epoch anchor that differs by > 1 tick) **hard-resyncs** the
+  anchor. `onPause(pauseTick)` freezes `tickAt()` at `pauseTick`; `onResume(resumeTick)` + its TIMEBASE unfreeze.
+- `onSnapshot(tick, epoch, localRecvMs)`: filters (tick, arrival) pairs, so a lost or late TIMEBASE is
+  harmless. Residual `r = tickAt(localRecvMs) − tick − oneWayTicks`; the median residual over the last 10
+  snapshots of this epoch slews the anchor by ≤ 0.25 tick per snapshot; |median| > 3 ticks for 5 snapshots in a
+  row hard-resyncs to the snapshot-based estimate. A snapshot tick newer than `tickAt()` (impossible if the
+  estimate were right) pulls the estimate forward at once.
+- `tickAt(localMs) → number` (fractional host tick, frozen while paused), `paused`, `epoch`.
+
+Tests (`tests/net.timeline.test.js`, harness-driven): after a **30 s host pause**, a **400 ms host stall**
+and a **3 s hidden-host starvation**, the guest's estimate is within ±1 tick of the true host tick within 1 s
+of resume, the input lead never exceeds `target + 2` ticks, and no guest input for a tick after `resumeTick`
+is dropped as late.
 
 ### 7.4 Heartbeat and liveness
 
@@ -570,8 +615,11 @@ refresh rate (**measured**: 30/75/120/144 fps and ±2 ms jitter each change the 
 
 ### 8.1 Fixed 60 Hz tick + render interpolation (all modes, online and offline)
 
-- `src/race/fixedStep.js`: `TICK_HZ = 60`, `TICK_DT = 1/60`, `MAX_TICKS_PER_FRAME = 6` (same 0.1 s spike cap
-  as today). `createFixedStepper() → { advance(frameDt) → { ticks, alpha }, reset() }`.
+- `src/race/fixedStep.js`: `TICK_HZ = 60`, `TICK_DT = 1/60`, `MAX_TICKS_PER_FRAME = 6`.
+  `createFixedStepper({ mode = 'local' }) → { advance(frameDt) → { ticks, alpha }, reset() }`. **Offline
+  (`mode: 'local'`)** keeps today's 0.1 s spike cap: a stall longer than 6 ticks is simply dropped (fine when
+  nobody else shares the clock). The **online host** uses the authoritative clock of §9.9 instead (never drops
+  ticks silently; it catches up or re-anchors with TIMEBASE).
 - `race.tick(inputs)` = exactly one sim step of 1/60 s = today's `update(1/60)` path (2 sub-steps of 1/120 —
   **identical to the tuned 60 fps behaviour**, so no re-tuning) **without** visuals. `race.tickCount` counts
   ticks since construction.
@@ -589,6 +637,9 @@ refresh rate (**measured**: 30/75/120/144 fps and ±2 ms jitter each change the 
   uses it twice. `DriveInput.useItem` stays a boolean per tick (derived from the counter).
 - Golden test: the same seed gives **identical standings and final kart states** at simulated render rates
   30/60/75/144 Hz and with ±4 ms frame jitter.
+- Latency test (`tests/race.fixedstep.latency.test.js`): at a simulated 144 Hz render rate, an input sampled
+  in a frame reaches a sim tick within ≤ 1 tick (16.7 ms) and shows in `kart.render` within ≤ 2 frames; at
+  60 Hz the path is unchanged from v2 (same frame). This is the honest cost of the fix (G8).
 
 ### 8.2 Seeded RNG with serialisable state
 
@@ -641,16 +692,26 @@ export function captureKart(kart) → KartSim;  export function applyKart(kart, 
 Round-trip test: `applySimState(fresh, captureSimState(race))` then N identical ticks → bit-identical states.
 The snapshot codec (§6.1) quantises a `SimState`; the owner tail comes from `KartSim.phys`.
 
+**One shared shape, merged first.** The `SimState` / `KartSim` / `BattleSim` typedefs, a
+`SIM_STATE_SHAPE` field list and a canonical fixture `makeSimStateFixture({ karts, gumdrops, rockets, battle })`
+live in **`src/race/simState.types.js`**, which lands with this design (P0, §16.0) before WS1 and WS2 fork.
+WS2 codes the snapshot codec against that fixture; WS1's `captureSimState` must pass the contract test
+`checkSimStateShape(state) → string[]` (empty = ok), which WS1 adds to its own tests. A field change is a
+change to that file (and this section) in the same PR, never a private edit.
+
 ### 8.5 Prediction step — `src/race/predict.js`
 
 ```js
-/** One 1/60 s step of a single kart, mirroring Race.tick order for that kart only. */
-export function predictTick(kart, input, ctx);   // ctx = { path, boostPads, gameplay, rules, raceState, countdown, emit }
+/** One 1/60 s step of this machine's LOCAL karts together, mirroring Race.tick order for those karts only. */
+export function predictTick(localKarts, inputs, ctx);  // ctx = { path, boostPads, gameplay, rules, tick, startTick, goTick, emit }
+export function collideKarts(karts, { emit, bumpTimes, time });   // extracted from Race._collideKarts (Race uses it too)
 ```
-Order: countdown / rocket-start logic (from `Race._updateCountdown`) → self item use for **boost, triple
-boost, star, shield** (deterministic self-effects, no rng) → `stepKart` × 2 at 1/120 → lap counting (updates
-`kart.lap` / `distance` only; no `lap` event — the authoritative one comes from the host). It never
-reads other karts, items or boxes. **(measured)** `stepKart`-only replay matches the host bit-exactly in
+Order per tick: countdown / rocket-start logic (from `Race._updateCountdown`, with `countdown` derived from
+`ctx.tick` and `goTick`, §9.1) → self item use for **boost, triple boost, star, shield** (deterministic
+self-effects, no rng) → for each of the 2 sub-steps at 1/120: `collideKarts(localKarts)` (only this machine's
+karts, in the same order as `Race.js` sub-steps) then `stepKart` → lap counting (updates `kart.lap` /
+`distance` only; no `lap` event — the authoritative one comes from the host). So **couch siblings on one guest
+machine bump each other locally**, including in replay. It never reads remote karts, items or boxes. **(measured)** `stepKart`-only replay matches the host bit-exactly in
 94–98 % of 100–200 ms windows; windows with contact/bonks/items reach up to 1.4 m error — reconciliation
 smoothing absorbs that (§9.5).
 
@@ -661,8 +722,18 @@ smoothing absorbs that (§9.5).
 - Race events carry `kart` objects offline; the host's event log maps them to ids (`e.kart.id`, `e.other.id`,
   `e.by.id`). New fields: `item-box.boxIndex`, gumdrop spawn/despawn events with id/position/colour, rocket
   despawn, `box-respawn`.
-- `Race({ participants })` order is authoritative: humans by global player index, then CPUs in `cpuIds`
-  order — every machine builds the same `race.karts` order, so kart id = index everywhere.
+- `Race({ participants })` order is authoritative and the same on every machine, so kart id = index
+  everywhere: CPUs in `cpuIds` order, then humans by global player index ascending (the wire order). **Grid
+  position is separate:** every participant carries a `gridSlot`, and `Race` places kart `i` at
+  `gridS = -7 - gridSlot * GRID_SPACING` (falling back to `i` when absent, so offline setups are unchanged —
+  offline `buildParticipants` already puts CPUs in front and humans at the back). Online,
+  `composeOnlineSetup` assigns: CPUs keep the front slots `0..C-1` in `cpuIds` order (GP: `gpCpuGrid`); the
+  humans fill `C..C+H-1` by a **seeded shuffle** from the race seed (Free Race, Team, Battle and GP race 1),
+  and in GP races 2+ by human GP points, leader last (the same "leader starts behind" spirit as `gpCpuGrid`).
+  Test (`tests/net.gridslot.test.js`): over 400 seeded races with houses `[[2],[1],[1]]`, each house's mean
+  human grid slot is equal within ± 0.15 slots, and no house starts in front of all others in more than its
+  fair share + 5 %. (The first draft ordered humans by join order, which put the host's kids on the best human
+  slot every race.)
 - `buildKartModel(charDef, participant)`: paint comes from `participant.paintId` (not this machine's
   localStorage), so every house sees the same colours and two players on the same racer can differ.
 
@@ -670,90 +741,162 @@ smoothing absorbs that (§9.5).
 
 ## 9. Netcode
 
-### 9.1 Timeline
+### 9.1 Timelines (and which one every display uses)
 
 ```
-host tick T ─────────────────────────────▶ (authoritative present)
-guest's own kart  : predicted at  T + lead           (lead ≈ RTT/2 + 2 ticks, adaptive)
-remote karts/items: rendered at   T_est − interpDelay (≈ 100 ms behind the host, adaptive 70–150 ms)
+host tick T ───────────────────────────────▶ (authoritative present, host machine)
+guest prediction timeline P = T_est + lead    own karts, own inputs   (lead ≈ RTT/2 + slack + 1 tick, adaptive)
+guest remote timeline     R = T_est − interp  remote karts, CPUs, items, boxes, battle bubbles (interp ≈ 100 ms, 70–150 adaptive)
 ```
+
+`T_est` comes from the host timeline estimate (§7.3). Every guest display is assigned to exactly one timeline:
+
+| Display / logic on a guest | Timeline | Why |
+|---|---|---|
+| Countdown numbers 3-2-1, "GO!", countdown sfx | **P** (from the predicted tick: `countdownAt(P) = (goTick − P) / 60`) | Own inputs are stamped with P ticks, so what you see is what the host simulates. |
+| Rocket-start window (`T.startBoostWindow`) and `accelPressedAt` | **P** (inside `predictTick`) | A press exactly on the visible GO lands on host tick `goTick` and earns the boost. |
+| Own kart pose, speed, drift/hop/boost FX and sfx, own item slot | **P** | Zero input delay (G3). |
+| Race timer (HUD clock), lap timer, "final lap" banner hint | **P** (`(P − goTick)/60`), corrected by the host `lap` / `finish` events | Matches your own driving. |
+| Remote karts, CPUs, gumdrops, rockets, boxes, battle bubbles | **R** | Smooth interpolation (G4). |
+| World/remote events (box pops, bonks, remote boosts) | **R** (released at `R ≥ event.tick`, §9.7) | Sound lines up with the picture. |
+| **Live place** ("2nd") and minimap order | **host standings at the newest snapshot tick** (`lapByte.place`, §6.1) | Never computed from mixed-timeline distances: own distance at P vs remote at R would show the guest ~6 m ahead of the truth at 150 ms RTT / 30 m/s. |
+| Finish celebration, finish place, "You finished 1st!" | **host `finish` event** (held until it arrives) | The kid never sees "1st" turn into "2nd". Until the event arrives the HUD shows a neutral "Finish! ✨" and the camera keeps rolling. |
+| Results, standings, points, unlock celebrations | host RESULT / GP (§12) | Authoritative. |
+
+Honest consequences, stated in the debug overlay help and tested: **(a)** GO appears on a guest's screen
+`lead` ticks **earlier** in wall time than on the host (about RTT/2 + 33 ms): both are "on time" for their
+own driving. **(b)** Remote karts start rolling a further `interp` after your own kart does, because you see
+them in the past. **(c)** In a very close finish, the order you *saw* can differ from the real order by up to
+`RTT/2 + interp` (≈ 175 ms at 150 ms RTT); that is why the place and celebration wait for the host's `finish`
+event. Harness test `tests/net.timeline.go.test.js`: a scripted guest press on the tick where its visible
+countdown shows GO earns the start boost on the host at RTT 0/50/150/250 ms; a press one frame before the
+window does not.
 
 ### 9.2 Inputs, redundancy and the input lead
 
 - The guest samples local inputs **once per predicted tick** (after Kid-Assist for assisted players) and
   stores them in a ring (`InputHistory`, 128 ticks) keyed by tick.
-- Each tick it sends INPUT with every tick newer than `lastInputTick` (from the latest snapshot) + 2 older ones,
-  min 3, max 12 ticks (200 ms). At 3 % loss the chance of a tick's input never arriving is < 10⁻¹².
+- Every 2nd predicted tick it sends INPUT (30 Hz) with the newest `n = clamp(slackTarget + 4, 4, 8)` ticks.
+- **What redundancy really buys.** The host consumes tick T when it simulates T, so only copies that arrive
+  before that count. A copy sent `k` packets after the first one arrives `2k` ticks later, so the number of
+  **useful** copies is `1 + floor(slack / 2)`: 2 copies at slack 2–3, 3 copies at slack 4. Loss is often
+  bursty (Wi-Fi), and a burst of ≥ `useful copies` packets (≈ 67 ms at slack 2) loses a tick's input. That is
+  handled, not wished away: analog inputs are held from the previous tick (tiny correction later), and **both
+  button actions are press counters** (item use, and hop/drift), so a press inside a burst fires one or a few
+  ticks late on the host instead of vanishing (§9.3). When measured loss > 2 % or a burst of ≥ 2 packets was
+  seen in the last 10 s, the lead controller raises the target slack from 2 to 4 (+33 ms lead, invisible to
+  the player; it only lengthens the replay window).
 - **Lead control** (`src/net/guest/leadController.js`): the host reports `inputSlack` (how many ticks early
-  input for tick T arrived). Target slack = 2 ticks (1 when jitter < 5 ms). The guest runs its predicted clock
-  up to **±3 % faster/slower** (time dilation, invisible to kids) to hold slack in [1, 3]; slack < 0 for 3
-  snapshots in a row → jump lead by +2 ticks at once.
+  input for tick T arrived). Target slack = 2 ticks (4 under loss, see above; never 1, because inputs travel in
+  pairs at 30 Hz). The guest runs its predicted clock up to **±3 % faster/slower** (time dilation, invisible to
+  kids) to hold slack in [target − 1, target + 1]; slack < 0 for 3 snapshots in a row → jump the lead by +2
+  ticks at once; slack > target + 4 for 10 snapshots → drop the lead by 2 ticks at once (the other direction,
+  e.g. after a network hiccup cleared). While the host is paused (§7.3), the lead controller is frozen.
+- Tests (burst model, §4.1 `burstLen`): matrix rows #6/#7 add **5 % loss in 3-packet bursts**; asserts: every
+  press is applied exactly once (≤ 6 ticks late), own-kart reconcile error p99 ≤ 0.75 m outside contact, and a
+  drift tap (1–2 ticks) lost in a burst still produces the hop on the host.
 
 ### 9.3 Host input buffer and missing-input policy — `src/net/host/inputBuffer.js`
 
 `createInputBuffer({ size: 64 }) → { push(tick, perPlayer[]), take(tick) → { inputs, status: 'on-time' |
-'repeated' | 'robo' }, slack(tick), lastConsumed }` per house.
+'repeated' | 'robo', presses }, slack(tick), lastConsumed, rebaseline(counters?) }` per house.
 
 | Situation | Host uses for tick T |
 |---|---|
 | input for T present | it (status on-time) |
-| missing, last input ≤ 250 ms old | last input **with its press counter unchanged** (no new press), steer/pedals/drift held (status repeated) |
-| input for T arrives after T was simulated | dropped, **except** press-counter deltas, which are applied on the next tick (a late press is late, never lost) |
+| missing, last input ≤ 250 ms old | last input **with its press counters unchanged** (no new press), steer/pedals/drift-held held (status repeated) |
+| input for T arrives after T was simulated | analog part dropped; **press-counter deltas are queued** and applied on the next ticks (a late press is late, never lost) |
+| counter delta of 2+ (double tap, or several late presses) | queued; **at most one press per counter per tick** (exactly like offline, where `items.use` sees one edge per tick); queued presses older than 250 ms are dropped (a very late press would surprise more than it helps) |
+| counter wrapped (mod 8) | deltas are computed mod 8 against the last *seen* value, so ≤ 7 presses between packets are exact; more is impossible at 30 Hz × 8 ticks |
 | missing > 250 ms | steer eases to 0 over 0.25 s, accel held (kart coasts on its line, never stops dead) |
-| missing > 1.5 s, or `robo` bit set | **Robo Driver** (`_brainFor(kart)`) drives; `robo` event → "🤖 Robo Driver has the wheel!" |
-| inputs resume | control returns on the next tick; `robo` event (off) |
+| missing > 1.5 s, or `robo` bit set | **Robo Driver** (`_brainFor(kart)`) drives; kart flag `roboDriven` set; `robo` event → "🤖 Robo Driver has the wheel!" |
+| inputs resume after Robo Driver / reconnect, or after HELLO / RESYNC | `rebaseline()`: the first received counters become the baseline **with no press**, the pending queue is cleared, then control returns on the next tick; `robo` event (off) |
 
-The host's own local players bypass the buffer (their input is sampled directly for each tick).
+The host's own local players bypass the buffer (their input is sampled directly for each tick, §9.9).
+`tests/net.inputbuffer.test.js` has one case per table row, incl. double-tap triple boost (2 presses → 2
+consecutive ticks), wrap, stale presses after Robo Driver (no phantom press) and the 250 ms drop.
 
-### 9.4 Snapshots and bandwidth budget
+### 9.4 Snapshots and bandwidth budget (wire bytes)
 
 - Host broadcasts a SNAPSHOT after every 2nd tick (30 Hz), shared body encoded **once**, per-house tail
   (ack, slack, owner block) appended per guest.
-- **Budget (acceptance):** snapshot ≤ 1150 B always (cap-case ≈ 690 B); guest download ≤ 120 kbps p50 / 160 kbps
-  p99 incl. DTLS/SCTP/UDP overhead (typical ≈ 90 kbps); guest upload ≤ 30 kbps for 1 local player, ≤ 80 kbps for
-  4; host upload ≤ 1.2 Mbps with 7 guests (typical ≈ 0.65 Mbps); ctrl traffic < 2 kbps average in race.
-- If a guest's `bufferedAmount` on `state` stays high (> 64 KiB) the host halves that guest's snapshot rate to
-  15 Hz until it drains (interpolation delay adapts automatically).
+- **All numbers are wire bytes** (§4.1: payload + `WIRE_OVERHEAD_BYTES = 93` per packet, plus SACKs; a SACK
+  bundled into an outgoing packet costs 16 B, a stand-alone SACK 93 B). Arithmetic:
 
-### 9.5 Remote-kart interpolation — `src/net/guest/interpolation.js`
+| Flow | Packets/s | Bytes per packet (wire) | kbps | Budget (acceptance) |
+|---|---|---|---|---|
+| Guest up, 1 player: INPUT n = 6 | 30 | 37 + 93 + 16 (bundled SACK) = 146 | 35 | |
+| + PING 2 Hz, stray SACKs (~5/s) | 7 | ~100 | 6 | **≤ 45 kbps** (≈ 41) |
+| Guest up, 4 players: INPUT n = 6 / worst n = 8 | 30 | 109 / 141 + 109 | 52 / 60 | **≤ 90 kbps** (≈ 58 steady, ≈ 66 worst) |
+| Guest down: SNAPSHOT typical 370 B | 30 | 370 + 93 + 16 = 479 | 115 | |
+| + EVENTS (≤ 6/s), NETSTAT, TIMEBASE, PONG | ~10 | ~120 | 10 | **≤ 140 kbps typical** (≈ 125) |
+| Guest down: 8 gumdrops + 2 rockets (460 B) | 30 | 569 | 137 + 10 | ≈ 147 |
+| Guest down: cap-case 730 B | 30 | 839 | 201 + 10 | **≤ 220 kbps cap-case** (≈ 211) |
+| Host up, 7 guests | 7 × 30 | as guest down | 7 × 125 / 7 × 211 | **≤ 1.0 Mbps typical** (≈ 0.88), **≤ 1.6 Mbps cap-case** (≈ 1.48) |
+| ctrl traffic in race | | | < 3 | average |
+| Lobby: LOBBY ≤ 3 KB (3 packets), ≤ 4/s coalesced | ≤ 12 | ~1100 | ≤ 105 per guest peak, ≤ 0.74 Mbps host peak | only while people are clicking; average < 10 kbps |
+
+  Over TURN/UDP add 4 B per packet (+1 %); over TURN/TLS (`WIRE_OVERHEAD_TURN_TLS_BYTES = 150`) the cap-case
+  guest download is ≈ 225 kbps and still passes for typical play (≈ 140 kbps). IPv6 adds 20 B per packet
+  (≈ +5 %). The netHarness counts **wire bytes with these constants** (never payload only), so acceptance
+  M1-5 measures the same thing as this table.
+- Backpressure (§4.1): a snapshot is skipped rather than queued when the state channel holds more than
+  ~2 messages; sustained skips halve the rate to 15 Hz for that guest.
+
+### 9.5 Remote interpolation — `src/net/guest/interpolation.js`
 
 - `createSnapshotBuffer({ capacity: 32 })` stores decoded snapshots by tick (reordered/duplicate packets are
   inserted or ignored by tick; older than the render time are discarded).
-- Render time `renderTick = hostTickEst − interpDelay × 60`. Per remote kart: cubic **Hermite** between the two
+- Render time `R = T_est − interpDelay × 60`. Per remote kart: cubic **Hermite** between the two
   bracketing snapshots using position + velocity (smooth at 30 Hz); heading via shortest-arc slerp; other
   fields (timers, flags, drift level) step at the older snapshot.
-- **Adaptive delay:** `interpDelay = clamp(2 × 33.3 ms + 2 × jitterMs + lossAllowance, 70, 150)` where
-  `lossAllowance = 33 ms` when measured loss > 2 %. It moves ≤ 1 ms per 100 ms so time never visibly jumps.
-  Start at 100 ms.
-- Starved (no snapshot beyond renderTick): **extrapolate** with velocity up to 250 ms, then freeze and blend
-  back when data resumes.
+- **Adaptive delay:** `interpDelay = clamp(2 × snapshotIntervalMs + 2 × jitterMs + lossAllowance, 70, 150)`
+  where `lossAllowance = 33 ms` when measured loss > 2 % (the interval is 33 ms, or 67 ms while halved). It moves
+  ≤ 1 ms per 100 ms so time never visibly jumps. Start at 100 ms.
+- Starved (no snapshot beyond R): **extrapolate** with velocity up to 250 ms, then freeze and blend back when
+  data resumes. While the host is paused, R is frozen too.
 - CPUs, gumdrops and rockets use the same buffer. Boxes and battle bubbles switch at the older snapshot.
 
 ### 9.6 Local-kart prediction and reconciliation — `src/net/guest/reconcile.js`
 
-- The guest's own karts are simulated by `predictTick` every predicted tick with the local input → **no input
-  delay**, exactly like offline.
-- On each snapshot (tick S) with the owner tail: set the kart to the snapshot state (quantised hot fields +
-  owner phys), then **replay** stored inputs for ticks S+1 … current (≤ 12 ticks typical). The difference
-  between the old predicted pose and the new one becomes a **visual error offset** that decays exponentially
-  (τ = 100 ms; heading τ = 80 ms). Snap (no smoothing) when error > 4 m, heading error > 0.6 rad, or the
-  snapshot `teleport` flag is set. **Replayed ticks never emit events** (`ctx.emit` is a no-op during replay):
-  a predicted hop/drift/boost event fires once, the first time its tick is predicted.
+- The guest's own karts are simulated **together** by `predictTick(localKarts, inputs, ctx)` every predicted
+  tick with the local inputs → **no input delay**, exactly like offline, and couch siblings on the same machine
+  bump each other locally (§8.5).
+- On each snapshot (tick S) with the owner tail: set the local karts to the snapshot state (quantised hot
+  fields + owner phys), then **replay** stored inputs for ticks S+1 … P for all local karts jointly (≤ 14 ticks
+  typical). The difference between the old predicted pose and the new one becomes a **visual error offset**
+  that decays exponentially (τ = 100 ms; heading τ = 80 ms). Snap (no smoothing) when error > 4 m, heading
+  error > 0.6 rad, or the snapshot `teleport` flag is set. **Replayed ticks never emit events** (`ctx.emit` is
+  a no-op during replay): a predicted hop/drift/boost event fires once, the first time its tick is predicted.
+- **Robo Driver on my own kart.** When a snapshot shows `roboDriven` for one of my karts (my player paused,
+  their pad fell asleep, or the host decided after an outage), the guest **stops predicting that kart and
+  renders it from interpolation (timeline R)** like a remote kart; the other local karts keep predicting (and
+  no longer collide with it locally). When `roboDriven` clears, prediction **re-seeds from the newest
+  snapshot**, `InputHistory` entries before that snapshot's tick are cleared, the input buffer baseline resets
+  (§9.3), and the kart **snaps** (no smoothing) to avoid a slide from a stale pose. Test in
+  `tests/net.reconcile.test.js`.
 - What is predicted vs host-only:
 
 | Thing | Local prediction | Host truth arrives via |
 |---|---|---|
 | steering, throttle, walls (`constrainToTrack`, path only) | ✅ exact | snapshot |
-| drift start/levels/mini-turbo release, hops, landing | ✅ exact (needs owner tail) | snapshot |
+| drift start/levels/mini-turbo release, hops, landing | ✅ exact (needs owner tail + hop/drift press counter) | snapshot |
 | boost pads, rocket start | ✅ exact | snapshot + events (dropped for own kart) |
+| bumps between **my own** local karts | ✅ (joint `collideKarts`) | snapshot |
 | using sprinkle boost / triple / star / shield | ✅ applied on press (sfx + FX instantly) | snapshot confirms; if the host disagrees (e.g. item was actually gone) the next reconcile corrects and the slot shows the truth |
 | dropping a gumdrop / launching a rocket | slot empties + whoosh sfx instantly (cosmetic); the entity appears when the host spawns it (≈ RTT/2 + interpDelay later, behind you) | events + snapshot |
-| bumps with other karts, bonks, spins, item-box pickups, roulette result | ❌ host only | events + snapshot (smoothed) |
-| laps / finish / place | ❌ host only (local hint for the lap banner is allowed) | events |
+| bumps with remote karts, bonks, spins, item-box pickups, roulette result | ❌ host only | events + snapshot (smoothed) |
+| laps / finish / live place | ❌ host only (lap banner hint from P allowed; place from snapshot; finish from event, §9.1) | events + snapshot |
 
 - Events for the own kart whose type is locally predicted (hop, land, drift-*, pad/start boost, wall bump,
-  self item-use) are **dropped** when they arrive from the host; all others fire on arrival (they are about the
-  player's present).
+  own-kart bumps, self item-use) are **dropped** when they arrive from the host; all others fire on arrival.
+- **Predicted events are presentation only.** Every locally predicted event is emitted with
+  `predicted: true`. Presentation systems (sfx, FX, callouts, reactions) use them as normal. **Progress and
+  goal systems never count predicted events**: in an online session `funGoals`, stickers, `drivingReactions`
+  stat counters and every other counter take their numbers only from host-confirmed data — the per-player
+  stats in RESULT's `HostRaceSummary` (§12). So a mini-turbo that the host cancelled (e.g. a bump the guest
+  could not predict) never counts. Test: `tests/net.localize.test.js` has a predicted `drift-boost` that the
+  host contradicts; the goal counter does not increment, and the localized summary's stats equal the host's.
 - Remote players' sounds are never played as "your" sounds: `session.isHuman(kart)` keeps meaning *a player on
   this screen* (§10.8).
 
@@ -765,39 +908,63 @@ The host's own local players bypass the buffer (their input is sampled directly 
   ignored; a gap cannot happen on the reliable channel — if detected, request RESYNC).
 - **Events are presentation only.** Game state comes only from snapshots (+ RESYNC for cold fields). Events
   ride the ordered `ctrl` channel, snapshots the unordered `state` channel, so an event can arrive before or
-  after the snapshot of its tick; the player therefore releases **world/remote events when `renderTick ≥
-  event.tick`** (sfx/FX line up with the interpolated picture: the box pops when the remote kart visibly
-  touches it) and own-kart events immediately. Events older than 1 s are released immediately (never stuck).
+  after the snapshot of its tick; the player therefore releases **world/remote events when `R ≥ event.tick`**
+  (sfx/FX line up with the interpolated picture: the box pops when the remote kart visibly touches it) and
+  own-kart events immediately. Events whose tick is older than `R − 1 s` are released immediately, in seq order
+  (never stuck behind a ctrl retransmit, whose realistic cost is modelled in §4.1: `max(RTT + 100 ms, 300 ms)`
+  with backoff). Test: under that model at 250 ms RTT / 5 % loss, release order always equals seq order and
+  no event is released more than 1.1 s after its tick.
 - Released events are re-emitted through the normal `onEvent → bus.emit('race:<type>', e, session)` path with
-  kart ids mapped back to the replica's kart objects, so **every existing system, the HUD and progress run
-  unchanged**.
+  kart ids mapped back to the replica's kart objects, so **every existing system and the HUD run unchanged**
+  (progress counters obey the rule in §9.6).
 - `race-complete` only marks the tick; the guest waits for RESULT (0x2E) before the results screen.
 
 ### 9.8 Host-advantage mitigation
 
 The host's own players see everyone at the true present, guests see others ~100 ms + RTT/2 in the past.
 Mitigations, in order of impact:
-1. **Input lead** (§9.2): a guest's own driving is simulated on the exact tick they pressed — no lateness in
-   lines, drifts, pads, finish times.
-2. **Late presses are never lost** (press counter): item use by a guest lands on the next host tick.
-3. **Gentle interaction by design:** bumps are soft pushes, bonks are twirls, rockets home in — none needs
+1. **Fair grid** (§8.6): human grid slots are shuffled per race from the seed, never by join order.
+2. **Input lead** (§9.2): a guest's own driving is simulated on the exact tick they pressed — no lateness in
+   lines, drifts, pads, rocket starts, finish times.
+3. **Late presses are never lost** (press counters): item use and hops by a guest land at most a few ticks
+   late on the host.
+4. **Gentle interaction by design:** bumps are soft pushes, bonks are twirls, rockets home in — none needs
    frame-perfect aim. Gumdrop hits against *remote* humans use the normal radius (no extra rewind in v1).
-4. **Rocket and gumdrop warnings** use host-time events (the "Rocket coming!" warning fires on the guest when
+5. **Rocket and gumdrop warnings** use host-time events (the "Rocket coming!" warning fires on the guest when
    the rocket launches, not when it becomes visible).
-5. Optional **"Fair host"** toggle (host lobby, default off): delays the host's own local inputs by
-   `min(50 ms, median guest RTT/2)`.
+6. Optional **"Fair host"** toggle (host lobby, default off, milestone M3): delays the host's own local inputs
+   by `min(50 ms, median guest RTT/2)`.
 Results record `net.hostAdvantageMs` (median guest one-way latency) in the debug overlay so the family can see
 it is small.
 
-### 9.9 Host tick pump and hidden tabs
+### 9.9 Host tick source: one accumulator, two drivers — `src/net/host/hostClock.js`, `src/net/tickPump.js`
 
-A hidden tab throttles main-thread timers to 1 Hz and stops rAF (Chrome timer-throttling). The host's
-authoritative loop is therefore driven by `src/net/tickPump.js`: a dedicated Web Worker (`new Worker(blob)`)
-posting a message every 16.67 ms (drift-corrected against `performance.now()`), and the main thread runs
-`hostDriver.tick()` for every tick due (≤ 6 per message). Rendering stays on rAF (stops when hidden, fine).
-On `visibilitychange → hidden` the host also shows **"Keep this tab open, you're the host! 🏁"** on return,
-and if the pump is ever starved > 1 s the host sends PAUSE `reason 1` so guests see "Waiting for the host… ⏳"
-instead of a frozen race.
+The host has exactly **one** authoritative accumulator; two things may *drive* it, never both at once:
+
+- **Visible tab → rAF drives, exactly like offline.** Each rAF frame calls `hostClock.advance(now)`, which
+  runs every due tick (`due = anchorTick + floor((hostNow − anchorMs) × 60 / 1000) − lastTick`) and returns
+  `alpha ∈ [0, 1)` from the **same** accumulator for `race.present(alpha)`. The host's own local players'
+  inputs are sampled per tick from the rAF frame's input snapshot (InputLatch keeps presses), so the "zero
+  latency" reference players get the same input path as offline.
+- **Hidden tab, or rAF starved for > 50 ms → the pump drives.** `tickPump.js` is a dedicated Web Worker
+  (`new Worker(blob)`) posting a message every 16.67 ms (drift-corrected against `performance.now()`); on each
+  message the main thread calls the same `hostClock.advance(now)` (no rendering). The pump is started on
+  `visibilitychange → hidden` or when the last rAF is > 50 ms old, and ignored again after 2 consecutive
+  on-time rAF frames. Because both call the same function with the same `due` formula, **each tick runs
+  exactly once** whichever driver calls.
+- **Catch-up instead of silent drops.** If a stall (GC, slow machine, tab switch) leaves `due > 6`, the host
+  runs at most 6 ticks per call and keeps the rest as backlog, catching up over the next calls while staying
+  on its timebase (guests see nothing but a few bunched snapshots). If the backlog exceeds
+  `MAX_BACKLOG_TICKS = 30` (500 ms), the host **skips** instead: it re-anchors (`anchorTick = lastTick + 1`,
+  `anchorMs = hostNow`, `epoch + 1`) and broadcasts TIMEBASE reason 4.
+- **Pause everyone / starvation.** "Pause everyone" freezes the accumulator (PAUSE with `pauseTick`); resume
+  re-anchors at `resumeTick` with a new epoch (PAUSE resume + TIMEBASE). If the pump itself is starved for
+  > 1 s, the host sends PAUSE reason 1 (guests see "Waiting for the host… ⏳") and resumes with a new epoch.
+- On return to a visible tab after being hidden, the host shows **"Keep this tab open, you're the host! 🏁"**.
+- Test (`tests/net.hostclock.test.js`): a fake rAF (60/144 Hz, with gaps) and a fake pump interleaved randomly
+  over 10 000 ticks: every tick number runs exactly once, in order; `alpha` stays in `[0, 1)`; hidden periods
+  of 3 s keep ticking at 60 Hz; a 400 ms stall is caught up without an epoch change; a 2 s stall produces
+  exactly one skip + TIMEBASE.
 
 ---
 
