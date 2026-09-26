@@ -196,29 +196,43 @@ export function sampleKartPose(buffer, kartId, renderTick, { tickMs = 1000 / 60,
  * Keeps one remote object's drawn pose continuous across mode changes (extrapolated/frozen → interpolated):
  * the jump becomes an offset that decays with τ = 100 ms. A teleport (or a jump > snapDist) snaps.
  */
-export function createPoseSmoother({ tauMs = BLEND_TAU_MS, snapDist = 8 } = {}) {
+export function createPoseSmoother({ tauMs = BLEND_TAU_MS, snapDist = 8, popDist = 0.25, popHeading = 0.35 } = {}) {
   let off = { x: 0, y: 0, z: 0, h: 0 };
-  let last = null;
-  let lastMode = null;
+  let last = null; // drawn pose
+  let target = null; // previous target pose (with velocity)
+  const stats = { pops: 0, snaps: 0 };
   return {
-    /** @returns {{ x, y, z, heading }} the pose to draw */
+    /**
+     * Any target that moves differently from its own velocity by more than `popDist` in one frame (a switch
+     * from extrapolated/frozen to interpolated data, a late snapshot reshaping the curve, a render-time
+     * correction) becomes an offset that decays with τ, so the drawn pose never pops. A teleport or a jump
+     * beyond `snapDist` snaps.
+     * @returns {{ x, y, z, heading }} the pose to draw
+     */
     step(pose, dtMs, { teleport = false } = {}) {
       if (!pose) return last;
       const k = Math.exp(-Math.max(0, dtMs) / tauMs);
       off = { x: off.x * k, y: off.y * k, z: off.z * k, h: off.h * k };
-      if (last && lastMode && lastMode !== 'interp' && pose.mode === 'interp' && !teleport) {
-        const dx = last.x - (pose.x + off.x);
-        const dz = last.z - (pose.z + off.z);
-        if (Math.hypot(dx, dz) < snapDist) {
-          off = { x: last.x - pose.x, y: last.y - pose.y, z: last.z - pose.z, h: wrapAngle(last.heading - pose.heading) };
-        } else off = { x: 0, y: 0, z: 0, h: 0 };
+      if (teleport) { off = { x: 0, y: 0, z: 0, h: 0 }; stats.snaps++; } else if (target) {
+        const s = Math.max(0, dtMs) / 1000;
+        const ex = target.x + (target.vx || 0) * s;
+        const ez = target.z + (target.vz || 0) * s;
+        const dx = pose.x - ex;
+        const dz = pose.z - ez;
+        const dev = Math.hypot(dx, dz);
+        if (dev > snapDist) { off = { x: 0, y: 0, z: 0, h: 0 }; stats.snaps++; } else if (dev > popDist) {
+          off.x -= dx; off.z -= dz; off.y -= pose.y - target.y;
+          stats.pops++;
+        }
+        const dh = wrapAngle(pose.heading - target.heading);
+        if (Math.abs(dh) > popHeading) off.h -= dh;
       }
-      if (teleport) off = { x: 0, y: 0, z: 0, h: 0 };
-      lastMode = pose.mode;
+      target = { x: pose.x, y: pose.y, z: pose.z, vx: pose.vx, vz: pose.vz, heading: pose.heading };
       last = { x: pose.x + off.x, y: pose.y + off.y, z: pose.z + off.z, heading: wrapAngle(pose.heading + off.h) };
       return last;
     },
     get offset() { return Math.hypot(off.x, off.z); },
-    reset() { off = { x: 0, y: 0, z: 0, h: 0 }; last = null; lastMode = null; },
+    reset() { off = { x: 0, y: 0, z: 0, h: 0 }; last = null; target = null; },
+    stats,
   };
 }

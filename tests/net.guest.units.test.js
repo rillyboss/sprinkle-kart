@@ -161,24 +161,32 @@ describe('interpolation', () => {
     expect(a.lastBurst).toBe(5); // 398 → 410: 400..408 missing
   });
 
-  it('pose smoother: blends an extrapolated pose back into the interpolated one without a pop', () => {
+  it('pose smoother: a target that pops (frozen → interpolated, a reshaped curve) is blended, smooth motion is not touched', () => {
     const s = createPoseSmoother();
-    let p = s.step({ x: 0, y: 0, z: 0, heading: 0, mode: 'interp' }, 16);
-    p = s.step({ x: 5, y: 0, z: 0, heading: 0, mode: 'frozen' }, 16);
-    const q = s.step({ x: 4, y: 0, z: 0, heading: 0, mode: 'interp' }, 16);
-    expect(q.x).toBeCloseTo(5, 6); // no pop
+    const pose = (x, vx = 30, extra = {}) => ({ x, y: 0, z: 0, heading: 0, vx, vz: 0, mode: 'interp', ...extra });
+    // steady 30 m/s: drawn = target
+    let x = 0;
+    for (let i = 0; i < 10; i++) { x += 0.5; expect(s.step(pose(x), 1000 / 60).x).toBeCloseTo(x, 9); }
+    expect(s.stats.pops).toBe(0);
+    // the target jumps back 1 m (new data after an extrapolation): the drawn pose keeps going smoothly
+    const before = s.step(pose(x + 0.5), 1000 / 60).x;
+    const q = s.step(pose(x + 1 - 1), 1000 / 60);
+    expect(Math.abs(q.x - (before + 0.5))).toBeLessThan(1e-6); // continued at 30 m/s, no pop
     expect(s.offset).toBeCloseTo(1, 6);
-    for (let i = 0; i < 60; i++) s.step({ x: 4, y: 0, z: 0, heading: 0, mode: 'interp' }, 16);
-    expect(s.offset).toBeLessThan(0.01);
-    s.step({ x: 50, y: 0, z: 0, heading: 0, mode: 'frozen' }, 16);
-    const far = s.step({ x: 0, y: 0, z: 0, heading: 0, mode: 'interp' }, 16);
-    expect(far.x).toBe(0); // > 8 m: snap
-    const t = s.step({ x: 9, y: 0, z: 0, heading: 0, mode: 'interp' }, 16, { teleport: true });
-    expect(t.x).toBe(9);
-    expect(s.step(null, 16)).toBe(t);
+    expect(s.stats.pops).toBe(1);
+    let t = x;
+    for (let i = 0; i < 60; i++) { t += 0.5; s.step(pose(t), 1000 / 60); }
+    expect(s.offset).toBeLessThan(0.01); // decays with τ = 100 ms
+    const far = s.step(pose(t + 50), 1000 / 60);
+    expect(far.x).toBeCloseTo(t + 50, 6); // > 8 m: snap
+    const tp = s.step(pose(9), 1000 / 60, { teleport: true });
+    expect(tp.x).toBe(9);
+    expect(s.step(null, 16)).toBe(tp);
+    // a heading pop is blended too
+    s.step({ ...pose(9.5), heading: 1 }, 1000 / 60);
+    expect(s.stats.snaps).toBe(2);
     s.reset();
     expect(s.offset).toBe(0);
-    expect(p).toBeTruthy();
   });
 });
 

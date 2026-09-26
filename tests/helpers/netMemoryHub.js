@@ -237,6 +237,8 @@ export function createMemoryHub({ seed = 1, start = 0 } = {}) {
       now = Math.max(now, toMs);
     },
     get now() { return now; },
+    /** Time of the next scheduled delivery (Infinity when idle). */
+    get nextAt() { return queue.length ? queue[0].at : Infinity; },
     linkStats(from, to) { return { ...linkState(from, to).stats }; },
     get pending() { return queue.length; },
   };

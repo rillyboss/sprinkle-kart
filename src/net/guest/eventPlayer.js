@@ -42,9 +42,10 @@ export function isPredictedForMe(e, isMine) {
  * @param {(e: object) => void} o.onEvent                released wire events (kart ids)
  * @param {(expectedSeq: number, gotSeq: number) => void} [o.onGap]
  * @param {number} [o.tickMs]
+ * @param {(e: object) => void} [o.onAccept]           every seq accepted exactly once (dropped or queued)
  * @param {number} [o.firstSeq]                         the seq expected first (1 for a new race)
  */
-export function createEventPlayer({ isMine, onEvent, onGap, tickMs = 1000 / 60, firstSeq = 1 }) {
+export function createEventPlayer({ isMine, onEvent, onGap, onAccept, tickMs = 1000 / 60, firstSeq = 1 }) {
   let lastSeq = (firstSeq - 1) >>> 0; // newest seq accepted into the queues
   const world = [];
   const own = [];
@@ -61,6 +62,7 @@ export function createEventPlayer({ isMine, onEvent, onGap, tickMs = 1000 / 60, 
         const expected = (lastSeq + 1) >>> 0;
         if (e.seq !== expected) { stats.gaps++; onGap?.(expected, e.seq); }
         lastSeq = e.seq;
+        onAccept?.(e);
         if (isPredictedForMe(e, isMine)) { stats.dropped++; continue; }
         (isMine(e.kart) ? own : world).push(e);
       }
