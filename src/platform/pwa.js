@@ -46,6 +46,7 @@ export async function registerServiceWorker({ nav, url = './sw.js', onUpdateRead
   if (!sw?.register) return null;
   let reg;
   try { reg = await sw.register(url, { scope: './' }); } catch { return null; }
+  if (!reg) return null;
   let told = false;
   const ready = () => {
     if (told || !reg.waiting || !sw.controller) return;
@@ -77,6 +78,31 @@ export function applyUpdate(reg, { nav, reload } = {}) {
   sw?.addEventListener?.('controllerchange', go);
   if (reg?.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
   else go();
+}
+
+/**
+ * Ask a (waiting) worker which build it serves. Resolves null when it does not answer in time.
+ * @param {any} worker
+ * @param {{ timeout?: number, Channel?: typeof MessageChannel }} [opts]
+ */
+export function workerBuild(worker, { timeout = 1500, Channel = typeof MessageChannel !== 'undefined' ? MessageChannel : null } = {}) {
+  return new Promise((resolve) => {
+    if (!worker?.postMessage || !Channel) { resolve(null); return; }
+    const ch = new Channel();
+    const timer = setTimeout(() => resolve(null), timeout);
+    ch.port1.onmessage = (e) => { clearTimeout(timer); resolve(e?.data?.build ?? null); };
+    try { worker.postMessage({ type: 'GET_VERSION' }, [ch.port2]); } catch { clearTimeout(timer); resolve(null); }
+  });
+}
+
+/**
+ * A waiting worker for the SAME build as this page (it was network-first loaded already, only the worker is
+ * new) just takes over quietly; a different build asks the family to tap to update.
+ * @param {{ pageBuild?: string, workerBuild?: string|null }} s
+ * @returns {'silent'|'toast'}
+ */
+export function updateAction({ pageBuild, workerBuild: wb } = {}) {
+  return wb && pageBuild && pageBuild !== 'dev' && wb === pageBuild ? 'silent' : 'toast';
 }
 
 /**

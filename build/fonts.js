@@ -5,7 +5,8 @@
  * reproducible and offline) and the page links the local copy instead:
  *
  *   index.html   <link href="https://fonts.googleapis.com/css2?family=…" rel="stylesheet">
- *                  → <link rel="stylesheet" href="./fonts/gf-<hash>.css">   (preconnects to Google are dropped)
+ *                  → <link rel="stylesheet" href="./fonts/gf-<hash>.css?family=…">   (preconnects dropped)
+ *   any .js      the same URL as a string literal (a script injecting the <link>) → the local href
  *   any .css     @import url('https://fonts.googleapis.com/css2?family=…');
  *                  → the @font-face rules inlined, pointing at /fonts/files/*.woff2
  *
@@ -107,6 +108,16 @@ export async function ensureFontCached(url, dir, { fetch: f = globalThis.fetch, 
   }
 }
 
+/**
+ * The page-relative href of a cached stylesheet. The original query rides along (`?family=Fredoka:…`) so code
+ * that looks for "family=Fredoka" in a link's href still sees the font as loaded; servers and the service
+ * worker ignore it.
+ */
+export function localHref(cssName, url) {
+  const q = String(url).split('?')[1];
+  return `./fonts/${cssName}${q ? `?${q}` : ''}`;
+}
+
 /** The @font-face CSS of a cached stylesheet, with URLs from the site root (for inlining into a .css file). */
 export function cachedCssForInline(dir, cssName) {
   const css = readFileSync(path.join(dir, cssName), 'utf8');
@@ -132,13 +143,23 @@ export function selfHostFonts({ dir: dirOpt, fetch: f } = {}) {
         const css = await ensureFontCached(url, dir, { fetch: f, log });
         if (!css) continue;
         const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/&/g, '(?:&|&amp;)');
-        out = out.replace(new RegExp(`<link[^>]*href=["']${escaped}["'][^>]*>`, 'g'), `<link rel="stylesheet" href="./fonts/${css}" />`);
+        out = out.replace(new RegExp(`<link[^>]*href=["']${escaped}["'][^>]*>`, 'g'), `<link rel="stylesheet" href="${localHref(css, url)}" />`);
         out = out.replace(/\s*<link[^>]*rel=["']preconnect["'][^>]*fonts\.(googleapis|gstatic)\.com[^>]*>/g, '');
       }
       return out;
     },
     async transform(code, id) {
-      if (!/\.css($|\?)/.test(id) || !code.includes('fonts.googleapis.com')) return null;
+      if (!code.includes('fonts.googleapis.com') || id.includes('node_modules')) return null;
+      if (/\.[cm]?js($|\?)/.test(id)) {
+        // a script that injects the stylesheet at run time (src/ui/dom.js ensureFont) gets the local copy too
+        let js = code;
+        for (const url of findGoogleFontUrls(code)) {
+          const css = await ensureFontCached(url, dir, { fetch: f, log });
+          if (css) js = js.split(url).join(localHref(css, url));
+        }
+        return js === code ? null : { code: js, map: null };
+      }
+      if (!/\.css($|\?)/.test(id)) return null;
       let out = code;
       for (const url of findGoogleFontUrls(code)) {
         const css = await ensureFontCached(url, dir, { fetch: f, log });

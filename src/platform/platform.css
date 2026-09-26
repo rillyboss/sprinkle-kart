@@ -136,3 +136,6 @@ html[data-sk-racing="1"] .sk-pwa-toast { display: none; }
   color: #6b3a7a;
 }
 .sk-glnap[hidden] { display: none; }
+
+/* Graphics screen status line (src/ui/screens/graphics.js) */
+.skg-status { text-align: center; font-weight: 600; opacity: 0.75; margin: 0.6em 0 0; min-height: 1.3em; }

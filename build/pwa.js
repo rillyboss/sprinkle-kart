@@ -88,13 +88,14 @@ self.addEventListener('fetch', (event) => {
         if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(INDEX, copy)).catch(() => {}); }
         return res;
       } catch (err) {
-        return (await caches.match(INDEX)) || (await caches.match(req, { ignoreSearch: true })) || Response.error();
+        return (await caches.match(INDEX, { ignoreVary: true })) || (await caches.match(req, { ignoreSearch: true, ignoreVary: true })) || Response.error();
       }
     })());
     return;
   }
   event.respondWith((async () => {
-    const hit = await caches.match(req);
+    // ignoreVary: module scripts, fonts and crossorigin CSS send an Origin header the precache request did not
+    const hit = (await caches.match(req, { ignoreVary: true })) || (url.search && (await caches.match(req, { ignoreVary: true, ignoreSearch: true })));
     if (hit) return hit;
     const res = await fetch(req);
     if (res && res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}); }

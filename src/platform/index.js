@@ -34,7 +34,7 @@ import {
 } from './web.js';
 import { rotateOverlayState, createRotateOverlay } from './rotateOverlay.js';
 import {
-  swSupport, registerServiceWorker, applyUpdate, installHintKind, createHintStore, createToast,
+  swSupport, registerServiceWorker, applyUpdate, installHintKind, createHintStore, createToast, workerBuild, updateAction,
   UPDATE_TEXT, IOS_HINT_TEXT, ANDROID_HINT_TEXT,
 } from './pwa.js';
 
@@ -232,8 +232,14 @@ function installPwa(win, { caps, pwa, emit, prod }) {
     let toast = null;
     registerServiceWorker({
       nav, win,
-      onUpdateReady: (reg) => {
+      onUpdateReady: async (reg) => {
         pwa._reg = reg;
+        // eslint-disable-next-line no-undef
+        const pageBuild = typeof __SK_BUILD__ !== 'undefined' ? String(__SK_BUILD__) : 'dev';
+        if (updateAction({ pageBuild, workerBuild: await workerBuild(reg.waiting) }) === 'silent') {
+          reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+          return;
+        }
         pwa.updateReady = true;
         emit('update-ready', reg);
         toast ??= createToast({ doc, text: UPDATE_TEXT, cls: 'sk-pwa-update', onTap: () => pwa.applyUpdate() });
