@@ -427,10 +427,10 @@ const UNLOCK_REVEAL_LAYOUT = {
     card: '.sk-unlock:not(.sk-leaving) .sk-unlock-inner',
     text: '.sk-unlock:not(.sk-leaving) .sk-unlock-kicker, .sk-unlock:not(.sk-leaving) .sk-unlock-name, .sk-unlock:not(.sk-leaving) .sk-unlock-tag, .sk-unlock:not(.sk-leaving) .sk-unlock-sub',
   },
-  containerOf: { text: '.sk-unlock-inner' },
+  // (the inner box has no background, so a kicker wider than it is fine: only the screen edge counts)
   rules: (r) => [
     ...overlapProblems(r.text, { what: 'unlock reveal texts' }),
-    ...insideProblems(r.text, null, { what: 'unlock reveal texts', sides: ['left', 'right'] }),
+    ...insideProblems(r.text, r.viewport, { what: 'unlock reveal texts' }),
     ...insideProblems(r.card, r.viewport, { what: 'unlock reveal card' }),
   ],
 };
@@ -645,9 +645,9 @@ async function resultsTest(t) {
   await waitMenusReady(t.page);
   await t.shot('results.png');
   await checkLayout(t, 'results', RESULTS_LAYOUT.groups, RESULTS_LAYOUT.rules);
-  await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue'), null, T(30000), 'unlock celebration');
+  await waitGame(t.page, () => !!document.querySelector('.sk-unlock'), null, T(30000), 'unlock celebration');
+  await waitFrames(t.page, 3);
   await t.shot('results-unlock.png');
-  await layoutAt(t, 'unlock reveal', UNLOCK_REVEAL_LAYOUT);
   const info = await gameInfo(t.page);
   t.check(info.lastResults?.newlyUnlocked === 'cotton-candy-girl', `unlock not recorded: ${JSON.stringify(info.lastResults)}`);
   const saved = await t.page.evaluate(() => JSON.parse(localStorage.getItem('sprinkle-kart-progress-v1') || '{}'));
@@ -656,6 +656,8 @@ async function resultsTest(t) {
   await t.page.keyboard.press('Enter');
   await waitFrames(t.page, 1);
   t.check(await t.page.evaluate(() => !!document.querySelector('.sk-unlock:not(.sk-leaving)')), 'unlock reveal was skipped by an early press');
+  await waitGame(t.page, () => !!document.querySelector('.sk-unlock.sk-can-continue:not(.sk-leaving)'), null, T(30000), 'unlock reveal settled');
+  await layoutAt(t, 'unlock reveal', UNLOCK_REVEAL_LAYOUT);
   // once each reveal has had its moment, dismiss it (the rule engine may celebrate several
   // unlocks in a row), then pick "Race again" → a new race starts
   await dismissUnlocks(t);
@@ -838,6 +840,14 @@ async function grandPrixTest(t) {
   await waitFrames(t.page, 3);
   await shot('3-ceremony');
   await layoutAt(t, 'trophy ceremony', CEREMONY_LAYOUT);
+  // every unlock reveal was dismissed on the way here: once its fade-out is over, nothing of
+  // it may still sit on top of the podium (known v2 issue: a leftover reveal over the names)
+  await waitFrames(t.page, 30);
+  const leftovers = await t.page.evaluate(() => [...document.querySelectorAll('.sk-unlock')].map((u) => ({ cls: u.className, opacity: getComputedStyle(u).opacity, text: u.textContent.replace(/\s+/g, ' ').slice(0, 60) })));
+  t.check(!leftovers.length, `unlock reveal(s) still in the page during the ceremony: ${JSON.stringify(leftovers)}`);
+  await checkLayout(t, 'trophy ceremony after the reveals', { text: '.sk-cer-name, .sk-cer-block', optReveal: '.sk-unlock, .sk-unlock *' },
+    (r) => crossOverlapProblems(r.optReveal, r.text, { what: 'leftover unlock reveal over the podium' }));
+  await shot('3b-ceremony-settled');
   const info = await t.page.evaluate(() => ({ ev: window.__gpEvents, gp: window.__game.lastGp, cer: !!document.querySelector('.sk-cer-podium'), cups: document.querySelectorAll('.sk-trophy').length }));
   const want = JSON.stringify([['race', 0, false], ['race', 1, false], ['race', 2, false], ['race', 3, true], ['end', 3, 8]]);
   t.check(JSON.stringify(info.ev) === want, `GP events ${JSON.stringify(info.ev)} != ${want}`);
