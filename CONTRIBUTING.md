@@ -82,7 +82,7 @@ Online play (NETWORKING.md) has four layers of tests; the first two run in the n
 3. **Online browser e2e** — `scripts/smoke-online.mjs`, run it locally before every online PR:
 
    ```bash
-   SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs            # all M1 scenarios (~10 min)
+   SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs            # all M1 scenarios (10-40 min)
    SMOKE_PORT=5662 node scripts/smoke-online.mjs public                            # only the public-relay path
    SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs worker-controller timing
    SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs soak       # 10-min browser soak (M3)
