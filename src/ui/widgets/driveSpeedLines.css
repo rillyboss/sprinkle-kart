@@ -1,0 +1,33 @@
+/* Speed lines (driving feel): soft streaks round the edge of the view. */
+.sk-speedlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0.08s linear;
+}
+.sk-speedlines > i {
+  position: absolute;
+  inset: -10%;
+  display: block;
+  /* thin radial streaks from the kart's vanishing point, clear in the middle */
+  background: repeating-conic-gradient(from 0deg at 50% 60%,
+    rgba(255, 255, 255, 0) 0deg 4.1deg,
+    rgba(255, 255, 255, 0.95) 4.3deg 4.7deg,
+    rgba(255, 255, 255, 0) 4.9deg 9.3deg,
+    rgba(255, 238, 250, 0.8) 9.5deg 9.8deg,
+    rgba(255, 255, 255, 0) 10deg 13deg);
+  -webkit-mask-image: radial-gradient(ellipse 58% 52% at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.45) 76%, #000 100%);
+  mask-image: radial-gradient(ellipse 58% 52% at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.45) 76%, #000 100%);
+}
+.sk-speedlines > .sk-speedlines-b { transform: rotate(2.2deg); opacity: 0.6; }
+.sk-speedlines.on > .sk-speedlines-a { animation: sk-speedlines-flick 0.24s steps(2) infinite; }
+.sk-speedlines.on > .sk-speedlines-b { animation: sk-speedlines-flick 0.24s steps(2) infinite reverse; }
+@keyframes sk-speedlines-flick {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(3deg) scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk-speedlines.on > i { animation: none; }
+}

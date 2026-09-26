@@ -4,6 +4,8 @@ import { TUNING as T } from './tuning.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const _t = new THREE.Vector3();
+/** Seconds of "where is my nose taking me" a drifting CPU looks ahead before letting go. */
+export const AI_DRIFT_EXIT_LOOK = 0.1;
 
 /** Signed heading change (radians) along the track from s over `dist`. Negative = right turn. */
 export function turnAhead(path, s, dist) {
@@ -241,8 +243,11 @@ export class CpuBrain {
       const stillBending = Math.abs(turnAhead(path, k.s, 24)) > 0.2;
       const pinnedOut = steer * k.driftDir < -0.95;
       this.driftOutFor = pinnedOut ? this.driftOutFor + dt : 0;
-      const outsideEdge = -k.lateral * k.driftDir > hw - 1; // sliding wide
-      const insideEdge = k.lateral * k.driftDir > hw - 1; // turning too tight
+      const outsideEdge = -k.lateral * k.driftDir > hw - 2; // sliding wide: let go before the grass
+      // Turning too tight? Look where the NOSE points: when the drift ends the
+      // kart goes that way (plus a turbo), so let go before it reaches the grass.
+      const noseIn = Math.max(0, speed * Math.sin(wrapAngle(path.headingAt(k.s) - k.heading)) * k.driftDir);
+      const insideEdge = k.lateral * k.driftDir + noseIn * AI_DRIFT_EXIT_LOOK > hw - 1.5;
       input.drift = stillBending && this.driftOutFor < 0.5 && !outsideEdge && !insideEdge;
       if (!input.drift) this.driftPlan = false;
     }
@@ -277,24 +282,97 @@ export function aiDriveInput(race, kart, dt) {
   return brain.think(race, dt ?? race.lastDt ?? 1 / 60);
 }
 
+/** Kid-Assist per-kart memory (lane choice, unstick timer). */
+const _assist = new WeakMap();
+
+/** Kid-Assist steering-help tuning. The pedal rules live in TUNING (kidAssist*). */
+export const KID_ASSIST = Object.freeze({
+  lineFollow: 0.85, // how much of the racing line the helper follows
+  laneRate: 9, // metres per second a held stick moves the chosen lane
+  laneReturn: 0.45, // per second: a released stick drifts back to the racing line
+  edgeMargin: 2.4, // the target lane stays this far inside the road edge
+  gain: 2.4, // steering gain toward the look-ahead point
+  kidShare: 0.45, // share of the kid's own stick mixed straight into the steering
+  stuckAfter: 1.2, // seconds stalled before the helper backs up a little
+  backUpFor: 0.7,
+});
+
+/** Kid-Assist memory for a kart (created on first use). */
+export function kidAssistState(kart) {
+  let st = _assist.get(kart);
+  if (!st) {
+    st = { lane: 0, stuck: 0, backUp: 0 };
+    _assist.set(kart, st);
+  }
+  return st;
+}
+
 /**
- * Easy Drive: auto-accelerate + gentle steer assist toward the centre of the
- * road (stronger near the edges). Returns a new DriveInput.
+ * Pedals under Kid-Assist: ALWAYS full gas, unless the kid really brakes
+ * (brake >= TUNING.kidAssistBrake). A resting or lightly-touched trigger no
+ * longer cancels the gas — that was the "doesn't fully press the gas" bug:
+ * brake 0.1..0.5 left accel at 0, so Kart.js gently braked instead. During
+ * the countdown it presses at the right moment for a sparkly Rocket Start.
+ * @returns {{accel:number, brake:number}}
+ */
+export function kidAssistPedals(race, input) {
+  const brake = clamp(Number(input?.brake) || 0, 0, 1);
+  const braking = brake >= T.kidAssistBrake;
+  if (race.state === 'countdown') {
+    return { accel: !braking && race.countdown <= T.kidAssistStartAt ? 1 : 0, brake: 0 };
+  }
+  return braking ? { accel: 0, brake } : { accel: 1, brake: 0 };
+}
+
+/**
+ * Kid-Assist (the field stays `easyDrive`): always full gas + strong but
+ * natural steering help that follows the racing line, keeps clear of the
+ * walls and lets the kid choose a lane with the stick. It never drifts by
+ * itself (the kid still can). Returns a new DriveInput.
  */
 export function applyEasyDrive(race, kart, input) {
   const out = { ...input };
-  if (race.state === 'countdown') return out;
-  if ((out.brake || 0) < 0.1) out.accel = Math.max(out.accel || 0, 1);
+  const pedals = kidAssistPedals(race, input);
+  out.accel = pedals.accel;
+  out.brake = pedals.brake;
+  if (race.state === 'countdown' || !race.path) return out;
+
+  const dt = clamp(Number.isFinite(race.lastDt) ? race.lastDt : 1 / 60, 0, 0.1);
+  const st = kidAssistState(kart);
   const path = race.path;
   const hw = path.halfWidth;
+  const s = clamp(Number(input.steer) || 0, -1, 1);
   const speed = Math.max(0, kart.speed);
-  const look = 8 + speed * 0.4;
-  const tgtLat = clamp(kart.lateral * 0.5, -hw * 0.6, hw * 0.6);
+
+  // The kid's stick moves the chosen lane; let go and it drifts back to the line.
+  const edge = Math.max(0, hw - KID_ASSIST.edgeMargin);
+  if (Math.abs(s) > 0.15) st.lane = clamp(st.lane + s * KID_ASSIST.laneRate * dt, -2 * edge, 2 * edge);
+  else st.lane *= Math.exp(-KID_ASSIST.laneReturn * dt);
+
+  const look = 7 + speed * 0.42;
+  const line = race.racingLine ? racingLineAt(race.racingLine, kart.s + look * 0.5) : 0;
+  const tgtLat = clamp(line * KID_ASSIST.lineFollow + st.lane, -edge, edge);
   const tp = path.positionAt(kart.s + look, tgtLat, _t);
-  const assist = steerToward(kart, tp.x, tp.z, 2.0);
-  const s = clamp(out.steer || 0, -1, 1);
-  const nearWall = clamp((Math.abs(kart.lateral) - (hw - 2)) / 3, 0, 1);
-  const w = Math.min(0.85, 0.4 * (1 - Math.abs(s) * 0.7) + nearWall * 0.35);
-  out.steer = clamp(s + (assist - s) * w, -1, 1);
+  const assist = steerToward(kart, tp.x, tp.z, KID_ASSIST.gain);
+
+  // Near a wall the helper takes over more (auto-avoid walls).
+  const nearWall = clamp((Math.abs(kart.lateral) - (hw - 3)) / 2.5, 0, 1);
+  const share = KID_ASSIST.kidShare * Math.abs(s) * (1 - 0.8 * nearWall);
+  out.steer = clamp(assist + (s - assist) * share, -1, 1);
+
+  // Stalled nose-first in a pile-up? Back up for a moment, then carry on.
+  if (st.backUp > 0) {
+    st.backUp -= dt;
+    out.accel = 0;
+    out.brake = 1;
+    out.steer = -assist;
+    return out;
+  }
+  if (race.state === 'racing' && Math.abs(kart.speed) < 1.5 && !kart.spinning && pedals.accel > 0) st.stuck += dt;
+  else st.stuck = 0;
+  if (st.stuck > KID_ASSIST.stuckAfter) {
+    st.stuck = 0;
+    st.backUp = KID_ASSIST.backUpFor;
+  }
   return out;
 }
