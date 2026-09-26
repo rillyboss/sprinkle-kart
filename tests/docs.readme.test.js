@@ -120,10 +120,21 @@ describe('README: modes, toys and grown-up features', () => {
 describe('version and changelog', () => {
   it('package.json (and the lockfile) carry the newest CHANGELOG version', () => {
     const newest = /^## v(\d+\.\d+\.\d+)/m.exec(changelog)?.[1];
-    expect(newest).toBe('2.0.0');
+    expect(newest).toBe('2.0.1');
     expect(pkg.version).toBe(newest);
     expect(lock.version).toBe(newest);
     expect(lock.packages[''].version).toBe(newest);
+  });
+
+  it('v2.0.1 sits above v2.0.0 and covers the Peekaberry rename and the new Bruno look', () => {
+    const v201 = changelog.indexOf('## v2.0.1');
+    const v2 = changelog.indexOf('## v2.0.0');
+    expect(v201).toBeGreaterThan(-1);
+    expect(v2).toBeGreaterThan(v201);
+    const text = changelog.slice(v201, v2);
+    expect(text).toContain('Peekaberry');
+    expect(text).toContain('Bruno Bananas');
+    expect(text).not.toMatch(/Boo Berry/i);
   });
 
   it('the changelog has v2.0.0 above v1.0.0, and v2 lists every new racer and track', () => {

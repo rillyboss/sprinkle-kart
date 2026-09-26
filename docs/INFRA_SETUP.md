@@ -13,7 +13,7 @@ Most of it is already automated. Only the Cloudflare part needs you.
 > The game works online before you do any of this: it uses public signaling plus direct connections.
 > The Cloudflare steps make connecting more reliable and let nearly every home network join.
 
-## Status right now (v2.0.0)
+## Status right now (v2.0.1)
 
 Online play is still being built, so not every step works yet. What you can do today:
 

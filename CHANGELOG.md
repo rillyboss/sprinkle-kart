@@ -2,7 +2,7 @@
 
 What's new in Sprinkle Kart, newest first. Player-facing details live in the [README](README.md).
 
-## Unreleased
+## v2.0.1 — Peekaberry & Friends Fix-Up (2026-09-26)
 
 ### Racers
 - Pack A's shy blueberry ghost has her own original name now: **Peekaberry** 🫐. Saved unlocks,
@@ -22,6 +22,14 @@ What's new in Sprinkle Kart, newest first. Player-facing details live in the [RE
 - Race callouts no longer pile up over the race timer or on top of the *Mini-Turbo!* flash.
 - The Rainbow Star makes a kart glow brighter instead of looking muddy.
 - The title show's camera no longer parks right in front of the item boxes.
+
+### Under the hood
+- The smoke test now checks the menus, results, unlock reveals and trophy ceremony for cut-off
+  or overlapping pieces at two screen sizes (1280x720 and 800x450).
+- New end-to-end tests for the whole item pipeline (pick up, hold, use, hit) and for the race
+  clock; fairness tests are split per cup. The full test run is about twice as fast, and the
+  coverage bar went up.
+- A test checks that every racer and track name is our very own original name.
 
 ## v2.0.0 — The Big Sprinkle Update (2026-09-26)
 
