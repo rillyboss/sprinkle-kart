@@ -4,16 +4,24 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # Nightly full smoke at 07:17 UTC (off the hour so it doesn't queue behind everyone's cron).
+    - cron: '17 7 * * *'
 
-# A newer push to the same PR/branch cancels the older run (main always finishes).
+# One run per branch/PR at a time: a newer push cancels the older run. The fast
+# test-and-build gate re-runs in a few minutes, and the slow smoke job would otherwise
+# pile up (it takes ~60 min on a GPU-less runner).
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  # The REQUIRED, fast gate (~3 min): full unit suite with coverage thresholds, then the
+  # production build. Branch protection and releases key off this job only.
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -35,6 +43,11 @@ jobs:
           if-no-files-found: ignore
       - run: npm run build
 
+  # Browser smoke (Playwright + system Chrome on SwiftShader). It is slow and informational,
+  # not a merge gate: developers run the full smoke locally before merging.
+  #   - pushes to main, manual runs and the nightly schedule: the FULL scenario list
+  #   - pull requests: a short subset (menus, controller flow, results/unlocks, mode menu,
+  #     one track) so a PR gets a browser signal in minutes instead of an hour
   smoke:
     runs-on: ubuntu-latest
     needs: test-and-build
@@ -42,6 +55,8 @@ jobs:
     env:
       # CI profile (scripts/smoke-plan.mjs): 800x450 @ dpr 1, 4x timeouts, trimmed 4p set, 1 retry.
       CI: 'true'
+      # Empty = every scenario. PRs get the short subset (names are smoke.mjs filters).
+      SMOKE_FILTERS: ${{ github.event_name == 'pull_request' && 'menu-flow gamepad-flow results-unlock modes-menu cotton-candy-castle-1p' || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -51,7 +66,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Chrome version
         run: google-chrome --version || echo "no system Chrome - Playwright will complain below"
-      - run: npm run smoke
+      - name: Smoke (${{ github.event_name == 'pull_request' && 'PR subset' || 'full' }})
+        # SMOKE_FILTERS is word-split on purpose: each word is one smoke.mjs filter.
+        run: node scripts/smoke.mjs $SMOKE_FILTERS
       - uses: actions/upload-artifact@v7
         if: always()
         with:

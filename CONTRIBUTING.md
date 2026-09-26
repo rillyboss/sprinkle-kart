@@ -101,8 +101,11 @@ and explain it in the PR.
 - Description: what changed, which files outside your area you touched (ideally none), how you
   tested (the three commands + which screenshots you checked), anything another workstream must know.
 - Keep PRs focused; several small PRs beat one giant one.
-- CI (`.github/workflows/ci.yml`) runs the unit suite with the coverage gate, the build, and the smoke test
-  (CI profile) on every PR; both jobs must be green. Coverage and smoke screenshots are uploaded as artifacts.
+- CI (`.github/workflows/ci.yml`): **`test-and-build`** (unit suite with the coverage gate + build, ~3 min) is
+  the required gate. The **`smoke`** job runs after it: a short subset on PRs (menus, controller flow,
+  results/unlocks, mode menu, one track), the full list on pushes to `main`, manual runs and nightly. Smoke is
+  slow on GPU-less runners, so don't wait on it: your local full smoke is the real browser gate. A newer push
+  cancels the older run on the same branch. Coverage and smoke screenshots are uploaded as artifacts.
 
 ## House style
 
