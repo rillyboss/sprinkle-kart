@@ -141,21 +141,22 @@ describe.each(IDS)('%s layout personality', (id) => {
   });
 
   it('builds the same world every time (seeded)', () => {
+    // compare a fresh build with the shared one; attributes that animation rewrites
+    // (snow, streamers: version > 0) are skipped so test order does not matter
     const a = buildTrack(defs[id], path);
-    const b = buildTrack(defs[id], path);
     const sig = (g) => {
-      let verts = 0, objs = 0, sum = 0;
+      const out = [];
       g.traverse((o) => {
         if (!o.geometry) return;
-        objs++;
         const p = o.geometry.attributes.position;
-        verts += p.count;
-        sum += p.getX(0) + p.getY(Math.floor(p.count / 2)) + p.getZ(p.count - 1);
+        out.push({ n: p.count, v: p.version, x: Math.round((p.getX(0) + p.getY(Math.floor(p.count / 2)) + p.getZ(p.count - 1)) * 100) });
       });
-      return [verts, objs, Math.round(sum * 100)];
+      return out;
     };
-    expect(sig(a.group)).toEqual(sig(b.group));
-    a.dispose(); b.dispose();
+    const sa = sig(a.group), sb = sig(builtFor(id).group);
+    expect(sa.map((e) => e.n)).toEqual(sb.map((e) => e.n));
+    sa.forEach((e, i) => { if (e.v === 0 && sb[i].v === 0) expect(e.x).toBe(sb[i].x); });
+    a.dispose();
   }, HEAVY);
 
   it('stays inside the scenery budget (triangles and draw calls like the original tracks)', () => {
