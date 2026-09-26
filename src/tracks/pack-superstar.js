@@ -7,11 +7,13 @@
  * { def, buildScenery, prepare?, buildRoadDetails? }) and list it here, e.g.
  *   import cupcakeCarnival from './cupcake-carnival.js';
 import auroraPalace from './aurora-palace.js';
+import moonbounceBase from './moonbounce-base.js';
  *   export default [cupcakeCarnival, ...];
  */
 
 import cupcakeCarnival from './cupcake-carnival.js';
 import auroraPalace from './aurora-palace.js';
+import moonbounceBase from './moonbounce-base.js';
 
 /** @type {import('./types.js').TrackModule[]} */
-export default [cupcakeCarnival, auroraPalace];
+export default [cupcakeCarnival, auroraPalace, moonbounceBase];
