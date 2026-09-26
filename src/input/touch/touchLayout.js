@@ -102,7 +102,15 @@ export function layoutControlSet(zone, settingsIn, safe = {}) {
 
   // Pause: small, at the top of the zone, right of centre (the top corners belong to the HUD)
   const pauseR = Math.max(MIN_TAP / 2, u * 0.3);
-  controls.push(circle('pause', zone.x + zone.w * (portrait ? 0.5 : 0.64), T + pauseR, pauseR, { label: 'PAUSE' }));
+  if (portrait) {
+    // tall screens: the timer fills the top middle, so tuck PAUSE under the minimap (top-right,
+    // same size rule as hudLogic.minimapRect for one player)
+    const short = Math.min(zone.w, zone.h);
+    const mm = clamp(short * 0.28, 90, 300) + Math.round(short * 0.025);
+    controls.push(circle('pause', R - pauseR, zone.y + inset.t + mm + gap + pauseR, pauseR, { label: 'PAUSE' }));
+  } else {
+    controls.push(circle('pause', zone.x + zone.w * 0.64, T + pauseR, pauseR, { label: 'PAUSE' }));
+  }
 
   // Left-hand steering
   const stickR = u * 0.85;

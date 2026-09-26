@@ -15,6 +15,17 @@ export function menuDeviceFor(touch, x, width) {
   return touch.device('touch1');
 }
 
+/** Does el (or an ancestor up to stop) scroll vertically on its own right now? */
+export function scrollsVertically(el, stop = null, getStyle = typeof getComputedStyle === 'function' ? getComputedStyle : null) {
+  for (let n = el; n && n !== stop && n.nodeType === 1; n = n.parentElement) {
+    if (n.scrollHeight > n.clientHeight + 2) {
+      const oy = getStyle ? getStyle(n).overflowY : '';
+      if (oy === 'auto' || oy === 'scroll') return true;
+    }
+  }
+  return false;
+}
+
 export function attachMenuGestures(target, touch, { win = typeof window !== 'undefined' ? window : null, now } = {}) {
   if (!target || typeof target.addEventListener !== 'function' || !touch) return () => {};
   const clock = now || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
@@ -29,7 +40,7 @@ export function attachMenuGestures(target, touch, { win = typeof window !== 'und
   const onDown = (e) => {
     if (!isTouch(e)) return;
     touch.register?.();
-    mg.down(e.pointerId, e.clientX, e.clientY, clock());
+    mg.down(e.pointerId, e.clientX, e.clientY, clock(), { nativeScrollY: scrollsVertically(e.target, target) });
     if (raf === null) raf = win?.requestAnimationFrame?.(loop) ?? null;
   };
   const onMove = (e) => { if (isTouch(e)) mg.move(e.pointerId, e.clientX, e.clientY); };
@@ -39,13 +50,20 @@ export function attachMenuGestures(target, touch, { win = typeof window !== 'und
     if (mg.suppressClick(clock())) { e.stopPropagation?.(); e.preventDefault?.(); }
   };
   const onContext = (e) => { if (mg.g.count > 0) e.preventDefault?.(); };
+  // No browser scroll / fling from a menu swipe (a fling swallows the NEXT tap), except in
+  // real vertical scrollers, which keep native scrolling.
+  const onTouchMove = (e) => {
+    if (e.cancelable && !scrollsVertically(e.target, target)) e.preventDefault?.();
+  };
   target.addEventListener('pointerdown', onDown, true);
   target.addEventListener('pointermove', onMove, true);
   target.addEventListener('pointerup', onUp, true);
   target.addEventListener('pointercancel', onCancel, true);
   target.addEventListener('click', onClick, true);
   target.addEventListener('contextmenu', onContext, true);
+  target.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
   return () => {
+    target.removeEventListener('touchmove', onTouchMove, { capture: true });
     target.removeEventListener('pointerdown', onDown, true);
     target.removeEventListener('pointermove', onMove, true);
     target.removeEventListener('pointerup', onUp, true);

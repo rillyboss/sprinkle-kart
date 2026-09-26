@@ -90,3 +90,7 @@
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+/* Inside menu scrollers (html/body say touch-action:none, which stops at a scroll container):
+   vertical native scrolling only — a sideways swipe is a menu gesture, never a fling that
+   would swallow the next tap. */
+.sk-touch-menus .sk-menus * { touch-action: pan-y; }

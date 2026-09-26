@@ -20,11 +20,18 @@ export class MenuGestureController {
     this.onAction = onAction;
     this._startX = 0;
     this._startY = 0;
+    this._nativeY = false;
     this._suppressUntil = -Infinity;
   }
 
-  down(id, x, y, t) {
-    if (this.g.count === 0) { this._startX = x; this._startY = y; }
+  /**
+   * @param {{nativeScrollY?: boolean}} [opts] nativeScrollY: the finger landed on something
+   *   that scrolls vertically by itself — up/down swipes are left to the browser.
+   */
+  down(id, x, y, t, opts = {}) {
+    // a NEW press means the click of the last gesture is over: never swallow this one's click
+    this._suppressUntil = -Infinity;
+    if (this.g.count === 0) { this._startX = x; this._startY = y; this._nativeY = !!opts.nativeScrollY; }
     this.g.down(id, x, y, t);
   }
 
@@ -48,6 +55,7 @@ export class MenuGestureController {
     const action = gestureToMenuAction(gesture);
     if (!action) return null;
     this._suppressUntil = t + CLICK_SUPPRESS_MS;
+    if (this._nativeY && (action === 'up' || action === 'down')) return null;
     let dev = null;
     try { dev = this.deviceFor(this._startX, this._startY); } catch { dev = null; }
     if (!dev) return null;
