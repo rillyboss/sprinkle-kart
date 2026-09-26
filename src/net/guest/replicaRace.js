@@ -23,7 +23,7 @@
  */
 import { createKart } from '../../race/Kart.js';
 import { aiDriveInput } from '../../race/Race.js';
-import { computeRacingLine } from '../../race/AI.js';
+import { computeRacingLine, applyEasyDrive } from '../../race/AI.js';
 import { normalizeGameplay } from '../../race/gameplay.js';
 import { normalizeRules } from '../../modes/rules.js';
 import { SPEED_CLASSES, DEFAULT_LAPS } from '../../config.js';
@@ -263,8 +263,31 @@ export class ReplicaRace {
     return ticks;
   }
 
+  /**
+   * Kid-Assist on THIS machine (net review #8): a Kid-Assist seat's stick goes through applyEasyDrive before it
+   * is predicted AND before it is sent (with `assisted: true`, so the host uses it as is). The prediction and
+   * the host then drive the exact same input — no lurch at GO, no drift from the racing-line helper. Replays use
+   * the stored assisted inputs, so they stay deterministic.
+   */
+  _assistWire(tick, wire) {
+    const r = tick - this.startTick + 1;
+    const goR = this.goTick - this.startTick + 1;
+    const view = {
+      state: r <= goR ? 'countdown' : 'racing', countdown: r <= goR ? this._countdownAt(tick) : 0,
+      path: this.path, racingLine: this.racingLine, lastDt: TICK_DT,
+    };
+    return wire.map((x, seat) => {
+      const id = this.localKartIds[seat];
+      const k = this.karts[id];
+      if (!x || x.robo || !k?.easyDrive || !this._predicting.has(id) || this._auto.has(id)) return x;
+      const a = applyEasyDrive(view, k, x);
+      return { ...x, steer: a.steer, accel: a.accel, brake: a.brake, assisted: true };
+    });
+  }
+
   _predictOne(tick, sample) {
-    const wire = (sample ? sample(tick) : null) || this.localKartIds.map(() => ({ steer: 0, accel: 0, brake: 0, drift: false, itemCount: 0, hopCount: 0 }));
+    const raw = (sample ? sample(tick) : null) || this.localKartIds.map(() => ({ steer: 0, accel: 0, brake: 0, drift: false, itemCount: 0, hopCount: 0 }));
+    const wire = this._assistWire(tick, raw);
     const q = wire.map((x) => this._quantize(x));
     const resolved = this.resolver.resolve(tick, q);
     // a finished own kart keeps rolling on P with a local autopilot (the host drives it with its CPU brain),

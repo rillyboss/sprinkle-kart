@@ -177,7 +177,8 @@ export class Race {
   _inputFor(kart, inputs, dt) {
     if (kart.isCPU || kart.finished) return this._brainFor(kart).think(this, dt);
     const raw = (inputs && inputs[kart.playerIndex]) || NEUTRAL_INPUT;
-    return kart.easyDrive ? applyEasyDrive(this, kart, raw) : raw;
+    // online guests run Kid-Assist on their own machine (so their prediction matches) and send `assisted`
+    return kart.easyDrive && !raw.assisted ? applyEasyDrive(this, kart, raw) : raw;
   }
 
   /**
