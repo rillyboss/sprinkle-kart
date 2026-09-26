@@ -328,7 +328,8 @@ const setTab = (s, tab) => {
 /**
  * Tab strip: left/right switch pages, down enters the grid. Grid: arrows move
  * (up from the top row goes back to the tab strip), toggle (Y / Tab) = next
- * page from anywhere, back = go 'back'.
+ * page from anywhere, tabPrev / tabNext (LB / RB, Q / E, PgUp / PgDn) = previous /
+ * next page from anywhere, back = go 'back'.
  * Pointer: { action:'set', key:'tab', value } and { action:'pick', index }.
  */
 export function bookReduce(s, ev) {
@@ -336,7 +337,9 @@ export function bookReduce(s, ev) {
   const cols = s.cols[s.tab];
   const i = s.index[s.tab];
   switch (ev.action) {
-    case 'toggle': return out(setTab(s, s.tab + 1), ['book-page']);
+    case 'toggle':
+    case 'tabNext': return out(setTab(s, s.tab + 1), ['book-page']);
+    case 'tabPrev': return out(setTab(s, s.tab - 1), ['book-page']);
     case 'back': return out(s, ['back'], 'back');
     case 'set':
       if (ev.key === 'tab' && Number.isInteger(ev.value)) return out(setTab({ ...s, focus: 'tabs' }, ev.value), ['book-page']);

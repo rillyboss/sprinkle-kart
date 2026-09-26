@@ -17,7 +17,8 @@
  * GAMEPAD MAPPING (full notes in ./gamepadMapping.js)
  *   A or RT accel, B or LT brake, left stick / d-pad steer (deadzone 0.2), RB or X drift,
  *   LB or Y item, right-stick click (or right stick down) look back, Start pause.
- *   Menu: stick/d-pad move, A confirm, B back, Y toggle, Start start.
+ *   Menu: stick/d-pad move, A confirm, B back, Y toggle, Start start, LB/RB tabPrev/tabNext
+ *   (keyboards: Q/E on kb1, PgUp/PgDn on kb2).
  *
  * Conventions: steer -1 = left, +1 = right. Edge-triggered values (useItem, pause, menu events)
  * are computed in update() and stay true for exactly one update.
@@ -26,7 +27,8 @@ import { KEYBOARD_LAYOUTS, CODE_TO_KEYBOARD, readKeyboardFrame } from './keyboar
 import { readGamepad, describeGamepad, gamepadLabels } from './gamepadMapping.js';
 import { RepeatTimer, MENU_REPEAT_DELAY, MENU_REPEAT_INTERVAL } from './MenuRepeat.js';
 
-export const MENU_ACTIONS = ['confirm', 'back', 'start', 'toggle'];
+/** Edge-triggered menu actions; 'tabPrev' / 'tabNext' = LB / RB, Q / E (kb1), PgUp / PgDn (kb2). */
+export const MENU_ACTIONS = ['confirm', 'back', 'start', 'toggle', 'tabPrev', 'tabNext'];
 export const MENU_DIRECTIONS = ['up', 'down', 'left', 'right'];
 const ALL_MENU_ACTIONS = new Set([...MENU_DIRECTIONS, ...MENU_ACTIONS]);
 

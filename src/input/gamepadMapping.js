@@ -7,7 +7,8 @@
  *           RB (5) or X (2) = drift (hold)              LB (4) or Y (3) = use item
  *           right-stick click (11) or right stick pulled down = look back
  *           Start (9) = pause
- *   Menu:   left stick / d-pad = move, A = confirm, B = back, Y = toggle (Kid-Assist), Start = start
+ *   Menu:   left stick / d-pad = move, A = confirm, B = back, Y = toggle (Kid-Assist), Start = start,
+ *           LB (4) / RB (5) = previous / next tab (menu actions tabPrev / tabNext)
  *
  * Non-standard pads (generic USB / DirectInput / some Switch adapters) use the same button
  * indices as a best guess, read triggers as digital or analog buttons 6/7, accept
@@ -143,6 +144,8 @@ export function readGamepad(gp, prev) {
     back: pressed(gp, 1),
     start: startBtn,
     toggle: pressed(gp, 3),
+    tabPrev: pressed(gp, 4),
+    tabNext: pressed(gp, 5),
     up: dpad.y < 0 || sd.up,
     down: dpad.y > 0 || sd.down,
     left: dpad.x < 0 || sd.left,

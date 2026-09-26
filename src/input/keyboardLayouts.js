@@ -19,11 +19,14 @@
  * │ Back/Leave   │ Esc                          │ Backspace                              │
  * │ Start        │ P                            │ \  (backslash)                         │
  * │ Toggle (Easy)│ Tab                          │ '  (quote) or Right Ctrl               │
+ * │ Tab ◀ / ▶    │ Q / E                        │ Page Up / Page Down                    │
  * └──────────────┴──────────────────────────────┴────────────────────────────────────────┘
+ * Tab ◀ / ▶ are the menu actions 'tabPrev' / 'tabNext' (pads: LB / RB): they flip tab bars
+ * (track-select cups, Sticker Book pages …). Q / E keep meaning look back / item while driving.
  */
 
 /** @typedef {'steerLeft'|'steerRight'|'accel'|'brake'|'drift'|'item'|'lookBack'|'pause'|
- *            'up'|'down'|'left'|'right'|'confirm'|'back'|'start'|'toggle'} BindingName */
+ *            'up'|'down'|'left'|'right'|'confirm'|'back'|'start'|'toggle'|'tabPrev'|'tabNext'} BindingName */
 
 export const KEYBOARD_LAYOUTS = {
   kb1: {
@@ -47,10 +50,12 @@ export const KEYBOARD_LAYOUTS = {
       back: ['Escape'],
       start: ['KeyP'],
       toggle: ['Tab'],
+      tabPrev: ['KeyQ'],
+      tabNext: ['KeyE'],
     },
     labels: {
       accel: 'W', brake: 'S', steer: 'A/D', drift: 'Space', item: 'E', lookBack: 'Q',
-      pause: 'Esc', confirm: 'Space', back: 'Esc', start: 'P', toggle: 'Tab', move: 'WASD',
+      pause: 'Esc', confirm: 'Space', back: 'Esc', start: 'P', toggle: 'Tab', move: 'WASD', tabPrev: 'Q', tabNext: 'E',
     },
   },
   kb2: {
@@ -74,10 +79,12 @@ export const KEYBOARD_LAYOUTS = {
       back: ['Backspace'],
       start: ['Backslash'],
       toggle: ['Quote', 'ControlRight'],
+      tabPrev: ['PageUp'],
+      tabNext: ['PageDown'],
     },
     labels: {
       accel: '↑', brake: '↓', steer: '←/→', drift: 'R-Shift', item: '/', lookBack: '.',
-      pause: 'Backspace', confirm: '/', back: 'Backspace', start: '\\', toggle: "'", move: 'Arrows',
+      pause: 'Backspace', confirm: '/', back: 'Backspace', start: '\\', toggle: "'", move: 'Arrows', tabPrev: 'PgUp', tabNext: 'PgDn',
     },
   },
 };
@@ -105,7 +112,7 @@ export function isGameKey(code) {
   return CODE_TO_KEYBOARD.has(code);
 }
 
-const BUTTON_NAMES = ['drift', 'item', 'lookBack', 'pause', 'up', 'down', 'left', 'right', 'confirm', 'back', 'start', 'toggle'];
+const BUTTON_NAMES = ['drift', 'item', 'lookBack', 'pause', 'up', 'down', 'left', 'right', 'confirm', 'back', 'start', 'toggle', 'tabPrev', 'tabNext'];
 
 /**
  * Build a normalized input frame for one keyboard layout.

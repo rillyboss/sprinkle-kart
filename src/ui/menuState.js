@@ -264,7 +264,7 @@ function lapsIndexFor(laps) {
  * @param {boolean} [o.easyDrive] someone has Kid-Assist on: start on Cozy
  * @param {(track)=>boolean} [o.isLocked] true if this track is still locked (shown with a padlock, can't be raced)
  */
-export function createTrackSelectState({ tracks, previous = null, controllerId = null, easyDrive = false, isLocked = () => false }) {
+export function createTrackSelectState({ tracks, previous = null, controllerId = null, easyDrive = false, isLocked = () => false, pageSizes = null }) {
   const locked = tracks.map((t) => { try { return !!isLocked(t); } catch { return true; } });
   let trackIndex = previous?.trackId ? tracks.findIndex((t) => t.id === previous.trackId) : -1;
   if (trackIndex < 0 || locked[trackIndex]) trackIndex = Math.max(0, locked.indexOf(false));
@@ -279,19 +279,67 @@ export function createTrackSelectState({ tracks, previous = null, controllerId =
     trackCount: tracks.length,
     controllerId,
     locked,
+    // cup pages (tracks per tab, in order); one page of everything when not given
+    pageSizes: validPageSizes(pageSizes, tracks.length),
   };
 }
+
+function validPageSizes(sizes, total) {
+  if (!Array.isArray(sizes) || !sizes.length) return [total];
+  const ok = sizes.every((n) => Number.isInteger(n) && n > 0) && sizes.reduce((a, n) => a + n, 0) === total;
+  return ok ? [...sizes] : [total];
+}
+
+/** First flat index of page `page`. */
+export function pageStart(sizes, page) {
+  let start = 0;
+  for (let p = 0; p < page && p < sizes.length; p++) start += sizes[p];
+  return start;
+}
+
+/**
+ * Track index after flipping `dir` (-1 | 1) cup tabs from `index` (wraps; keeps the
+ * position inside the cup when the next cup is big enough).
+ */
+export function flipPage(sizes, index, dir) {
+  if (!sizes.length) return index;
+  const { page, offset } = pageForIndex(sizes, index);
+  const next = (page + (dir < 0 ? -1 : 1) + sizes.length) % sizes.length;
+  return pageStart(sizes, next) + Math.min(offset, sizes[next] - 1);
+}
+
+/** Keyboards share one screen: kb1 may press kb2's PgUp / PgDn for the tab bar (and the other way). */
+const bothKeyboards = (a, b) => /^kb\d/.test(String(a)) && /^kb\d/.test(String(b));
 
 /**
  * Rows: track cards / speed class / laps / "Let's race!" button.
  * Up/down picks a row, left/right changes it, confirm or start races,
  * toggle cycles the speed class, back returns to character select.
- * Pointer: { action:'set', key:'trackIndex'|'speedIndex'|'lapsIndex', value }.
+ * tabPrev / tabNext (LB / RB, Q / E, PgUp / PgDn) flip cup pages (state.pageSizes).
+ * Pointer: { action:'set', key:'trackIndex'|'speedIndex'|'lapsIndex', value } · { action:'page', value }.
  */
 export function trackSelectReduce(state, ev) {
-  if (state.controllerId && ev.deviceId !== state.controllerId && ev.deviceId !== 'mouse') return out(state);
+  const isTab = ev.action === 'tabPrev' || ev.action === 'tabNext';
+  if (state.controllerId && ev.deviceId !== state.controllerId && ev.deviceId !== 'mouse'
+    && !(isTab && bothKeyboards(ev.deviceId, state.controllerId))) return out(state);
   const rowName = TRACK_ROWS[state.row];
   switch (ev.action) {
+    case 'tabPrev':
+    case 'tabNext': {
+      const sizes = state.pageSizes ?? [state.trackCount];
+      if (sizes.length < 2) return out(state);
+      const trackIndex = flipPage(sizes, state.trackIndex, ev.action === 'tabNext' ? 1 : -1);
+      return out({ ...state, trackIndex, row: 0 }, ['move']);
+    }
+    case 'page': {
+      // pointer on a cup tab: { action: 'page', value: pageIndex }
+      const sizes = state.pageSizes ?? [state.trackCount];
+      if (!Number.isInteger(ev.value) || ev.value < 0 || ev.value >= sizes.length) return out(state);
+      const { page, offset } = pageForIndex(sizes, state.trackIndex);
+      if (page === ev.value) return out({ ...state, row: 0 });
+      const trackIndex = pageStart(sizes, ev.value) + Math.min(offset, sizes[ev.value] - 1);
+      return out({ ...state, trackIndex, row: 0 }, ['move']);
+    }
     case 'up':
     case 'down': {
       const row = Math.max(0, Math.min(TRACK_ROWS.length - 1, state.row + (ev.action === 'down' ? 1 : -1)));
