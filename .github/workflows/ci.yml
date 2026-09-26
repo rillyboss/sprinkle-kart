@@ -109,3 +109,40 @@ jobs:
           path: smoke-out/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Online e2e (scripts/smoke-online.mjs, NETWORKING.md §15): two houses in two contexts of one headless
+  # Chrome play over real WebRTC through the local tracker and `npm run worker:dev` (hermetic: no public
+  # tracker, relay or STUN server is ever contacted). Nightly and manual runs ONLY — never on pull requests
+  # or pushes — and never a gate: continue-on-error, nothing needs it. Developers run it locally before
+  # every online PR (CONTRIBUTING.md "Online testing").
+  online-smoke:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120 # ~40 min locally with the in-game race; runners have no GPU
+    continue-on-error: true
+    env:
+      # CI profile (scripts/smoke-online-plan.mjs): 800x450, 4x timeouts; the worker needs Node 22+ (24 here).
+      CI: 'true'
+      SMOKE_PORT: '5290'
+      SMOKE_WORKER_PORT: '8787'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            infra/signal-worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Chrome version
+        run: google-chrome --version || echo "no system Chrome - Playwright will complain below"
+      - name: Online e2e (M1 scenarios)
+        run: node scripts/smoke-online.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: online-smoke
+          path: smoke-out/online/
+          retention-days: 7
+          if-no-files-found: ignore

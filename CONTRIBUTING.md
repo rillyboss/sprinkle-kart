@@ -67,6 +67,75 @@ automatically; add a smoke case for a new screen by appending a function in `scr
   the page's console) and `smoke-out/summary.json`. On GitHub they are in the `smoke-screenshots` artifact and the
   job summary has a table of every scenario.
 
+### Online testing
+
+Online play (NETWORKING.md) has four layers of tests; the first two run in the normal suite.
+
+1. **Node sims** (`npx vitest run`): the netcode over an in-memory network (`tests/net.sim*.test.js`, the
+   `runNetRace` harness in `tests/helpers/netHarness.js`), sessions, signaling, and the quick online soak
+   (`tests/net.soak.test.js`: one room of 3 houses, a 2-race mini cup with a snack break).
+   **Long soak:** `SOAK=1 npx vitest run tests/net.soak.test.js` — a 4-race Grand Prix + 10 Free Races at
+   150 ms / 3 % loss / 20 ms jitter with two 30 s snack breaks (≈ 43 fake minutes in about a minute); it prints
+   its timings. Run it before an online PR.
+2. **Worker tests** (`npm run worker:test`, Node 22+): the signal worker in workerd. CI runs them only when
+   `infra/signal-worker/**` changes.
+3. **Online browser e2e** — `scripts/smoke-online.mjs`, run it locally before every online PR:
+
+   ```bash
+   SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs            # all M1 scenarios (10-40 min)
+   SMOKE_PORT=5662 node scripts/smoke-online.mjs public                            # only the public-relay path
+   SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs worker-controller timing
+   SMOKE_PORT=5662 SMOKE_WORKER_PORT=8811 node scripts/smoke-online.mjs soak       # 10-min browser soak (M3)
+   ```
+
+   It starts Vite on `SMOKE_PORT`, the local WebTorrent tracker (`scripts/dev/localTracker.mjs`) and
+   `npm run worker:dev` on `SMOKE_WORKER_PORT` (with a local mock of the Cloudflare TURN API, never a real
+   secret), then plays two houses in two contexts of one headless Chrome: host a room, join **by invite link**
+   and **by controller events only**, compare the match-check animals on both screens, approve, seats, racer
+   picks, emotes both ways, Free Race + identical results + rematch, remove the guest → room locked → the
+   guest's reload is refused. It times **code entry → lobby** 10× per path (budgets: ≤ 10 s p90 on the Worker,
+   ≤ 20 s p90 on public relays) and runs **Check connection** with UDP blocked ("Relay needed").
+   Screenshots, `summary.json` and `*-FAIL.png/.log` land in `smoke-out/online/`; **look** at them and attach
+   the interesting ones plus the timing table to the PR. Filters are substrings of the scenario names
+   (`public-invite`, `worker-controller`, `public-timing`, `worker-check`, …; `scripts/smoke-online-plan.mjs`,
+   unit-tested in `tests/net.e2eplan.test.js`).
+   - The browser is **hermetic**: every non-local host name is unresolvable and ICE servers off this machine are
+     stripped, so no run ever reaches a real public tracker, Nostr relay or STUN server. A WebSocket to a
+     non-local host fails the scenario.
+   - `worker:dev` needs **Node 22+**. If your Node is older, the script finds an nvm install (e.g.
+     `C:\ProgramData\nvm\v25.4.0\node.exe`) or uses `SMOKE_WORKER_NODE=<path to node>`. A worker that already
+     answers on `SMOKE_WORKER_PORT` is reused.
+   - Until the in-game online flow (`menus.online`, WS7) is in the build, the script drives a small test-only
+     stand-in built from the real modules; the race steps are then reported as **pending** (not failures).
+     `SMOKE_ONLINE_STRICT=1` turns pending steps into failures, `SMOKE_ONLINE_MILESTONE=M2|M3` adds the later
+     scenarios, `SMOKE_ONLINE_RUNS` changes the number of timing runs.
+   - CI runs it **nightly** (and on manual dispatch) in the `online-smoke` job, which never runs on PRs and never
+     blocks anything; the screenshots are in its `online-smoke` artifact.
+4. **Manual pre-release checklist** — [`docs/ONLINE_CHECKLIST.md`](docs/ONLINE_CHECKLIST.md): two real homes on
+   the real public relays (and the real Worker once it exists), invite link by text message, Check connection on
+   a UDP-blocking network, a 45-minute relayed session, an iPad joining, a version mismatch after a deploy.
+   Paste its results table into the release PR.
+
+**Playing online by hand on one computer.** Each browser profile is one house (its own save), so use two
+profiles (or a normal and a private window) against `npx vite`:
+
+```bash
+node scripts/dev/localTracker.mjs --port 8000                        # public path, no internet needed
+# → http://localhost:5173/?signal=public&relays=ws://127.0.0.1:8000
+nvm use 25.4.0 && npm run worker:dev -- --port 8811                  # Worker path, no Cloudflare account
+# → http://localhost:5173/?signal=worker&signalUrl=http://127.0.0.1:8811
+```
+
+The `?signal=…` override only works on `localhost` / dev builds. `infra/signal-worker/.dev.vars` (copied from
+`.dev.vars.example` on the first `worker:dev`) lets any `localhost` / `127.0.0.1` port connect.
+
+**LAN and iPad testing.** WebRTC and the room key (`crypto.subtle`) need a secure context, so
+`http://192.168.x.x:5173` does **not** work from another device. Either use the GitHub Pages build
+(`https://rillyboss.github.io/sprinkle-kart/`, real public relays), or put the dev server behind an https
+tunnel, e.g. `npx vite` + `cloudflared tunnel --url http://localhost:5173`, and open the tunnel URL on the iPad
+(a dev build honours `?signal=public`; the real public relays are used unless you also tunnel a tracker).
+iPads can join but never host.
+
 ## Test helpers (`tests/helpers/`)
 
 Shared, tested (`tests/qa.helpers.test.js`) building blocks — use them instead of writing new fakes:
