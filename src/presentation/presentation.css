@@ -1,0 +1,65 @@
+/* ==========================================================================
+   Showcase presentation: Effects screen, gentle motion, colour-friendly
+   shapes, speech bubbles, track intro card, title show, 3D podium.
+   OWNER: showcase presentation. Every class is prefixed "skx-".
+   ========================================================================== */
+
+/* ---------- Effects screen ---------- */
+.skx-effects .skp-set-row { transition: transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1), box-shadow 0.18s; }
+.skx-seg { display: flex; gap: 0.2em; padding: 0.18em; border-radius: 2em; background: #eadcf2; font-size: 0.9em; }
+.skx-seg b { padding: 0.2em 0.7em; border-radius: 2em; color: var(--sk-ink-soft, #9a6aa8); white-space: nowrap; transition: background 0.2s, color 0.2s; }
+.skx-seg b.on { background: linear-gradient(180deg, #8ff0cf, #3fcf9c); color: #fff; box-shadow: 0 0.1em 0 #2aa77b; }
+
+/* ---------- Menu micro-animations: a springy "boop" on every selection ---------- */
+body:not(.skx-gentle) .sk-menus .sk-listbtn.sk-sel,
+body:not(.skx-gentle) .sk-menus .sk-title-entry.sk-focus,
+body:not(.skx-gentle) .sk-menus .skp-set-row.sk-sel { animation: skx-boop 0.32s cubic-bezier(0.2, 1.9, 0.4, 1) both; }
+@keyframes skx-boop {
+  0% { transform: scale(0.96); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1.04); }
+}
+
+/* ---------- Gentle motion (reduced motion) ---------- */
+body.skx-gentle .sk-floaties,
+body.skx-gentle .sk-confetti,
+body.skx-gentle .sk-title-karts,
+body.skx-gentle .sk-logo-sprinkle { display: none !important; }
+body.skx-gentle .sk-logo-wrap,
+body.skx-gentle .sk-logo-line span,
+body.skx-gentle .sk-logo-kart,
+body.skx-gentle .sk-wiggle,
+body.skx-gentle .sk-beat,
+body.skx-gentle .sk-press,
+body.skx-gentle .sk-slot-icon,
+body.skx-gentle .sk-step,
+body.skx-gentle .sk-step-portrait,
+body.skx-gentle .sk-crown,
+body.skx-gentle .sk-tags .sk-tag,
+body.skx-gentle .sk-panel-portrait,
+body.skx-gentle .sk-card-art span,
+body.skx-gentle .sk-flag,
+body.skx-gentle .sk-pause-emoji,
+body.skx-gentle .sk-unlock-portrait,
+body.skx-gentle .sk-sparkle,
+body.skx-gentle .sk-item-x,
+body.skx-gentle .sk-rolling,
+body.skx-gentle .sk-easy-emoji,
+body.skx-gentle .sk-banner span { animation: none !important; }
+body.skx-gentle .sk-screen { animation-duration: 0.2s !important; animation-timing-function: ease-out !important; }
+
+/* ---------- Colour-friendly player shapes ---------- */
+body.skx-cb .sk-vp[data-skx-p] .sk-pchip::before { margin-right: 0.2em; font-size: 0.95em; }
+body.skx-cb .sk-vp[data-skx-p='1'] .sk-pchip::before { content: '♥'; }
+body.skx-cb .sk-vp[data-skx-p='2'] .sk-pchip::before { content: '★'; }
+body.skx-cb .sk-vp[data-skx-p='3'] .sk-pchip::before { content: '◆'; }
+body.skx-cb .sk-vp[data-skx-p='4'] .sk-pchip::before { content: '●'; }
+body.skx-cb .sk-vp.sk-vp-multi::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 0.3em;
+  border: 0.22em solid var(--pc);
+}
+body.skx-cb .sk-vp.sk-vp-multi[data-skx-p='2']::after { border-style: dashed; }
+body.skx-cb .sk-vp.sk-vp-multi[data-skx-p='3']::after { border-style: dotted; border-width: 0.3em; }
+body.skx-cb .sk-vp.sk-vp-multi[data-skx-p='4']::after { border-style: double; border-width: 0.4em; }
+.skx-shape { display: none; }
+body.skx-cb .skx-shape { display: inline; margin-right: 0.15em; }
