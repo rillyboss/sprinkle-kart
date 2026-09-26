@@ -64,6 +64,21 @@ export const TEXT = Object.freeze({
   relayHint: "Hides your address from your friends' computers (the matchmaker still sees it)",
 });
 
+/**
+ * The 8 preset emotes (§10.7, ids 0..7). The binding table is WS2's src/net/emotes.js;
+ * this mirror (same order) is what the lobby shows until that module lands on main.
+ */
+export const LOBBY_EMOTES = Object.freeze([
+  Object.freeze({ id: 0, emoji: '👋', text: 'Hi!' }),
+  Object.freeze({ id: 1, emoji: '😄', text: 'Hee hee' }),
+  Object.freeze({ id: 2, emoji: '🎉', text: 'Yay!' }),
+  Object.freeze({ id: 3, emoji: '👍', text: 'Nice!' }),
+  Object.freeze({ id: 4, emoji: '😮', text: 'Whoa!' }),
+  Object.freeze({ id: 5, emoji: '💖', text: 'Love it' }),
+  Object.freeze({ id: 6, emoji: '🍭', text: 'Sweet!' }),
+  Object.freeze({ id: 7, emoji: '🐢', text: 'Wait for me!' }),
+]);
+
 /** Friendly sentence for a REJECT reason (§6.2) + optional detail. */
 export function rejectText(reason, detail = null) {
   switch (reason) {
@@ -101,5 +116,6 @@ export function allTexts() {
     else if (v && typeof v === 'object') Object.values(v).forEach(visit);
   };
   visit(TEXT);
+  for (const e of LOBBY_EMOTES) list.push(`${e.emoji} ${e.text}`);
   return list;
 }

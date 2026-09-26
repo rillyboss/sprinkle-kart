@@ -8,6 +8,9 @@ import {
 } from '../src/net/session/roomCode.js';
 import { MATCH_ANIMALS } from '../src/net/session/approval.js';
 import { seededRng } from '../src/net/session/composeSetup.js';
+import { inviteQrSvg, qrMatrixToSvg } from '../src/net/session/inviteLink.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import { encode } from 'uqr';
 
 const SECRET = { label: 'SPRINKLE-4821', sweets: [0, 1, 2, 62, 63, 26] };
 
@@ -133,5 +136,51 @@ describe('start-up handling (main.js reads the hash once, WS7 wires it)', () => 
     expect(mem.take()).toBe(null);
     mem.remember({ label: 'bad' });
     expect(mem.peek()).toBe(null);
+  });
+});
+
+describe('invite QR code (lazy, pinned zero-dependency encoder)', () => {
+  it('encodes the invite link; the three finder patterns are where a phone camera looks for them', async () => {
+    const link = makeInviteLink(SECRET);
+    const svg = await inviteQrSvg(link);
+    expect(svg.startsWith('<svg')).toBe(true);
+    expect(svg).toContain('viewBox="0 0 ');
+    expect(svg).toContain('aria-label="Invite QR code"');
+    const { data, size } = encode(link, { ecc: 'M', border: 0 });
+    expect(data).toHaveLength(size);
+    for (const [x, y] of [[0, 0], [size - 7, 0], [0, size - 7]]) {
+      for (let k = 0; k < 7; k++) {
+        expect(data[y][x + k]).toBe(true); // top edge of the 7×7 finder square
+        expect(data[y + 6][x + k]).toBe(true); // bottom edge
+      }
+      expect(data[y + 3][x + 3]).toBe(true); // its centre
+      expect(data[y + 1][x + 1]).toBe(false); // the white ring
+    }
+    // the SVG draws exactly the dark modules
+    const dark = data.flat().filter(Boolean).length;
+    expect((svg.match(/h1v1h-1z/g) || []).length).toBe(dark);
+  });
+
+  it('qrMatrixToSvg adds a quiet zone and uses the given colours', () => {
+    const svg = qrMatrixToSvg([[true, false], [false, true]], { dark: '#000', light: '#fff', quiet: 1 });
+    expect(svg).toContain('viewBox="0 0 4 4"');
+    expect(svg).toContain('M1 1h1v1h-1z');
+    expect(svg).toContain('M2 2h1v1h-1z');
+    expect(svg).toContain('fill="#000"');
+  });
+
+  it('is only ever loaded with a dynamic import() (its own small chunk), and the version is pinned', () => {
+    const files = [];
+    const walk = (dir) => { for (const e of readdirSync(new URL(dir, import.meta.url), { withFileTypes: true })) { if (e.isDirectory()) walk(`${dir}${e.name}/`); else if (e.name.endsWith('.js')) files.push(`${dir}${e.name}`); } };
+    walk('../src/');
+    for (const f of files) {
+      const src = readFileSync(new URL(f, import.meta.url), 'utf8');
+      expect(src, f).not.toMatch(/^\s*import\s[^;]*from\s+['"]uqr['"]/m);
+    }
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(pkg.dependencies.uqr).toBe('0.1.3');
+    const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'));
+    expect(lock.packages['node_modules/uqr'].version).toBe('0.1.3');
+    expect(lock.packages['node_modules/uqr'].dependencies ?? {}).toEqual({});
   });
 });

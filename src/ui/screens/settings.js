@@ -147,7 +147,7 @@ export default {
           + '<div class="skp-gate-k">Online play is on!</div>'
           + '<div class="skp-confirm-t">Find "Online" on the title screen. Only friends with your secret room code can ask to join 💖</div>'
           + `<div class="sk-press">Press ${glyph('A')} or ${kbd('Enter')}</div></div>`;
-        modal.firstChild.addEventListener('click', (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'confirm' }); });
+        modal.firstChild?.addEventListener?.('click', (e) => { e.stopPropagation(); handle({ deviceId: 'mouse', action: 'confirm' }); });
       } else if (state.modal === 'done') {
         const all = state.gateFor === 'unlockAll';
         modal.innerHTML = `<div class="skp-card skp-done">${all ? '<div class="skp-done-e">🎁🎉</div>' : '<div class="skp-done-e">📒✨</div>'}`

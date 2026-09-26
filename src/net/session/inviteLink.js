@@ -92,6 +92,31 @@ export function startupInvite({ hash = '', pathname = '/', search = '', onlineEn
 }
 
 /**
+ * QR code for an invite link as an SVG string (dark modules = one path; 4-module quiet zone).
+ * The encoder (`uqr`, pinned, zero dependencies) is loaded lazily, so it only
+ * ships in its own chunk and is fetched when a host opens the lobby.
+ * @param {string} text
+ * @param {{ importer?: () => Promise<{ encode: Function }>, dark?: string, light?: string }} [o]
+ */
+export async function inviteQrSvg(text, { importer = () => import('uqr'), dark = '#6b3a7a', light = '#ffffff' } = {}) {
+  const { encode } = await importer();
+  const qr = encode(String(text), { ecc: 'M', border: 0 });
+  return qrMatrixToSvg(qr.data, { dark, light });
+}
+
+/** boolean[][] (true = dark) → SVG markup. Pure. */
+export function qrMatrixToSvg(matrix, { dark = '#6b3a7a', light = '#ffffff', quiet = 4 } = {}) {
+  const n = matrix.length;
+  const size = n + quiet * 2;
+  let d = '';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) if (matrix[y][x]) d += `M${x + quiet} ${y + quiet}h1v1h-1z`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" role="img" aria-label="Invite QR code">`
+    + `<rect width="${size}" height="${size}" fill="${light}"/><path d="${d}" fill="${dark}"/></svg>`;
+}
+
+/**
  * The invite remembered in memory for this page load (never stored): after a
  * grown-up turns online on, the Online hub offers "Join" once.
  */
