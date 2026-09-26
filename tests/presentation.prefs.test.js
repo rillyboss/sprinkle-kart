@@ -158,13 +158,16 @@ describe('Effects screen reducer', () => {
     let r = effectsReduce(start(), { action: 'confirm' });
     expect(r.patch).toEqual({ motion: 'gentle' });
     expect(r.state.prefs.motion).toBe('gentle');
-    expect(r.fx).toEqual(['confirm']);
+    expect(r.fx).toEqual(['skx-toggle-off']); // gentle = the soft falling switch sound
     r = effectsReduce(r.state, { action: 'left' });
     expect(r.patch).toEqual({ motion: 'full' });
+    expect(r.fx).toEqual(['skx-toggle-on']);
     r = effectsReduce({ ...r.state, row: 1 }, { action: 'right' });
     expect(r.patch).toEqual({ shake: false });
+    expect(r.fx).toEqual(['skx-toggle-off']);
     r = effectsReduce(r.state, { action: 'toggle' });
     expect(r.patch).toEqual({ shake: true });
+    expect(r.fx).toEqual(['skx-toggle-on']);
   });
   it('A on Back and B both leave; left/right on Back do nothing', () => {
     const back = { ...start(), row: EFFECTS_ROWS.indexOf('back') };

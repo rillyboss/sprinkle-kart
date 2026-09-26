@@ -28,6 +28,12 @@ export function togglePatch(prefsObj, key, dir = 1) {
   return null;
 }
 
+/** The switch sound for a row after it changed: a rising "bip-bop!" for on (and Full motion), a soft falling one for off. */
+export function toggleSound(key, prefs) {
+  const on = key === 'motion' ? prefs?.motion !== 'gentle' : !!prefs?.[key];
+  return on ? 'skx-toggle-on' : 'skx-toggle-off';
+}
+
 /**
  * @param {{row:number, prefs:object}} state
  * @param {{action:string, index?:number}} ev
@@ -43,7 +49,7 @@ export function effectsReduce(state, ev = {}) {
     if (!patch) return;
     res.patch = patch;
     res.state = { ...res.state, row, prefs: normalizePrefs({ ...state.prefs, ...patch }) };
-    res.fx.push('confirm');
+    res.fx.push(toggleSound(key, res.state.prefs));
   };
   switch (ev.action) {
     case 'up':

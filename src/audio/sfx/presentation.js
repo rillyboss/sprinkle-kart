@@ -8,6 +8,7 @@
  *   skx-bubble    a tiny "blip" when a speech bubble pops up
  *   skx-podium    a warm three-note "ta-da-daa" for the 3D podium
  *   skx-attract   a soft chime when the title show cuts to a new camera
+ *   skx-toggle-on / skx-toggle-off  a rising "bip-bop!" / a soft falling "bop-bip" for switches
  */
 import { tone, noise } from '../synth.js';
 
@@ -50,6 +51,16 @@ export default {
     },
     'skx-attract'(core, t, o) {
       tone(core.ctx, core.wet || core.out, { t, freq: N(84) * o.pitch, dur: 0.4, vol: 0.025, attack: 0.003, shape: 'perc', pan: o.pan });
+    },
+    'skx-toggle-on'(core, t, o) {
+      [[76, 0], [83, 0.06]].forEach(([m, dt]) => tone(core.ctx, core.out, {
+        t: t + dt, freq: N(m) * o.pitch, dur: 0.09, vol: 0.06, attack: 0.002, shape: 'perc', type: 'triangle', pan: o.pan,
+      }));
+    },
+    'skx-toggle-off'(core, t, o) {
+      [[79, 0], [72, 0.07]].forEach(([m, dt]) => tone(core.ctx, core.out, {
+        t: t + dt, freq: N(m) * o.pitch, dur: 0.1, vol: 0.045, attack: 0.002, shape: 'perc', type: 'sine', pan: o.pan,
+      }));
     },
   },
   throttle: { 'skx-whoosh': 0.4, 'skx-confetti': 0.15, 'skx-photo': 1, 'skx-bubble': 0.2, 'skx-intro': 1, 'skx-podium': 1, 'skx-attract': 1.5 },
