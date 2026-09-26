@@ -9,7 +9,7 @@
  * moment she DOZES OFF: head nods, eyes close, a Zzz floats up and a sleepy
  * nose bubble grows and shrinks. The nightcap pom-pom bounces all the time.
  */
-import { THREE, G, toon, glow, frame, surf, stick, limb, part, rng, extrude, addFace, buildKartBase, addArms, makeHead, EYE_DARK, WHITE, TAU } from './parts.js';
+import { THREE, G, toon, glow, surf, part, rng, extrude, addFace, buildKartBase, addArms, makeHead, EYE_DARK, WHITE, TAU } from './parts.js';
 
 /** @type {import('./types.js').CharacterDef} */
 export const def = {

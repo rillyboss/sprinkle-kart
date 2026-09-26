@@ -9,7 +9,7 @@
  * clicks up and down with it, the antenna boings, the chest heart blinks and
  * the plug-cord tail wags behind the kart.
  */
-import { THREE, G, toon, glow, frame, stick, limb, part, addMouth, buildKartBase, addArms, makeHead, EYE_DARK, WHITE, TAU } from './parts.js';
+import { THREE, G, toon, glow, frame, part, addMouth, buildKartBase, addArms, makeHead, EYE_DARK, WHITE, TAU } from './parts.js';
 
 /** @type {import('./types.js').CharacterDef} */
 export const def = {

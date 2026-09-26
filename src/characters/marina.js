@@ -10,7 +10,7 @@
  * fin flips over the side, her hair floats like it is underwater, and the
  * clam lid breathes open and shut.
  */
-import { THREE, G, toon, glow, frame, surf, stick, limb, part, rng, extrude, addFace, addArms, makeHead, WHITE, TAU } from './parts.js';
+import { THREE, G, toon, glow, surf, stick, limb, part, rng, extrude, addFace, addArms, makeHead, WHITE, TAU } from './parts.js';
 
 /** @type {import('./types.js').CharacterDef} */
 export const def = {
@@ -67,16 +67,16 @@ export function build(kit, rig, def) {
   // ── the clamshell hover-kart ──
   const hull = part(C, [0, HOVER, 0]);
   hull.name = 'marina-hull';
-  kit.add(hull, G.bowl(1, 20, 7), pearl, { p: [0, 0.5, 0], s: [0.72, 0.4, 1.08] });
+  kit.add(hull, G.bowl(1, 20, 7), pearl, { p: [0, 0.5, 0], s: [0.8, 0.42, 1.08] });
   // scalloped rim + ridges down the shell
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * TAU;
-    kit.add(hull, G.sph(0.085, 7, 5), ridge, { p: [Math.sin(a) * 0.72, 0.5, Math.cos(a) * 1.08], s: [1, 0.7, 1], outline: false });
+    kit.add(hull, G.sph(0.085, 7, 5), ridge, { p: [Math.sin(a) * 0.8, 0.5, Math.cos(a) * 1.08], s: [1, 0.7, 1], outline: false });
   }
   // pearly inside of the shell
-  kit.add(hull, G.cyl(1, 1, 0.04, 22), toon(0xfff0f6), { p: [0, 0.49, 0], s: [0.69, 1, 1.05], outline: false });
+  kit.add(hull, G.cyl(1, 1, 0.04, 22), toon(0xfff0f6), { p: [0, 0.49, 0], s: [0.77, 1, 1.05], outline: false });
   // a band of darker pink round the belly of the shell
-  kit.add(hull, G.tor(1, 0.03, 5, 28), ridge, { p: [0, 0.3, 0], r: [Math.PI / 2, 0, 0], s: [0.61, 0.92, 1], outline: false });
+  kit.add(hull, G.tor(1, 0.03, 5, 28), ridge, { p: [0, 0.3, 0], r: [Math.PI / 2, 0, 0], s: [0.68, 0.92, 1], outline: false });
   // soft seat cushion (a sea sponge!) + a pearl on the nose
   kit.add(hull, G.rbox(0.7, 0.16, 0.62, 0.07), toon(0xfff1a0), { p: [0, 0.5, -0.35] });
   for (const [x, z] of [[-0.18, -0.25], [0.15, -0.45], [0.05, -0.2], [-0.1, -0.5]]) kit.add(hull, G.sph(0.025, 5, 4), toon(0xe8c86a), { p: [x, 0.585, z], outline: false });
@@ -96,10 +96,10 @@ export function build(kit, rig, def) {
   // the open top shell standing up behind her as a spoiler (it "breathes")
   const lid = part(C, [0, 0.62 + HOVER, -0.95]);
   lid.name = 'marina-lid';
-  kit.add(lid, extrude(fanShape(0.62), 0.05, 0.02), pearl, { p: [0, 0.3, 0], r: [0, 0, 0] });
+  kit.add(lid, extrude(fanShape(0.68), 0.05, 0.02), pearl, { p: [0, 0.3, 0], r: [0, 0, 0] });
   for (let i = 1; i < 7; i++) {
     const a = Math.PI - (i / 7) * Math.PI;
-    kit.add(lid, G.cap(0.02, 0.44, 4), ridge, { p: [Math.cos(a) * 0.3, Math.sin(a) * 0.3 + 0.02, -0.035], r: [0, 0, a - Math.PI / 2], outline: false });
+    kit.add(lid, G.cap(0.02, 0.48, 4), ridge, { p: [Math.cos(a) * 0.33, Math.sin(a) * 0.33 + 0.02, -0.035], r: [0, 0, a - Math.PI / 2], outline: false });
   }
   kit.add(lid, G.sph(0.09, 10, 8), toon(WHITE, { emissive: 0xffe6f7, emissiveIntensity: 0.4 }), { p: [0, 0.03, -0.05] });
   // bubble jets at the back (the boost flames come out here too)
