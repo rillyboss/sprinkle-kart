@@ -126,6 +126,17 @@ To lock her again (to earn her again), open the game with `?unlockreset=1` added
 | **Bizzy Bumble** | A silly bumblebee who talks in puns |
 | **Cotton Candy Girl** 🔒 | Fluffy, sparkly and super sweet. Win a race to unlock her! |
 
+### Even more friends to unlock (pack B)
+
+| Racer | Who they are | How to unlock |
+|---|---|---|
+| **Luna Lollicorn** 🦄 | A sparkly unicorn with a swirly lollipop horn and a shimmering rainbow mane, in a lollipop kart | Win on Cotton Candy Castle |
+| **Bleep Bloop** 🍞 | A tiny toaster robot. Watch the toast pop up every time it boosts! | Finish a Time Trial |
+| **Puff the Sprinkle Dragon** 🐉 | A teeny dragon who sneezes rainbow sprinkles (AH-CHOO!) from a donut kart | Do 25 drift mini-turbos |
+| **Prince Ribbit** 🐸 | A very polite frog prince whose crown is three sizes too big (it keeps slipping!) | Win on Mermaid Lagoon |
+| **Marina Seashell** 🧜 | A cheerful mermaid floating along in a bubbly clamshell hover-kart | Finish races on 8 different tracks |
+| **Lulu Lamb** 🐑 | A sleepy, cloud-fluffy lamb who drives her bed, and dozes off with a Zzz when you stop | Finish a race on Pillow Fort Dreamland |
+
 ## The tracks
 
 | Track | What's there |
