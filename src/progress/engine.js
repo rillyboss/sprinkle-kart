@@ -141,6 +141,9 @@ export function applyGrandPrix(p, gp) {
   ensure(p);
   if (!gp || typeof gp.cupId !== 'string' || gp.finished === false) return p;
   bump(p, 'grandPrixFinished');
+  // A family-built "My Cup" (modes/myCup.js MY_CUP_ID) counts as a finished
+  // Grand Prix, but only the real cups give cup trophies / "win a cup" unlocks.
+  if (gp.cupId === 'my-cup') return p;
   const c = (p.cups[gp.cupId] = { bestPlace: null, wins: 0, finished: 0, ...(p.cups[gp.cupId] || {}) });
   c.finished = num(c.finished) + 1;
   const best = Number.isInteger(gp.bestHumanPlace) && gp.bestHumanPlace >= 1 ? gp.bestHumanPlace : null;

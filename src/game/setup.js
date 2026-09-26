@@ -44,6 +44,8 @@ export function parseDebugParams(search = '') {
     mode: modeParam(q.get('mode')),
     cup: q.has('cup') ? String(q.get('cup') || '').trim() || null : null,
     arena: q.has('arena') ? String(q.get('arena') || '').trim() || null : null,
+    // ?mode=gp&cup=my-cup&mycup=a,b,c,d — a custom "My Cup" of those tracks (smoke / debugging)
+    myCup: q.has('mycup') ? String(q.get('mycup') || '').split(',').map((s) => s.trim()).filter(Boolean) : null,
   };
 }
 
@@ -135,7 +137,12 @@ export function quickDeviceIds(players) {
 export function quickSetup(params, input, characters, tracks, { cups = [] } = {}) {
   const mode = params.mode ?? 'free';
   let cup = null;
-  if (mode === 'grand-prix') {
+  const customIds = mode === 'grand-prix' && params.cup === 'my-cup' && Array.isArray(params.myCup)
+    ? [...new Set(params.myCup)].filter((id) => tracks.some((t) => t.id === id)).slice(0, 4)
+    : [];
+  if (customIds.length) {
+    cup = { id: 'my-cup', trackIds: customIds, custom: true };
+  } else if (mode === 'grand-prix') {
     const complete = cups.filter((c) => c.trackIds.every((id) => tracks.some((t) => t.id === id)));
     cup = complete.find((c) => c.id === params.cup) || complete[0] || null;
   }
@@ -166,6 +173,7 @@ export function quickSetup(params, input, characters, tracks, { cups = [] } = {}
   if (cup) {
     setup.cupId = cup.id;
     setup.laps = params.laps ?? null; // each cup race uses its track's own laps
+    if (cup.custom) setup.customTrackIds = [...cup.trackIds];
   }
   return setup;
 }

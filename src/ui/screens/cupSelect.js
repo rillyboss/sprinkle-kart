@@ -14,7 +14,21 @@ import { el, escapeHtml, glyph, kbd, hint, floatiesLayer } from '../dom.js';
 import { cupCards } from '../../modes/grandPrix.js';
 import { createCupSelectState, cupSelectReduce, cupSpeed } from '../../modes/menus.js';
 import { pc, hintsBar, backButton, shake, lockHint, SPEED_HINT } from './_shared.js';
-import { MY_CUP_ID, MY_CUP_SIZE } from '../../modes/myCup.js';
+import { MY_CUP_ID, MY_CUP_SIZE, myCupCard, myCupStore } from '../../modes/myCup.js';
+
+/** The remembered custom cup (this visit's draft first, then storage). */
+function savedMyCup(draft) {
+  if (draft.myCup) return draft.myCup;
+  try { return myCupStore().load(); } catch { return null; }
+}
+
+/** P1's racer name (for "<name>'s Cup"). */
+function ownerName(ctx, draft) {
+  const p1 = draft.joinState.players[0];
+  const picks = draft.charState ? S.charSelections(draft.charState) : (draft.charPicks || []);
+  const id = picks.find((q) => q.playerIndex === p1?.playerIndex)?.characterId;
+  return (id && ctx.char?.(id)?.name) || '';
+}
 
 /** The RaceSetup a cup pick finishes the menus with (first race of the cup). */
 export function cupRaceSetup(draft, card, speedClass) {
@@ -43,7 +57,9 @@ export default {
     const d = ctx.draft;
     const list = cupCards(CUPS, ctx.tracks, (t) => ctx.isTrackLocked(t));
     // "My Cup": playable once there are enough unlocked tracks to fill it.
-    const openTracks = ctx.tracks.filter((t) => !t.placeholder && !ctx.isTrackLocked(t)).length;
+    const open = ctx.tracks.filter((t) => !t.placeholder && !ctx.isTrackLocked(t));
+    const openTracks = open.length;
+    const openTrackName = (id) => open.find((t) => t.id === id)?.name ?? null;
     const myCupIndex = list.length;
     list.push({ cup: { id: MY_CUP_ID, name: 'My Cup', emoji: '✨', trackIds: [] }, tracks: [], playable: openTracks >= MY_CUP_SIZE, missing: 0, firstLocked: null, custom: true });
     const p1 = d.joinState.players[0];
@@ -64,10 +80,15 @@ export default {
             if (state.index === i) handle({ deviceId: 'mouse', action: 'confirm' });
             else handle({ deviceId: 'mouse', action: 'set', key: 'index', value: i });
           },
-          html: '<div class="sk-cupcard-top skc-cupcard-top"><span class="sk-cupcard-e">✨</span></div>'
-            + '<div class="sk-cupcard-name">My Cup</div>'
-            + '<ol class="sk-cuptracks">' + [1, 2, 3, 4].map((k) => `<li class="sk-cuptrack skc-cuptrack"><span>${k}</span>You pick!</li>`).join('') + '</ol>'
-            + `<div class="sk-cupcard-foot">${c.playable ? 'Pick any 4 tracks! 🎨' : `🔒 Unlock ${MY_CUP_SIZE} tracks first`}</div>`,
+          html: (() => {
+            const m = myCupCard(savedMyCup(d), openTrackName, ownerName(ctx, d));
+            return `<div class="sk-cupcard-top skc-cupcard-top"><span class="sk-cupcard-e">${m.emoji}</span></div>`
+              + `<div class="sk-cupcard-name">${escapeHtml(m.name)}</div>`
+              + '<ol class="sk-cuptracks">' + m.rows.map((name, k) => (name
+                ? `<li class="sk-cuptrack"><span>${k + 1}</span>${escapeHtml(name)}</li>`
+                : `<li class="sk-cuptrack skc-cuptrack"><span>${k + 1}</span>You pick!</li>`)).join('') + '</ol>'
+              + `<div class="sk-cupcard-foot">${!c.playable ? `🔒 Unlock ${MY_CUP_SIZE} tracks first` : m.remembered ? 'Race it or change it! 🎨' : 'Pick any 4 tracks! 🎨'}</div>`;
+          })(),
         });
         if (!c.playable) card.classList.add('sk-cupcard-locked');
         return card;

@@ -347,7 +347,7 @@ async function runTimeTrial(setup) {
 async function runGrandPrix(setup) {
   // "My Cup" (src/modes/myCup.js): any 4 unlocked tracks the family picked, raced like a cup.
   const custom = setup.cupId === MY_CUP_ID && Array.isArray(setup.customTrackIds) && setup.customTrackIds.length;
-  const cup = custom ? myCupDef(setup.customTrackIds.filter((id) => findTrack(id))) : (getCup(setup.cupId) ?? CUPS[0]);
+  const cup = custom ? myCupDef(setup.customTrackIds.filter((id) => findTrack(id)), setup.customCup) : (getCup(setup.cupId) ?? CUPS[0]);
   const trackIds = custom ? cup.trackIds : cupTracks(cup.id).map((t) => t.id);
   if (!trackIds.length) return runFreeRaces({ ...setup, mode: 'free' });
   const base = { ...setup, mode: 'grand-prix', cupId: cup.id };
