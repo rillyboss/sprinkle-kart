@@ -21,11 +21,11 @@
 .ski-tick { animation: ski-tick 0.12s ease-out; }
 @keyframes ski-tick { from { transform: translateY(-22%) scale(0.85); opacity: 0.4; } to { transform: none; opacity: 1; } }
 .sk-item.ski-slot.sk-got { animation: ski-got 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) both; }
-@keyframes ski-got { 0% { transform: scale(1.8) rotate(-10deg); } 60% { transform: scale(0.94) rotate(3deg); } 100% { transform: scale(1); } }
+@keyframes ski-got { 0% { transform: scale(1.45) rotate(-10deg); } 60% { transform: scale(0.94) rotate(3deg); } 100% { transform: scale(1); } }
 .ski-slot-pips { position: absolute; bottom: -0.55em; left: 50%; transform: translateX(-50%); display: flex; gap: 0.18em; }
 .ski-slot-pips i { width: 0.6em; height: 0.6em; border-radius: 50%; background: rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 0.12em #fff, inset 0 -0.08em 0 rgba(0, 0, 0, 0.15); }
 .ski-slot-pips i.on { background: var(--ic, #ffb347); }
-.ski-count { position: absolute; right: -0.35em; bottom: -0.35em; font-size: 0.95em; font-weight: 700; color: #fff; background: var(--ic, #ffb347); border-radius: 1em; padding: 0 0.35em; box-shadow: 0 0 0 0.12em #fff; }
+.ski-count { position: absolute; left: -0.4em; top: -0.35em; font-size: 0.95em; font-weight: 700; color: #fff; background: var(--ic, #ffb347); border-radius: 1em; padding: 0 0.35em; box-shadow: 0 0 0 0.12em #fff; }
 
 /* ---------- item-card: name + button hint + pips + timer rings ---------- */
 .ski-card {
@@ -33,6 +33,7 @@
   flex-direction: column;
   align-items: inherit;
   gap: 0.1em;
+  margin-top: 0.45em;
   padding: 0.25em 0.7em 0.3em;
   border-radius: 0.9em;
   background: rgba(255, 255, 255, 0.92);
@@ -88,13 +89,14 @@
   color: #5a2466;
   font-weight: 700;
   line-height: 1.05;
-  white-space: nowrap;
+  max-width: 21em;
+  box-sizing: border-box;
   box-shadow: 0 0 0 0.16em var(--ic, var(--pc)), 0 0.35em 0.7em rgba(100, 30, 110, 0.3);
   animation: ski-callout var(--ttl, 1.8s) cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
-.ski-callout .e, .ski-threat .e { font-size: 2em; filter: drop-shadow(0 0.06em 0 rgba(0, 0, 0, 0.15)); }
-.ski-callout b, .ski-threat b { display: block; font-size: 1.35em; }
-.ski-callout small, .ski-threat small { display: block; font-size: 0.85em; color: #8a5a96; }
+.ski-callout .e, .ski-threat .e { font-size: 1.6em; filter: drop-shadow(0 0.06em 0 rgba(0, 0, 0, 0.15)); }
+.ski-callout b, .ski-threat b { display: block; font-size: 1.15em; }
+.ski-callout small, .ski-threat small { display: block; font-size: 0.8em; color: #8a5a96; }
 .ski-tone-use { background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--ic, #ff9ad5) 25%, white)); }
 .ski-tone-good { --ic: #7ee07e; background: linear-gradient(180deg, #fff, #e3ffd9); }
 .ski-tone-oops { --ic: #ffb347; background: linear-gradient(180deg, #fff, #fff1d6); }

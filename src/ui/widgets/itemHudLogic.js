@@ -268,3 +268,6 @@ export function threatMessage(threat) {
   const who = threat?.from ? ` from ${threat.from}` : '';
   return { emoji: itemEmoji('cupcake-rocket'), title: 'Rocket coming!', sub: threat?.closeness > 0.8 ? 'Here it comes!' : `Sent${who}` };
 }
+
+/** Item effects drawn by the HUD (item slot in Hud.js + ./itemWidgets.js). */
+export const HUD_FX_PROVIDES = Object.freeze(['hud-roulette', 'hud-reveal', 'hud-callout', 'hud-pips', 'hud-timer-ring', 'hud-threat']);

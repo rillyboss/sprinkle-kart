@@ -30,8 +30,8 @@ import { itemSlotView } from './widgets/itemHudLogic.js';
 import { ITEM_CATALOG } from '../race/itemCatalog.js';
 
 /**
- * Item slot glyph. One big readable icon per item; Triple Sprinkle shows its
- * charges as pips under the slot (pass `pips` = { total, left }).
+ * Item slot glyph. One big readable icon per item; Triple Sprinkle shows a
+ * "×N" charge badge (pass `pips` = { total, left }).
  */
 function itemHtml(id, pips = null) {
   const it = ITEM_ICONS[id];
@@ -39,10 +39,8 @@ function itemHtml(id, pips = null) {
   if (it.gumdrop) return '<span class="sk-gumdrop"><i></i></span>';
   const main = `<span class="sk-item-e">${ITEM_CATALOG[id]?.emoji ?? it.emoji}</span>`;
   const extra = it.extra ? `<span class="sk-item-x">${it.extra}</span>` : '';
-  const dots = pips
-    ? `<span class="ski-slot-pips">${Array.from({ length: pips.total }, (_, i) => `<i class="${i < pips.left ? 'on' : ''}"></i>`).join('')}</span>`
-      + `<span class="ski-count">×${pips.left}</span>`
-    : '';
+  // the 3 pips themselves live on the item card under the slot (itemWidgets.js)
+  const dots = pips ? `<span class="ski-count">×${pips.left}</span>` : '';
   return `${main}${extra}${dots}`;
 }
 

@@ -11,10 +11,10 @@
 import * as THREE from 'three';
 
 export const BURST_KINDS = Object.freeze({
-  'box-pop': { count: 26, shape: 'mix', speed: 7.5, up: 5, gravity: 9, life: 0.75, size: 0.3, colors: [0xff6fb5, 0xffa94d, 0xffe066, 0x7ee07e, 0x6fc3ff, 0xb48cff], ring: { color: 0xffffff, to: 3.6, life: 0.4 } },
+  'box-pop': { count: 24, shape: 'mix', speed: 4.2, up: 3.6, gravity: 8, life: 0.7, size: 0.19, colors: [0xff6fb5, 0xffa94d, 0xffe066, 0x7ee07e, 0x6fc3ff, 0xb48cff], ring: { color: 0xffffff, to: 3, life: 0.4 } },
   'respawn': { count: 12, shape: 'star', speed: -3.2, up: 0.6, gravity: 0, life: 0.45, size: 0.22, colors: [0xffffff, 0xfff07a, 0xff8fc8], spawnRadius: 1.8 },
-  'star-burst': { count: 18, shape: 'star', speed: 8, up: 4.5, gravity: 8, life: 0.8, size: 0.42, colors: [0xffe45c, 0xfff6b0, 0xffb347, 0xffffff], ring: { color: 0xfff07a, to: 4.2, life: 0.45 } },
-  'bubble-pop': { count: 22, shape: 'blob', speed: 6.5, up: 3.5, gravity: 5, life: 0.7, size: 0.26, colors: [0xa8ecff, 0xffffff, 0xff9fdc, 0x7fd8ff], ring: { color: 0xa8ecff, to: 4.6, life: 0.5 } },
+  'star-burst': { count: 16, shape: 'star', speed: 4.2, up: 3.2, gravity: 6, life: 0.75, size: 0.26, colors: [0xffe45c, 0xfff6b0, 0xffb347, 0xffffff], ring: { color: 0xfff07a, to: 4.2, life: 0.45 } },
+  'bubble-pop': { count: 20, shape: 'blob', speed: 3.8, up: 2.6, gravity: 4, life: 0.65, size: 0.16, colors: [0xa8ecff, 0xffffff, 0xff9fdc, 0x7fd8ff], ring: { color: 0xa8ecff, to: 3.8, life: 0.5 } },
   'dodge-sparkle': { count: 10, shape: 'star', speed: 3.5, up: 3, gravity: 3, life: 0.6, size: 0.24, colors: [0xffffff, 0x9bf29b, 0xfff07a] },
   'gumdrop-plop': { count: 10, shape: 'blob', speed: 3, up: 2.5, gravity: 8, life: 0.4, size: 0.2, colors: [0xffffff, 0x9bf29b, 0xff9ecf] },
   'gumdrop-poof': { count: 14, shape: 'blob', speed: 5, up: 3, gravity: 9, life: 0.6, size: 0.25, colors: [0x9bf29b, 0xffffff, 0xffe066, 0xff9ecf] },
@@ -40,7 +40,7 @@ function geos() {
   const star = new THREE.ExtrudeGeometry(starShape, { depth: 0.35, bevelEnabled: false });
   star.center();
   _geo = {
-    blob: new THREE.IcosahedronGeometry(1, 0),
+    blob: new THREE.IcosahedronGeometry(1, 1),
     star,
     ring: new THREE.RingGeometry(0.82, 1, 32).rotateX(-Math.PI / 2),
   };

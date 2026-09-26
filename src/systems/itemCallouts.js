@@ -27,6 +27,18 @@ export function createCalloutState() {
 
 const now = (s) => s?.race?.clock ?? 0;
 
+const TAIL = /\s*(\p{Extended_Pictographic}[\p{Extended_Pictographic}\u200d\ufe0f]*)\s*$/u;
+
+/**
+ * Callout text with its trailing emoji moved to the icon column when it is the
+ * same as the icon ("Phew! Dodged it! 😅" + 😅 -> "Phew! Dodged it!").
+ */
+export function withIcon(text, icon) {
+  const m = String(text ?? '').match(TAIL);
+  if (m && m[1] === icon) return { emoji: icon, title: String(text).slice(0, m.index).trim() };
+  return { emoji: icon, title: String(text ?? '') };
+}
+
 /**
  * Route one race event to callouts. Pure apart from `state.feed.push`.
  * @param {string} type race event type (without the 'race:' prefix)
@@ -46,29 +58,29 @@ export function calloutsForEvent(state, type, e, s) {
     }
     case 'bonked': {
       const m = bonkMessages(e);
-      push(e.kart, { key: 'hit', tone: 'oops', emoji: itemEmoji(e.cause === 'star' ? 'rainbow-star' : e.cause), title: m.victim });
-      if (m.bonker && e.by !== e.kart) push(e.by, { key: 'score', tone: 'good', emoji: '🎯', title: m.bonker });
+      push(e.kart, { key: 'hit', tone: 'oops', ...withIcon(m.victim, itemEmoji(e.cause === 'star' ? 'rainbow-star' : e.cause)) });
+      if (m.bonker && e.by !== e.kart) push(e.by, { key: 'score', tone: 'good', ...withIcon(m.bonker, e.cause === 'star' ? '🌟' : '🎯') });
       break;
     }
     case 'shield-pop': {
       if (e.expired) {
-        push(e.kart, { key: 'end', tone: 'info', emoji: '🫧', title: endMessage('bubble-shield'), ttl: 1.4 });
+        push(e.kart, { key: 'end', tone: 'info', ...withIcon(endMessage('bubble-shield'), '🫧'), ttl: 1.4 });
         break;
       }
       const m = blockMessages(e);
-      push(e.kart, { key: 'hit', tone: 'block', emoji: '🫧', title: m.victim });
-      if (m.bonker && e.by !== e.kart) push(e.by, { key: 'score', tone: 'block', emoji: '🫧', title: m.bonker });
+      push(e.kart, { key: 'hit', tone: 'block', ...withIcon(m.victim, '🫧') });
+      if (m.bonker && e.by !== e.kart) push(e.by, { key: 'score', tone: 'block', ...withIcon(m.bonker, '🫧') });
       break;
     }
     case 'item-dodged': {
       const m = dodgeMessages(e);
-      push(e.kart, { key: 'dodge', tone: 'good', emoji: e.star ? '🌟' : '😅', title: m.victim });
-      if (m.bonker && e.by !== e.kart) push(e.by, { key: 'score', tone: 'info', emoji: itemEmoji(e.item), title: m.bonker });
+      push(e.kart, { key: 'dodge', tone: 'good', ...withIcon(m.victim, e.star ? '🌟' : '😅') });
+      if (m.bonker && e.by !== e.kart) push(e.by, { key: 'score', tone: 'info', ...withIcon(m.bonker, e.star ? '🌟' : '😮') });
       break;
     }
     case 'item-end': {
       const text = endMessage(e.item);
-      if (text) push(e.kart, { key: 'end', tone: 'info', emoji: itemEmoji(e.item), title: text, ttl: 1.4 });
+      if (text) push(e.kart, { key: 'end', tone: 'info', ...withIcon(text, e.item === 'rainbow-star' ? '✨' : itemEmoji(e.item)), ttl: 1.4 });
       break;
     }
     default:

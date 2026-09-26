@@ -18,6 +18,8 @@ import {
 } from './itemHudLogic.js';
 
 const RING_C = 2 * Math.PI * 16; // svg circle r=16
+/** Callouts end this far down the viewport (0..1): just above the chase-cam kart. */
+export const CALLOUT_BOTTOM = 0.4;
 
 function div(cls, html = '') {
   const n = document.createElement('div');
@@ -101,15 +103,28 @@ export function itemCalloutWidget(state) {
     id: 'item-callout',
     anchor: 'callout',
     order: 10,
-    create(node, pi) {
+    create(node, pi, vpNode) {
       const threat = div('ski-threat');
       threat.hidden = true;
       const list = div('ski-callouts');
-      node.append(threat, list);
-      const cache = { ids: '', threat: '' };
+      node.append(list, threat);
+      node.classList.add('ski-callout-box');
+      const cache = { ids: '', threat: '', h: -1, measuredAt: -9 };
+      // The callout zone starts at 50% of the viewport, right on top of the
+      // player's kart. Lift the stack so its bottom edge sits just above the
+      // kart (CALLOUT_BOTTOM of the viewport height) and it grows upward.
+      const place = (now) => {
+        if (Math.abs(now - cache.measuredAt) < 0.5) return;
+        cache.measuredAt = now;
+        const h = vpNode?.clientHeight || 0;
+        if (h === cache.h) return;
+        cache.h = h;
+        node.style.transform = `translateY(calc(${(-(0.5 - CALLOUT_BOTTOM) * h).toFixed(1)}px - 100%))`;
+      };
       return {
         update(kart, race) {
           const now = race?.clock ?? 0;
+          place(now);
           // pinned rocket warning
           const th = threatsFor(kart, race?.items?.rockets)[0] ?? null;
           const tsig = th ? `${th.closeness > 0.8}|${th.from}` : '';

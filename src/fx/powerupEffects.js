@@ -28,6 +28,22 @@ export function boingScale(t) {
   return [sxz, sy, sxz];
 }
 
+/**
+ * Glassy edge glow for the shield bubble: bright at the silhouette, clear in
+ * the middle, so the bubble reads from the chase camera without hiding the kart.
+ */
+export function fresnelMaterial(color, opacity = 0.9, power = 2.2) {
+  return new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(color) }, opacity: { value: opacity }, power: { value: power } },
+    vertexShader: 'varying vec3 vN; varying vec3 vV;\n'
+      + 'void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform vec3 color; uniform float opacity; uniform float power; varying vec3 vN; varying vec3 vV;\n'
+      + 'void main() { float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), power); gl_FragColor = vec4(color, clamp(f * opacity, 0.0, 1.0)); }',
+    transparent: true,
+    depthWrite: false,
+  });
+}
+
 export default {
   id: 'powerup-effects',
   build(rig, owned) {
@@ -74,7 +90,7 @@ export default {
     shield.visible = false;
     rig.root.add(shield);
     const bubbleMat = new THREE.MeshBasicMaterial({ color: 0xa8ecff, transparent: true, opacity: 0.34, depthWrite: false });
-    const rimMat = new THREE.MeshBasicMaterial({ color: 0xff9fdc, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.BackSide });
+    const rimMat = fresnelMaterial(0xff9fdc, 0.95);
     const shineMat = new THREE.MeshBasicMaterial({ color: WHITE, transparent: true, opacity: 0.85, depthWrite: false });
     const heartMat = new THREE.MeshBasicMaterial({ color: 0xff7ac2, transparent: true, opacity: 0.95, depthWrite: false });
     const bandMat = new THREE.MeshBasicMaterial({ color: WHITE, transparent: true, opacity: 0.7, depthWrite: false });
@@ -112,7 +128,7 @@ export default {
 
     // --- dizzy stars circling the head during a happy spin
     const dizzy = new THREE.Group();
-    dizzy.position.set(0, 0.62, 0);
+    dizzy.position.set(0, 0.7, 0);
     dizzy.visible = false;
     rig.head.add(dizzy);
     const dizzyMat = glow(0xffe45c);
@@ -120,8 +136,8 @@ export default {
     for (let i = 0; i < DIZZY; i++) {
       const s = new THREE.Mesh(FX.star, i % 2 ? dizzyMat2 : dizzyMat);
       const a = (i / DIZZY) * TAU;
-      s.position.set(Math.cos(a) * 0.55, Math.sin(a * 2) * 0.06, Math.sin(a) * 0.55);
-      s.scale.setScalar(i % 2 ? 1.5 : 2.2);
+      s.position.set(Math.cos(a) * 0.62, Math.sin(a * 2) * 0.08, Math.sin(a) * 0.62);
+      s.scale.setScalar(i % 2 ? 2.2 : 3.2);
       dizzy.add(s);
     }
 
@@ -185,7 +201,7 @@ export default {
         band.rotation.z = t * 0.9;
         band.rotation.x = Math.PI / 2 + Math.sin(t * 1.7) * 0.25;
         bubbleMat.opacity = 0.3 + Math.sin(t * 3) * 0.06;
-        rimMat.color.setHSL((0.88 + Math.sin(t * 0.7) * 0.08 + 1) % 1, 0.9, 0.78);
+        rimMat.uniforms.color.value.setHSL((0.88 + Math.sin(t * 0.7) * 0.08 + 1) % 1, 0.9, 0.72);
       }
 
       // "boing!" squash & stretch when a happy spin starts, then dizzy stars
@@ -197,7 +213,7 @@ export default {
       dizzy.visible = !!st.spinning;
       if (st.spinning) {
         dizzy.rotation.y = -st.spinA * 1.3 + t * 4;
-        dizzy.position.y = 0.62 + Math.sin(t * 8) * 0.05;
+        dizzy.position.y = 0.7 + Math.sin(t * 8) * 0.05;
       }
     }
 

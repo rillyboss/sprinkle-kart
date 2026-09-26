@@ -136,6 +136,9 @@ const ITEM_CUES = {
   },
 };
 
+/** What the racer who landed a bonk sees / hears ("You bonked Lenny! 🎯" + a happy ding). */
+export const SCORE_CUE = Object.freeze({ fx: 'hud-callout', sfx: 'item-bonk-score' });
+
 /** The threat warning a rocket target gets (HUD arrow + beeps). */
 export const THREAT_CUE = Object.freeze({ fx: 'hud-threat', sfx: 'item-threat-beep' });
 

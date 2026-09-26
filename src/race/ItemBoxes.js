@@ -103,6 +103,12 @@ export function shimmerBoxes(t) {
   for (const m of mats) m.emissiveIntensity = k;
 }
 
+/** 85% of a kart's velocity (x/z), for bursts that should move along with it. */
+export function carry(kart, k = 0.85) {
+  const v = kart?.velocity;
+  return v && Number.isFinite(v.x) && Number.isFinite(v.z) ? { x: v.x * k, z: v.z * k } : { x: 0, z: 0 };
+}
+
 /**
  * The rows of item boxes on the track. Boxes break when any kart drives
  * through and pop back after a short while.
@@ -159,7 +165,8 @@ export class ItemBoxes {
             b.active = false;
             b.respawn = T.itemBoxRespawn;
             b.mesh.visible = false;
-            this.bursts.emit('box-pop', { x: b.base.x, y: b.base.y + 1.25, z: b.base.z });
+            // the confetti travels with the kart, so it pops around it instead of into the camera
+            this.bursts.emit('box-pop', { x: b.base.x, y: b.base.y + 1.25, z: b.base.z }, { dir: carry(k) });
             onBreak?.(k, b);
             break;
           }

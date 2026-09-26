@@ -4,6 +4,7 @@ import { TUNING as T } from './tuning.js';
 import { bonkKart, giveBoost, sweptDistSq } from './Kart.js';
 import { ITEM_CATALOG, ITEM_ORDER, itemForCause } from './itemCatalog.js';
 import { BurstField } from './itemBursts.js';
+import { carry } from './ItemBoxes.js';
 
 export const ITEM_IDS = [...ITEM_ORDER];
 
@@ -19,7 +20,7 @@ export const ITEM_INFO = Object.fromEntries(ITEM_IDS.map((id) => {
  */
 export const FX_PROVIDES = Object.freeze([
   'gumdrop-plop', 'gumdrop-glow-ring', 'gumdrop-poof', 'star-burst', 'bubble-pop', 'dodge-sparkle',
-  'rocket-launch', 'rocket-trail', 'rocket-fizzle', 'rocket-reticle',
+  'rocket-launch', 'rocket-trail', 'rocket-fizzle', 'rocket-reticle', 'star-fade',
 ]);
 
 /** How close (units) a kart must pass a gumdrop without touching it to count as a dodge. */
@@ -64,7 +65,7 @@ export function rollItem(place, count, rng = Math.random) {
 const GUMDROP_COLORS = [0xff6fb5, 0x7ee07e, 0xffd35c, 0x8fb8ff, 0xc38bff];
 
 /** Scale of dropped gumdrops (bigger = easier to spot on the road). */
-export const GUMDROP_SCALE = 1.3;
+export const GUMDROP_SCALE = 1.5;
 /** Scale of the flying cupcake. */
 export const ROCKET_SCALE = 1.35;
 
@@ -401,14 +402,14 @@ export class ItemSystem {
     const res = bonkKart(kart);
     const at = { x: kart.position.x, y: kart.position.y + 1.2, z: kart.position.z };
     if (res === 'bonked') {
-      this.bursts.emit('star-burst', at);
+      this.bursts.emit('star-burst', at, { dir: carry(kart, 0.6) });
       this.emit({ type: 'bonked', kart, cause, by });
     } else if (res === 'blocked') {
-      this.bursts.emit('bubble-pop', at, { scale: 1.2 });
+      this.bursts.emit('bubble-pop', at, { scale: 1.2, dir: carry(kart) });
       this.emit({ type: 'shield-pop', kart, cause, by });
     } else if (res === 'immune' && wasStar && cause !== 'star') {
       // Star power shrugs it off: show it, so nobody wonders what happened.
-      this.bursts.emit('dodge-sparkle', at, { scale: 1.3 });
+      this.bursts.emit('dodge-sparkle', at, { scale: 1.3, dir: carry(kart) });
       this.emit({ type: 'item-dodged', kart, item: itemForCause(cause), by, star: true });
     }
     return res;
@@ -428,7 +429,7 @@ export class ItemSystem {
       if (k.starPower > 0) this._starOn.add(k);
       else if (this._starOn.has(k)) {
         this._starOn.delete(k);
-        this.bursts.emit('star-fade', { x: k.position.x, y: k.position.y + 1, z: k.position.z });
+        this.bursts.emit('star-fade', { x: k.position.x, y: k.position.y + 1, z: k.position.z }, { dir: carry(k) });
         this.emit({ type: 'item-end', kart: k, item: 'rainbow-star' });
       }
       const boostItem = this._itemBoost.get(k);
