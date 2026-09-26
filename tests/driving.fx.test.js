@@ -136,14 +136,24 @@ describe('driving FX set', () => {
     expect(scene.children).toContain(fx.group);
     expect(fx.group.children).toHaveLength(3); // 3 draw calls per view for everything
     const karts = Array.from({ length: 8 }, (_, i) => kart({ drifting: i % 2 === 0, offRoad: i % 2 === 1, driftLevel: i % 4, position: new THREE.Vector3(i * 5, 0, 0) }));
-    const t0 = performance.now();
+    // "Cheap" is a structural budget, not a wall-clock one (that flaked under coverage /
+    // loaded CI): 3 instanced draw calls, fixed-size ring buffers that are never
+    // reallocated, whatever the number of karts or frames.
+    const meshes = fx.group.children;
+    const buffers = meshes.map((m) => m.instanceMatrix.array);
+    const counts = meshes.map((m) => m.count);
+    for (const m of meshes) expect(m.isInstancedMesh).toBe(true);
     for (let f = 0; f < 600; f++) {
       for (const k of karts) { k.position.z += 0.5; k.heading = Math.sin(f * 0.02) * 0.3; }
       fx.update(1 / 60, karts);
       if (f % 50 === 0) fx.landPuff(karts[0], 0.6);
     }
-    const ms = performance.now() - t0;
-    expect(ms).toBeLessThan(1500); // generous for CI; typically a few ms per 100 frames
+    expect(fx.group.children).toHaveLength(3); // no extra meshes spawned per kart / per mark
+    expect(fx.group.children.every((m, i) => m === meshes[i] && m.instanceMatrix.array === buffers[i])).toBe(true);
+    expect(meshes.map((m) => m.count)).toEqual(counts); // capacity never grows
+    expect(fx.skids.total).toBeGreaterThan(SKID.capacity); // the skid ring wrapped around ...
+    expect(fx.skids.alive).toBeLessThanOrEqual(SKID.capacity); // ... and stayed within its budget
+    expect(fx.dust.alive).toBeLessThanOrEqual(PUFF.capacity);
     expect(fx.skids.total).toBeGreaterThan(100);
     expect(fx.dust.alive).toBeGreaterThan(0);
     expect(finiteArr(fx.dust.mesh.instanceMatrix.array)).toBe(true);
