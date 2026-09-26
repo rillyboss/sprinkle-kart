@@ -43,6 +43,39 @@ jobs:
           if-no-files-found: ignore
       - run: npm run build
 
+  # The signal worker's own suite (infra/signal-worker, workerd via @cloudflare/vitest-plugin; needs
+  # Node 22+). Runs only when the worker, its wrapper script or its workflow changed (NETWORKING.md §15).
+  worker-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Did the worker change?
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE" HEAD -- infra/signal-worker scripts/worker.mjs .github/workflows/worker.yml | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No signal worker changes: skipping its tests."
+          fi
+      - uses: actions/setup-node@v7
+        if: steps.changed.outputs.run == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: infra/signal-worker/package-lock.json
+      - if: steps.changed.outputs.run == 'true'
+        run: npm run worker:test
+
   # Browser smoke (Playwright + system Chrome on SwiftShader). It is slow and informational,
   # not a merge gate: developers run the full smoke locally before merging.
   #   - pushes to main, manual runs and the nightly schedule: the FULL scenario list
