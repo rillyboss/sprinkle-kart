@@ -187,6 +187,9 @@ body.skx-gentle .skx-photo-snapflash.skx-go { animation-duration: 0.2s; }
 body.skx-podium3d .sk-menus.sk-mode-results { background: transparent !important; }
 body.skx-podium3d .sk-results .sk-step-portrait { visibility: hidden; animation: none; }
 body.skx-podium3d .sk-results .sk-crown { top: -2.1em; }
+/* the Grand Prix trophy ceremony gets the same dancing racers */
+body.skx-podium3d .sk-cer .sk-cer-portrait { visibility: hidden; animation: none; }
+body.skx-podium3d .sk-cer .sk-cer-cup { position: relative; z-index: 2; }
 
 /* ---------- Racer chatter: speech bubble above the place badge ---------- */
 .skx-bubble-wrap {
