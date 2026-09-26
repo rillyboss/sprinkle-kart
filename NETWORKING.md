@@ -294,7 +294,10 @@ per message, ≤ 50 msgs/s per socket):
 | W→C | `{ t: 'error', code }` then close | `full` (8 sockets) · `no-host` · `host-exists` · `locked` · `rate` · `bad-origin` · `proto` |
 
 TURN credentials therefore reach only sockets that know an existing room's key-derived id, and only guests of
-a room that has a host. `GET /ice` exists only for the Check connection screen: 5 requests/min per IP (guard
+a room that has a host. **Renewal:** a relayed allocation may stop refreshing once its credentials expire, so
+every machine whose selected candidate pair is `relay` fetches fresh creds (`refreshIce()`) 20 min after the
+last mint and applies them with `pc.setConfiguration` + an ICE restart **only between races** (lobby, results,
+standings), never mid-race (a race is < 10 min). The manual checklist (§15) verifies a 45-minute relayed session. `GET /ice` exists only for the Check connection screen: 5 requests/min per IP (guard
 object), ttl 900 s, no caching across callers.
 
 **PublicSignaling** (`src/net/signaling/public.js`, `createPublicSignaling({ trackers, nostrRelays,

@@ -669,4 +669,7 @@ state machines, per-machine progress, failure handling, tests, and the wave plan
 Key seams for everyone else (section numbers are NETWORKING.md's): `race.tick(inputs)` / `race.present(alpha, dt)` (fixed tick, §8.1), race events
 carry ids (`e.kart.id`, `boxIndex`, entity ids; §6.3), `session.humans` / `isHuman` stay **local** humans
 (`allHumans` / `isLocal` for rules; §10.8), and `localizeSummary` / `localizeGp` run before any online
-`race-end` / `gp-end` (§12). New code lives in `src/net/**` and `infra/signal-worker/**`.
+`race-end` / `gp-end` (§12). The shared online sim-state contract is `src/race/simState.types.js` (§8.4), and
+the worker tooling runs through `npm run worker:*` (`scripts/worker.mjs`, Node 22+). Online ships in
+milestones M1 (Free Race) → M2 (Grand Prix, reconnect) → M3 (Team, Battle, extras) (§16.2). New code lives in
+`src/net/**` and `infra/signal-worker/**`.
